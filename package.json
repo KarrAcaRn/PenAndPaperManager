@@ -1,0 +1,23 @@
+{
+  "name": "pen-and-paper-manager",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm start -w server",
+    "test": "npm test --workspaces --if-present",
+    "check": "npm run check -w server && npm run check -w client",
+    "coverage": "npm run coverage --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.1",
+    "concurrently": "^9.2.4",
+    "typescript": "^7.0.2"
+  }
+}

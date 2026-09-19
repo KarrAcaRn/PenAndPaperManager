@@ -1,0 +1,53 @@
+import { DEFAULT_SECTION, SECTIONS, type Section } from '@pnp/shared';
+
+export type Route =
+  | { name: 'groups' }
+  | { name: 'folder'; gid: number; section: Section; path: string }
+  | { name: 'article'; gid: number; section: Section; id: number; edit: boolean }
+  | { name: 'new'; gid: number; section: Section; path: string }
+  | { name: 'manage'; gid: number };
+
+const isSection = (s: string | undefined): s is Section => SECTIONS.includes(s as Section);
+
+/** Kaputte %-Sequenzen (z.B. von Hand getippt) bleiben roh stehen, statt die Seite abstürzen zu lassen. */
+function safeDecode(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
+export function parseHash(hash: string): Route {
+  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(safeDecode);
+  const [g, gidRaw, section, kind, ...rest] = parts;
+  const gid = Number(gidRaw);
+  if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };
+  if (section === 'manage') return { name: 'manage', gid };
+  if (!isSection(section)) return { name: 'folder', gid, section: DEFAULT_SECTION, path: '' };
+  if (kind === 'a' && Number.isInteger(Number(rest[0]))) {
+    return { name: 'article', gid, section, id: Number(rest[0]), edit: rest[1] === 'edit' };
+  }
+  if (kind === 'new') return { name: 'new', gid, section, path: rest.join('/') };
+  return { name: 'folder', gid, section, path: kind === 'f' ? rest.join('/') : '' };
+}
+
+const encodePath = (path: string) => path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+
+export const href = {
+  groups: () => '#/',
+  /** Einstieg in eine Gruppe */
+  group: (gid: number) => href.folder(gid, DEFAULT_SECTION),
+  folder: (gid: number, section: Section, path = '') => `#/g/${gid}/${section}${path ? `/f/${encodePath(path)}` : ''}`,
+  article: (gid: number, section: Section, id: number) => `#/g/${gid}/${section}/a/${id}`,
+  edit: (gid: number, section: Section, id: number) => `#/g/${gid}/${section}/a/${id}/edit`,
+  newArticle: (gid: number, section: Section, path = '') => `#/g/${gid}/${section}/new${path ? `/${encodePath(path)}` : ''}`,
+  manage: (gid: number) => `#/g/${gid}/manage`,
+};
+
+export const router = $state({ route: parseHash(location.hash) });
+window.addEventListener('hashchange', () => (router.route = parseHash(location.hash)));
+
+export function navigate(to: string): void {
+  location.hash = to;
+}
