@@ -5,6 +5,7 @@
   import Login from './routes/Login.svelte';
   import GroupSelect from './routes/GroupSelect.svelte';
   import GroupLayout from './routes/GroupLayout.svelte';
+  import Admin from './routes/Admin.svelte';
 
   const loading = createTask();
   loading.run(loadSession);
@@ -18,6 +19,8 @@
   <Login />
 {:else if router.route.name === 'groups'}
   <GroupSelect />
+{:else if router.route.name === 'admin'}
+  <Admin />
 {:else}
   <GroupLayout route={router.route} />
 {/if}

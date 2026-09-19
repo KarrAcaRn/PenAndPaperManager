@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db.ts';
-import { currentUser, login, logout } from '../auth.ts';
+import { currentUser, login, logout, toSessionUser, type AdminEmails } from '../auth.ts';
 import { emailBody } from '../schemas.ts';
 
-export function authRoutes(app: FastifyInstance, db: Db): void {
+export function authRoutes(app: FastifyInstance, db: Db, admins: AdminEmails): void {
   app.post('/api/auth/login', { schema: { body: emailBody } }, (req, reply) =>
-    login(db, reply, (req.body as { email: string }).email),
+    toSessionUser(login(db, reply, (req.body as { email: string }).email), admins),
   );
 
   app.post('/api/auth/logout', (req, reply) => {
@@ -13,5 +13,8 @@ export function authRoutes(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
-  app.get('/api/auth/me', (req) => ({ user: currentUser(db, req) }));
+  app.get('/api/auth/me', (req) => {
+    const user = currentUser(db, req);
+    return { user: user && toSessionUser(user, admins) };
+  });
 }

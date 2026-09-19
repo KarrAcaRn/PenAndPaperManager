@@ -17,7 +17,8 @@ npm run check   # Typprüfung Server + Client
 npm run build && npm start   # Produktion: Server liefert das gebaute Frontend auf :3000
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`).
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen).
 
 ## Regeln
 
@@ -34,3 +35,14 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   sehen oder löschen.
 - Artikel liegen per `path` (z.B. `bar/foo`) in Ordnern. Leere Ordner stehen in der Tabelle `folders`;
   Ordner, die nur aus Artikelpfaden entstehen, sieht nur, wer darin einen Artikel sehen kann.
+
+## FATE-Bogen und Fertigkeiten
+
+- Artikel in Charaktere und Notizen (z.B. NPCs) können optional einen FATE-Bogen haben (Layout nach
+  `docs/charakterbogen-vorlage.html`, druckbar auf A4). Sichtbarkeit und Bearbeitungsrechte sind die des
+  Artikels; Änderungen werden automatisch gespeichert. Jeder Bogen trägt eine Version: Bearbeiten zwei
+  Leute gleichzeitig, bekommt der zweite einen Konflikt gemeldet, statt den ersten zu überschreiben.
+- Die Fertigkeiten auf dem Bogen legt der Spielleiter pro Gruppe fest (Bereich Spielleiter → Fertigkeiten).
+  Umbenannte Fertigkeiten behalten ihre Werte, IDs gelöschter werden nie wiederverwendet.
+- Ausgangspunkt sind Varianten (z.B. Fate Core, Turbo-Fate, Fate of Cthulhu), die beim ersten Start aus
+  `server/src/presets/defaults.ts` eingespielt und danach im Admin-Bereich (`#/admin`) gepflegt werden.

@@ -4,16 +4,17 @@ import {
   MAX_TITLE_LENGTH,
   VISIBILITIES,
   canAccessSection,
-  type Article,
+  canHaveSheet,
   type ArticleInput,
   type ArticleSummary,
   type Section,
 } from '@pnp/shared';
-import { allRows, getRow, insertRow, run, type Db } from '../db.ts';
+import { allRows, insertRow, run, type Db } from '../db.ts';
 import { assertSection, getRole, requireMember, type MemberContext } from '../auth.ts';
-import { VISIBLE_ARTICLE_SQL, canEditArticle, canSeeArticle, visibilityParams } from '../access.ts';
+import { VISIBLE_ARTICLE_SQL, visibilityParams } from '../access.ts';
+import { SUMMARY_COLUMNS, loadVisibleArticle, toSummary } from '../articles.ts';
 import { IN_SECTION_SQL, parsePath, sectionParams } from '../folders.ts';
-import { forbidden, notFound } from '../errors.ts';
+import { badRequest, forbidden } from '../errors.ts';
 import { gidParams, idParams, nonBlank, objectOf, sectionProp } from '../schemas.ts';
 
 const articleParams = idParams('id');
@@ -28,24 +29,8 @@ const articleBody = objectOf(
   ['section', 'title', 'visibility'],
 );
 
-const SUMMARY_COLUMNS = `a.id, a.section, a.path, a.title, a.visibility, a.author_id AS authorId,
-  u.email AS authorEmail, a.updated_at AS updatedAt`;
-
 export function articleRoutes(app: FastifyInstance, db: Db): void {
-  /** Liefert den Artikel nur, wenn der Anfragende ihn sehen darf - sonst 404. */
-  const loadVisible = (ctx: MemberContext, id: number): Article => {
-    const row = getRow<Omit<Article, 'canEdit'>>(
-      db,
-      `SELECT ${SUMMARY_COLUMNS}, a.body_md AS bodyMd, a.created_at AS createdAt
-       FROM articles a JOIN users u ON u.id = a.author_id WHERE a.id = ? AND a.group_id = ?`,
-      id,
-      ctx.groupId,
-    );
-    if (!row || !canAccessSection(ctx.role, row.section) || !canSeeArticle(ctx.user.id, ctx.role, row)) {
-      throw notFound('Artikel nicht gefunden');
-    }
-    return { ...row, canEdit: canEditArticle(ctx.user.id, ctx.role, row) };
-  };
+  const loadVisible = (ctx: MemberContext, id: number) => loadVisibleArticle(db, ctx, id);
 
   app.get(
     '/api/groups/:gid/articles',
@@ -60,7 +45,7 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       };
       // node:sqlite lehnt unbenutzte benannte Parameter ab, daher :path nur bei Bedarf
       if (path !== undefined) params.path = parsePath(path);
-      return allRows<ArticleSummary>(
+      const rows = allRows<ArticleSummary>(
         db,
         `SELECT ${SUMMARY_COLUMNS} FROM articles a JOIN users u ON u.id = a.author_id
          WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : 'AND a.path = :path'}
@@ -68,6 +53,7 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
          ORDER BY a.title COLLATE NOCASE`,
         params,
       );
+      return rows.map(toSummary);
     },
   );
 
@@ -114,6 +100,9 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       if (input.section !== existing.section && authorRole && !canAccessSection(authorRole, input.section)) {
         throw forbidden('Der Autor hätte in diesem Bereich keinen Zugriff mehr auf seinen Artikel');
       }
+    }
+    if (existing.hasSheet && !canHaveSheet(input.section)) {
+      throw badRequest('Artikel mit FATE-Bogen können nur in Charaktere oder Notizen liegen - entferne erst den Bogen');
     }
     run(
       db,

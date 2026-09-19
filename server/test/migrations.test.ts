@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
+import { emptySheet } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
 import { buildApp } from '../src/app.ts';
 import { loginAs } from './helpers.ts';
@@ -71,6 +72,32 @@ describe('Migration 002: NPCs und Orte werden zu Notizen', () => {
     const alice = await loginAs(app, 'alice@test.de');
     const titles = (await alice.get('/api/groups/1/articles?section=notes&path=Orte/Stadt')).body.map((a: any) => a.title);
     expect(titles).toEqual(['Taverne']);
+    db.close();
+  });
+
+  it('Migration 003 (FATE-Bögen) läuft danach auf alten Daten und erlaubt Bögen für ehemalige NPC-Artikel', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'pnp-'));
+    const file = join(dir, 'app.db');
+    dbAtVersion(
+      file,
+      ['001_init.sql'],
+      `
+      INSERT INTO users (id, email) VALUES (1, 'gm@test.de');
+      INSERT INTO groups (id, name) VALUES (1, 'Runde');
+      INSERT INTO memberships VALUES (1, 1, 'gm');
+      INSERT INTO articles (id, group_id, section, path, title, visibility, author_id) VALUES
+        (1, 1, 'npcs', '', 'Wirt', 'public', 1);
+      `,
+    );
+
+    const db = openDb(file);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()!.n).toBe(3);
+    const app = buildApp(db);
+    const gm = await loginAs(app, 'gm@test.de');
+    const sheet = (await gm.get('/api/groups/1/articles/1/sheet')).status;
+    expect(sheet).toBe(404);
+    const created = await gm.post('/api/groups/1/articles/1/sheet', emptySheet('Wirt'));
+    expect(created.status).toBe(201);
     db.close();
   });
 });

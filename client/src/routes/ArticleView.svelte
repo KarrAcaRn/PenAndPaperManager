@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { VISIBILITY_LABELS, type Article, type Group } from '@pnp/shared';
+  import { VISIBILITY_LABELS, canHaveSheet, emptySheet, type Article, type Group } from '@pnp/shared';
   import { api } from '../lib/api.ts';
   import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { renderMarkdown } from '../lib/markdown.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import Breadcrumb from '../lib/Breadcrumb.svelte';
+  import SheetPanel from '../lib/SheetPanel.svelte';
 
   let { group, id }: { group: Group; id: number } = $props();
 
@@ -16,6 +17,13 @@
   task.run(async () => {
     article = await api.article(group.id, id);
   });
+
+  function addSheet(a: Article) {
+    task.run(async () => {
+      await api.createSheet(group.id, a.id, emptySheet(a.title));
+      a.hasSheet = true;
+    });
+  }
 
   function remove(a: Article) {
     if (!confirm(`Artikel "${a.title}" wirklich löschen?`)) return;
@@ -31,23 +39,32 @@
 
 {#if article}
   {@const a = article}
-  <div class="row top">
+  <div class="row top no-print">
     <Breadcrumb gid={group.id} section={a.section} path={a.path} />
     <span class="spacer"></span>
     {#if a.canEdit}
+      {#if !a.hasSheet && canHaveSheet(a.section)}
+        <button disabled={task.busy} onclick={() => addSheet(a)}>FATE-Bogen hinzufügen</button>
+      {/if}
       <a class="button primary" href={href.edit(group.id, a.section, a.id)}>Bearbeiten</a>
       <button class="danger" disabled={task.busy} onclick={() => remove(a)}>Löschen</button>
     {/if}
   </div>
 
-  <div class="row">
+  <div class="row no-print">
     <h1>{a.title}</h1>
     <span class="badge {a.visibility}">{VISIBILITY_LABELS[a.visibility]}</span>
   </div>
-  <p class="muted">von {a.authorEmail} · zuletzt geändert {new Date(a.updatedAt + 'Z').toLocaleString('de-DE')}</p>
+  <p class="muted no-print">von {a.authorEmail} · zuletzt geändert {new Date(a.updatedAt + 'Z').toLocaleString('de-DE')}</p>
 
-  <!-- renderMarkdown liefert durch DOMPurify bereinigtes HTML -->
-  <article class="card markdown">{@html renderMarkdown(a.bodyMd)}</article>
+  {#if a.hasSheet}
+    <SheetPanel {group} article={a} onremoved={() => (a.hasSheet = false)} />
+  {/if}
+
+  {#if a.bodyMd.trim() || !a.hasSheet}
+    <!-- renderMarkdown liefert durch DOMPurify bereinigtes HTML -->
+    <article class="card markdown no-print">{@html renderMarkdown(a.bodyMd)}</article>
+  {/if}
 {/if}
 
 <style>

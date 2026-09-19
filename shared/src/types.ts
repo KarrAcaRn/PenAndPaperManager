@@ -29,6 +29,12 @@ export interface User {
   email: string;
 }
 
+/** Der eingeloggte Benutzer, wie ihn login/me liefern */
+export interface SessionUser extends User {
+  /** darf den Admin-Bereich nutzen (ADMIN_EMAILS) */
+  isAdmin: boolean;
+}
+
 export interface Group {
   id: number;
   name: string;
@@ -50,6 +56,8 @@ export interface ArticleSummary {
   authorId: number;
   authorEmail: string;
   updatedAt: string;
+  /** hat einen FATE-Bogen */
+  hasSheet: boolean;
 }
 
 export interface Article extends ArticleSummary {

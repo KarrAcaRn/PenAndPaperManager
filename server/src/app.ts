@@ -10,11 +10,24 @@ import { groupRoutes } from './routes/groups.ts';
 import { memberRoutes } from './routes/members.ts';
 import { articleRoutes } from './routes/articles.ts';
 import { folderRoutes } from './routes/folders.ts';
+import { presetRoutes } from './routes/presets.ts';
+import { skillRoutes } from './routes/skills.ts';
+import { sheetRoutes } from './routes/sheets.ts';
+import { parseAdminEmails } from './auth.ts';
+import { seedPresets } from './presets.ts';
 
 const CLIENT_DIST = join(import.meta.dirname, '../../client/dist');
 
-export function buildApp(db: Db, opts: { logger?: boolean } = {}): FastifyInstance {
+export interface AppOptions {
+  logger?: boolean;
+  /** kommagetrennt; Vorgabe ist die Umgebungsvariable ADMIN_EMAILS */
+  adminEmails?: string;
+}
+
+export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false });
+  const admins = parseAdminEmails(opts.adminEmails ?? process.env.ADMIN_EMAILS);
+  seedPresets(db);
   app.register(cookie);
 
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {
@@ -25,11 +38,14 @@ export function buildApp(db: Db, opts: { logger?: boolean } = {}): FastifyInstan
     return reply.code(500).send({ error: 'Interner Fehler' });
   });
 
-  authRoutes(app, db);
+  authRoutes(app, db, admins);
   groupRoutes(app, db);
   memberRoutes(app, db);
   articleRoutes(app, db);
   folderRoutes(app, db);
+  presetRoutes(app, db, admins);
+  skillRoutes(app, db);
+  sheetRoutes(app, db);
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {

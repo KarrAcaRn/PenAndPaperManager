@@ -25,8 +25,10 @@ export const article = (visibility: Visibility, extra: Partial<Record<keyof Arti
   ...extra,
 });
 
+export const ADMIN_EMAIL = 'admin@test.de';
+
 export function makeApp(): FastifyInstance {
-  return buildApp(openDb(':memory:'));
+  return buildApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL });
 }
 
 export async function loginAs(app: FastifyInstance, email: string): Promise<Client> {

@@ -40,8 +40,18 @@ export function allRows<T>(db: Db, sql: string, ...params: SqlParams): T[] {
   return db.prepare(sql).all(...(params as SQLInputValue[])) as T[];
 }
 
-export function run(db: Db, sql: string, ...params: SqlParams): void {
-  db.prepare(sql).run(...(params as SQLInputValue[]));
+/** Führt eine Anweisung aus und liefert die Zahl der geänderten Zeilen. */
+export function run(db: Db, sql: string, ...params: SqlParams): number {
+  return Number(db.prepare(sql).run(...(params as SQLInputValue[])).changes);
+}
+
+/** JSON aus einer Spalte lesen; ist es (z.B. nach einem Eingriff von Hand) kaputt, gilt der Ersatzwert statt eines 500ers. */
+export function parseJson<T>(text: string, fallback: T): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 /** Führt ein INSERT aus und liefert die neue ID. */

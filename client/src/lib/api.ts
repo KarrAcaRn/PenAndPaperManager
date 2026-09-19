@@ -8,7 +8,13 @@ import type {
   Member,
   Role,
   Section,
-  User,
+  SessionUser,
+  Sheet,
+  SheetData,
+  Skill,
+  SkillInput,
+  SkillPreset,
+  SkillPresetInput,
 } from '@pnp/shared';
 
 export class ApiFailure extends Error {
@@ -47,12 +53,12 @@ const qs = (params: Record<string, string | undefined>) =>
   new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined)).toString();
 
 export const api = {
-  me: () => request<{ user: User | null }>('GET', '/auth/me'),
-  login: (email: string) => request<User>('POST', '/auth/login', { email }),
+  me: () => request<{ user: SessionUser | null }>('GET', '/auth/me'),
+  login: (email: string) => request<SessionUser>('POST', '/auth/login', { email }),
   logout: () => request<unknown>('POST', '/auth/logout'),
 
   groups: () => request<Group[]>('GET', '/groups'),
-  createGroup: (name: string) => request<Group>('POST', '/groups', { name }),
+  createGroup: (name: string, presetId?: number) => request<Group>('POST', '/groups', { name, presetId }),
 
   members: (gid: number) => request<Member[]>('GET', `/groups/${gid}/members`),
   invite: (gid: number, email: string) => request<Member>('POST', `/groups/${gid}/members`, { email }),
@@ -74,4 +80,20 @@ export const api = {
     request<Folder>('PATCH', `/groups/${gid}/folders`, { section, path, newPath }),
   deleteFolder: (gid: number, section: Section, path: string) =>
     request<unknown>('DELETE', `/groups/${gid}/folders?${qs({ section, path })}`),
+
+  sheet: (gid: number, articleId: number) => request<Sheet>('GET', `/groups/${gid}/articles/${articleId}/sheet`),
+  createSheet: (gid: number, articleId: number, data: SheetData) =>
+    request<Sheet>('POST', `/groups/${gid}/articles/${articleId}/sheet`, data),
+  saveSheet: (gid: number, articleId: number, sheet: Sheet) =>
+    request<Sheet>('PUT', `/groups/${gid}/articles/${articleId}/sheet`, sheet),
+  deleteSheet: (gid: number, articleId: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${articleId}/sheet`),
+
+  skills: (gid: number) => request<Skill[]>('GET', `/groups/${gid}/skills`),
+  saveSkills: (gid: number, skills: SkillInput[]) => request<Skill[]>('PUT', `/groups/${gid}/skills`, { skills }),
+  applyPreset: (gid: number, presetId: number) => request<Skill[]>('POST', `/groups/${gid}/skills/from-preset`, { presetId }),
+
+  presets: () => request<SkillPreset[]>('GET', '/presets'),
+  createPreset: (preset: SkillPresetInput) => request<SkillPreset>('POST', '/presets', preset),
+  updatePreset: (id: number, preset: SkillPresetInput) => request<SkillPreset>('PUT', `/presets/${id}`, preset),
+  deletePreset: (id: number) => request<unknown>('DELETE', `/presets/${id}`),
 };

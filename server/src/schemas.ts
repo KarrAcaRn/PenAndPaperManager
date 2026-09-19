@@ -1,10 +1,20 @@
-import { CONTROL_CHARS_SOURCE, INVISIBLE_CHARS_SOURCE, MAX_EMAIL_LENGTH, SECTIONS } from '@pnp/shared';
+import {
+  CONTROL_CHARS_SOURCE,
+  INVISIBLE_CHARS_SOURCE,
+  MAX_EMAIL_LENGTH,
+  MAX_SKILLS,
+  MAX_SKILL_NAME_LENGTH,
+  SECTIONS,
+} from '@pnp/shared';
 
-/** URL-Parameter: immer :gid, dazu die genannten weiteren IDs */
-export const idParams = (...names: string[]) => ({
+/** Ganzzahlige URL-Parameter */
+export const intParams = (...names: string[]) => ({
   type: 'object',
-  properties: Object.fromEntries(['gid', ...names].map((name) => [name, { type: 'integer' }])),
+  properties: Object.fromEntries(names.map((name) => [name, { type: 'integer' }])),
 });
+
+/** URL-Parameter von Gruppen-Routen: immer :gid, dazu die genannten weiteren IDs */
+export const idParams = (...names: string[]) => intParams('gid', ...names);
 
 export const gidParams = idParams();
 
@@ -20,11 +30,22 @@ export const nonBlank = (maxLength: number) => ({
 
 export const sectionProp = { enum: SECTIONS };
 
+// Nur grobe Grenzen (doppelte Länge lässt Platz für Leerraum, der noch weggetrimmt wird);
+// die genaue Prüfung samt Duplikaten macht normalizeSkillNames.
+export const skillName = { type: 'string', maxLength: MAX_SKILL_NAME_LENGTH * 2 };
+export const skillList = (items: object) => ({ type: 'array', maxItems: MAX_SKILLS, items });
+export const skillNames = skillList(skillName);
+
+/** Objekt mit genau diesen Feldern; unbekannte Felder entfernt Fastify stillschweigend (removeAdditional). */
 export const objectOf = (properties: Record<string, object>, required: string[] = Object.keys(properties)) => ({
   type: 'object',
   required,
   properties,
+  additionalProperties: false,
 });
+
+/** Einzeiliger Text ohne Steuerzeichen, darf leer sein */
+export const singleLine = (maxLength: number) => ({ type: 'string', maxLength, pattern: `^${NO_CONTROL}*$` });
 
 export const emailBody = objectOf({
   email: { type: 'string', maxLength: MAX_EMAIL_LENGTH, pattern: '^\\s*[^@\\s]+@[^@\\s]+\\.[^@\\s]+\\s*$' },

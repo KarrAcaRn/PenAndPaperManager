@@ -1,15 +1,10 @@
+import { hasControlChars, hasVisibleText } from './text.ts';
+
 export const MAX_PATH_LENGTH = 200;
 export const MAX_SEGMENT_LENGTH = 60;
 
 export class PathError extends Error {}
 
-// Als Regex-Quelltext, damit die JSON-Schemas des Servers dieselben Zeichenklassen nutzen können.
-/** Steuerzeichen und Zeilentrenner */
-export const CONTROL_CHARS_SOURCE = '[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]';
-/** Zeichen, die man nicht sieht: Leerraum und Formatzeichen wie Zero-Width-Space */
-export const INVISIBLE_CHARS_SOURCE = '[\\p{Cf}\\p{Z}\\s]';
-const CONTROL_CHARS = new RegExp(CONTROL_CHARS_SOURCE, 'u');
-const INVISIBLE_CHARS = new RegExp(INVISIBLE_CHARS_SOURCE, 'gu');
 
 /**
  * Bringt einen Ordnerpfad in kanonische Form: "bar/foo", '' = Wurzel des Bereichs.
@@ -25,8 +20,8 @@ export function normalizePath(input: string): string {
   for (const s of segments) {
     if (s === '.' || s === '..') throw new PathError('"." und ".." sind als Ordnernamen nicht erlaubt');
     if (s.length > MAX_SEGMENT_LENGTH) throw new PathError(`Ordnername zu lang (max. ${MAX_SEGMENT_LENGTH} Zeichen)`);
-    if (CONTROL_CHARS.test(s) || s.includes('\\')) throw new PathError('Ordnername enthält ungültige Zeichen');
-    if (s.replace(INVISIBLE_CHARS, '') === '') throw new PathError('Ordnername besteht nur aus unsichtbaren Zeichen');
+    if (hasControlChars(s) || s.includes('\\')) throw new PathError('Ordnername enthält ungültige Zeichen');
+    if (!hasVisibleText(s)) throw new PathError('Ordnername besteht nur aus unsichtbaren Zeichen');
   }
   const path = segments.join('/');
   if (path.length > MAX_PATH_LENGTH) throw new PathError(`Pfad zu lang (max. ${MAX_PATH_LENGTH} Zeichen)`);

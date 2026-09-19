@@ -5,7 +5,9 @@ export type Route =
   | { name: 'folder'; gid: number; section: Section; path: string }
   | { name: 'article'; gid: number; section: Section; id: number; edit: boolean }
   | { name: 'new'; gid: number; section: Section; path: string }
-  | { name: 'manage'; gid: number };
+  | { name: 'manage'; gid: number }
+  | { name: 'skills'; gid: number }
+  | { name: 'admin' };
 
 const isSection = (s: string | undefined): s is Section => SECTIONS.includes(s as Section);
 
@@ -21,9 +23,10 @@ function safeDecode(part: string): string {
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(safeDecode);
   const [g, gidRaw, section, kind, ...rest] = parts;
+  if (g === 'admin') return { name: 'admin' };
   const gid = Number(gidRaw);
   if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };
-  if (section === 'manage') return { name: 'manage', gid };
+  if (section === 'manage' || section === 'skills') return { name: section, gid };
   if (!isSection(section)) return { name: 'folder', gid, section: DEFAULT_SECTION, path: '' };
   if (kind === 'a' && Number.isInteger(Number(rest[0]))) {
     return { name: 'article', gid, section, id: Number(rest[0]), edit: rest[1] === 'edit' };
@@ -43,6 +46,8 @@ export const href = {
   edit: (gid: number, section: Section, id: number) => `#/g/${gid}/${section}/a/${id}/edit`,
   newArticle: (gid: number, section: Section, path = '') => `#/g/${gid}/${section}/new${path ? `/${encodePath(path)}` : ''}`,
   manage: (gid: number) => `#/g/${gid}/manage`,
+  skills: (gid: number) => `#/g/${gid}/skills`,
+  admin: () => '#/admin',
 };
 
 export const router = $state({ route: parseHash(location.hash) });

@@ -8,16 +8,18 @@
   import ArticleView from './ArticleView.svelte';
   import ArticleEdit from './ArticleEdit.svelte';
   import GmManage from './GmManage.svelte';
+  import GmSkills from './GmSkills.svelte';
 
-  type ContentRoute = Exclude<Route, { name: 'groups' } | { name: 'manage' }>;
+  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'admin' }>;
 
-  let { route }: { route: Exclude<Route, { name: 'groups' }> } = $props();
+  let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
-  const activeSection = $derived(route.name === 'manage' ? 'gm' : route.section);
+  const gmTab = $derived(route.name === 'manage' || route.name === 'skills');
+  const activeSection = $derived(route.name === 'manage' || route.name === 'skills' ? 'gm' : route.section);
   const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
   /** Alle Artikelbereiche: Ordnerbaum links, Inhalt rechts, um schnell zwischen Artikeln zu springen */
-  const withTree = $derived(route.name !== 'manage');
+  const withTree = $derived(route.name !== 'manage' && route.name !== 'skills');
   const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
 </script>
 
@@ -27,7 +29,7 @@
     <a href={href.groups()}>Zur Gruppenauswahl</a>
   </main>
 {:else}
-  <header>
+  <header class="no-print">
     <div class="row bar" class:wide={withTree}>
       <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
       <nav class="row">
@@ -45,17 +47,20 @@
       <p class="error">Dieser Bereich ist nur für Spielleiter.</p>
     {:else}
       {#if activeSection === 'gm'}
-        <div class="row tabs">
-          <a href={href.folder(group.id, 'gm')} class:active={route.name !== 'manage'}>Artikel</a>
+        <div class="row tabs no-print">
+          <a href={href.folder(group.id, 'gm')} class:active={!gmTab}>Artikel</a>
+          <a href={href.skills(group.id)} class:active={route.name === 'skills'}>Fertigkeiten</a>
           <a href={href.manage(group.id)} class:active={route.name === 'manage'}>Gruppe verwalten</a>
         </div>
       {/if}
 
       {#if route.name === 'manage'}
         <GmManage {group} />
+      {:else if route.name === 'skills'}
+        <GmSkills {group} />
       {:else}
         <div class="split">
-          <aside class="card">
+          <aside class="card no-print">
             {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
           </aside>
           <section class="pane">{@render content(route)}</section>

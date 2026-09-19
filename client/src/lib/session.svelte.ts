@@ -1,8 +1,8 @@
-import type { Group, User } from '@pnp/shared';
+import type { Group, SessionUser } from '@pnp/shared';
 import { api, onAuthError } from './api.ts';
 import { href, navigate } from './router.svelte.ts';
 
-export const session = $state<{ user: User | null; groups: Group[]; ready: boolean }>({
+export const session = $state<{ user: SessionUser | null; groups: Group[]; ready: boolean }>({
   user: null,
   groups: [],
   ready: false,

@@ -43,6 +43,7 @@ const user = userEvent.setup();
 
 beforeEach(() => {
   api = mockApi();
+  api.presets.mockResolvedValue([]);
   location.hash = '#/';
   router.route = { name: 'groups' };
   signIn(null);
@@ -108,7 +109,7 @@ describe('GroupSelect', () => {
     await user.type(screen.getByLabelText('Name der neuen Gruppe'), 'Testrunde');
     await user.click(screen.getByRole('button', { name: 'Gruppe anlegen' }));
     await waitFor(() => expect(location.hash).toBe('#/g/7/characters'));
-    expect(api.createGroup).toHaveBeenCalledWith('Testrunde');
+    expect(api.createGroup).toHaveBeenCalledWith('Testrunde', undefined);
   });
 
   it('listet Gruppen mit Rolle und blendet das Formular erst auf Klick ein', async () => {

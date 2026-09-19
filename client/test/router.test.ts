@@ -26,6 +26,10 @@ describe('parseHash', () => {
     expect(parseHash('#/g/3/notes/new/bar/foo')).toEqual({ name: 'new', gid: 3, section: 'notes', path: 'bar/foo' });
     expect(parseHash('#/g/3/notes/new')).toEqual({ name: 'new', gid: 3, section: 'notes', path: '' });
     expect(parseHash('#/g/3/manage')).toEqual({ name: 'manage', gid: 3 });
+    expect(parseHash('#/g/3/skills')).toEqual({ name: 'skills', gid: 3 });
+    expect(parseHash('#/admin')).toEqual({ name: 'admin' });
+    expect(parseHash(href.skills(3))).toEqual({ name: 'skills', gid: 3 });
+    expect(parseHash(href.admin())).toEqual({ name: 'admin' });
   });
 });
 

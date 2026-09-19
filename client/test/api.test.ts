@@ -84,6 +84,17 @@ describe('api', () => {
     await api.folders(1, 'notes');
     await api.createFolder(1, 'notes', 'a');
     await api.renameFolder(1, 'notes', 'a', 'b');
+    await api.sheet(1, 3);
+    await api.createSheet(1, 3, {} as never);
+    await api.saveSheet(1, 3, {} as never);
+    await api.deleteSheet(1, 3);
+    await api.skills(1);
+    await api.saveSkills(1, []);
+    await api.applyPreset(1, 2);
+    await api.presets();
+    await api.createPreset({} as never);
+    await api.updatePreset(2, {} as never);
+    await api.deletePreset(2);
     expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
       'GET /api/auth/me',
       'POST /api/auth/logout',
@@ -99,6 +110,17 @@ describe('api', () => {
       'GET /api/groups/1/folders?section=notes',
       'POST /api/groups/1/folders',
       'PATCH /api/groups/1/folders',
+      'GET /api/groups/1/articles/3/sheet',
+      'POST /api/groups/1/articles/3/sheet',
+      'PUT /api/groups/1/articles/3/sheet',
+      'DELETE /api/groups/1/articles/3/sheet',
+      'GET /api/groups/1/skills',
+      'PUT /api/groups/1/skills',
+      'POST /api/groups/1/skills/from-preset',
+      'GET /api/presets',
+      'POST /api/presets',
+      'PUT /api/presets/2',
+      'DELETE /api/presets/2',
     ]);
   });
 });

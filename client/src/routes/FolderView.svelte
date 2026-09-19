@@ -119,7 +119,7 @@
     {/each}
     {#each articles as article (article.id)}
       <li>
-        <span aria-hidden="true">📄</span>
+        <span aria-hidden="true" title={article.hasSheet ? 'mit FATE-Bogen' : undefined}>{article.hasSheet ? '🎭' : '📄'}</span>
         <a class="title" href={href.article(group.id, section, article.id)}>{article.title}</a>
         <span class="badge {article.visibility}">{VISIBILITY_LABELS[article.visibility]}</span>
         <span class="spacer"></span>

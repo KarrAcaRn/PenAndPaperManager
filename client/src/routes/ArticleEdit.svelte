@@ -7,6 +7,8 @@
     VISIBILITIES,
     VISIBILITY_LABELS,
     accessibleSections,
+    canHaveSheet,
+    emptySheet,
     type Folder,
     type Group,
     type Section,
@@ -26,6 +28,7 @@
   let isAuthor = $state(true);
   let ready = $state(false);
   let folders = $state<Folder[]>([]);
+  let withSheet = $state(false);
   const loading = createTask();
   const saving = createTask();
 
@@ -65,6 +68,9 @@
     event.preventDefault();
     saving.run(async () => {
       const saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
+      if (id === undefined && withSheet && canHaveSheet(saved.section)) {
+        await api.createSheet(group.id, saved.id, emptySheet(saved.title));
+      }
       notifyContentChanged();
       navigate(href.article(group.id, saved.section, saved.id));
     });
@@ -111,6 +117,10 @@
       </label>
     </div>
 
+    {#if id === undefined && canHaveSheet(form.section)}
+      <label class="check"><input type="checkbox" bind:checked={withSheet} /> Mit FATE-Bogen (Aspekte, Stunts, Fertigkeiten …)</label>
+    {/if}
+
     {#await editorModule}
       <p class="muted">Lade Editor …</p>
     {:then { default: MarkdownEditor }}
@@ -130,4 +140,6 @@
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 1rem; }
   .actions { margin-top: 1rem; }
+  .check { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
+  .check input { width: auto; margin: 0; }
 </style>

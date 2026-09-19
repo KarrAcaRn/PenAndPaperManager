@@ -1,14 +1,25 @@
 import { vi } from 'vitest';
-import type { Article, ArticleSummary, Folder, Group, Member, User } from '@pnp/shared';
+import {
+  emptySheet,
+  type Article,
+  type ArticleSummary,
+  type Folder,
+  type Group,
+  type Member,
+  type SessionUser,
+  type SheetData,
+  type SkillPreset,
+} from '@pnp/shared';
 import { api } from '../src/lib/api.ts';
 import { session } from '../src/lib/session.svelte.ts';
 
-export const GM: User = { id: 1, email: 'sl@test.de' };
-export const PLAYER: User = { id: 2, email: 'alice@test.de' };
+export const GM: SessionUser = { id: 1, email: 'sl@test.de', isAdmin: false };
+export const PLAYER: SessionUser = { id: 2, email: 'alice@test.de', isAdmin: false };
+export const ADMIN: SessionUser = { id: 3, email: 'admin@test.de', isAdmin: true };
 export const gmGroup: Group = { id: 7, name: 'Testrunde', role: 'gm' };
 export const playerGroup: Group = { id: 7, name: 'Testrunde', role: 'player' };
 
-export function signIn(user: User | null, groups: Group[] = []): void {
+export function signIn(user: SessionUser | null, groups: Group[] = []): void {
   session.user = user;
   session.groups = groups;
   session.ready = true;
@@ -23,6 +34,7 @@ export const summary = (over: Partial<ArticleSummary> = {}): ArticleSummary => (
   authorId: PLAYER.id,
   authorEmail: PLAYER.email,
   updatedAt: '2026-09-19 18:00:00',
+  hasSheet: false,
   ...over,
 });
 
@@ -35,7 +47,16 @@ export const fullArticle = (over: Partial<Article> = {}): Article => ({
 });
 
 export const folder = (path: string, canManage = true): Folder => ({ path, explicit: true, canManage });
-export const member = (user: User, role: Member['role']): Member => ({ userId: user.id, email: user.email, role });
+export const member = (user: { id: number; email: string }, role: Member['role']): Member => ({ userId: user.id, email: user.email, role });
+
+export const sheetData = (over: Partial<SheetData> = {}): SheetData => ({ ...emptySheet(), ...over });
+export const presetFixture = (over: Partial<SkillPreset> = {}): SkillPreset => ({
+  id: 1,
+  name: 'Fate Core',
+  description: 'Quelle',
+  skills: ['Athletik', 'Wille'],
+  ...over,
+});
 
 /** Leerer Ordner: weder Unterordner noch Artikel */
 export function mockEmptyFolder(api: ReturnType<typeof mockApi>): void {

@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>FATE – Charakterbogen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #4a72a8;
+    /* Zeilenhöhe der Aspektfelder und daraus abgeleitete Höhe des oberen Blocks:
+       Balken (10,5) + 5 Aspekte à (Label 4,5 + 2 Zeilen à 5,2 + 1) + 3 Abstand */
+    --aspect-line: 5.2mm;
+    --top-h: 94.3mm;
+    --ink: #1a1a1a;
+    --line: #9a9a9a;
+    --faded: #c9c9c9;
+    --focus: #eef3fa;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #575b66;
+    font-family: "Roboto Condensed", "Arial Narrow", Arial, sans-serif;
+    color: var(--ink);
+  }
+
+  .page {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 10mm auto;
+    padding: 10mm 9mm 8mm;
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,.45);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* ---------- Eingabefelder ---------- */
+  .f {
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    outline: none;
+    resize: none;
+  }
+  .f:focus { background: var(--focus); }
+
+  /* ---------- Werkzeugleiste (nur Bildschirm) ---------- */
+  .toolbar {
+    width: 210mm;
+    margin: 6mm auto -4mm;
+    display: flex;
+    gap: 3mm;
+    align-items: center;
+  }
+  .toolbar button {
+    font: inherit;
+    font-size: 10pt;
+    color: #fff;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 2mm;
+    padding: 1.6mm 4mm;
+    cursor: pointer;
+  }
+  .toolbar button:hover { background: rgba(0,0,0,.55); }
+  .toolbar .status {
+    font-size: 9pt;
+    color: rgba(255,255,255,.7);
+  }
+
+  /* ---------- Kopfzeile ---------- */
+  .head {
+    display: grid;
+    grid-template-columns: 1fr 30mm 44mm auto;
+    align-items: flex-end;
+    gap: 6mm;
+    margin-bottom: 2mm;
+  }
+
+  .field {
+    display: flex;
+    align-items: flex-end;
+    gap: 3mm;
+  }
+  .field > .label {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding-bottom: .6mm;
+  }
+  .field > .rule {
+    flex: 1;
+    border-bottom: 1px solid var(--line);
+    height: 7mm;
+    display: flex;
+    align-items: flex-end;
+  }
+  .field .rule .f { font-size: 12pt; padding-bottom: .8mm; }
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    background: #111;
+    color: #fff;
+    padding: 1.2mm 3.2mm 1.2mm 2.4mm;
+    border-radius: 1.2mm;
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 17pt;
+    letter-spacing: .02em;
+    line-height: 1;
+    transform: skewX(-4deg);
+  }
+  .logo .swash {
+    display: inline-block;
+    width: 4mm;
+    height: 4mm;
+    margin-right: .8mm;
+    background: #fff;
+    clip-path: polygon(0 55%, 100% 0, 78% 52%, 100% 100%, 20% 68%);
+  }
+
+  /* ---------- Spaltenraster ---------- */
+  .body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .col.left  { padding-right: 6mm; border-right: 1.6pt solid var(--accent); }
+  .col.right { padding-left: 6mm; }
+
+  /* Im Ausgangszustand sind beide oberen Blöcke gleich hoch, damit die
+     zweiten Balken (Stunts / Fertigkeiten) auf einer Linie liegen. Wachsen
+     die Aspektfelder, wird nur der Stunts-Bereich kleiner. */
+  .col > .top { flex: none; }
+  .col.left  > .top { min-height: var(--top-h); }
+  .col.right > .top { height: var(--top-h); }
+  .col > .bottom { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  /* ---------- Überschriftenbalken ---------- */
+  .banner {
+    background: var(--accent);
+    height: 8.5mm;
+    flex: none;
+    display: flex;
+    align-items: center;
+    margin-bottom: 2mm;
+  }
+  .banner h2 {
+    margin: 0;
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 19pt;
+    line-height: 1;
+    letter-spacing: .04em;
+    color: #fff;
+    text-transform: uppercase;
+    transform: skewX(-6deg);
+  }
+  .banner.left  { justify-content: flex-start; margin-left: -9mm; padding-left: 9mm; padding-right: 4mm; }
+  .banner.right { justify-content: flex-end;  margin-right: -9mm; padding-right: 9mm; padding-left: 4mm; }
+
+  .hint {
+    font-size: 6.6pt;
+    line-height: 1.28;
+    font-style: italic;
+    flex: none;
+    margin: 0 0 2.5mm;
+  }
+
+  /* ---------- Aspekte ---------- */
+  .aspects { margin-bottom: 3mm; }
+  .aspect {
+    position: relative;
+    padding: 4.5mm 0 1mm;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+  }
+  .aspect > .label {
+    position: absolute;
+    left: 0;
+    top: 1mm;
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+  .aspect .f {
+    font-size: 11pt;
+    line-height: var(--aspect-line);
+    min-height: calc(2 * var(--aspect-line));
+    overflow: hidden;
+    display: block;
+  }
+
+  /* ---------- Zustand ---------- */
+  .sub {
+    text-align: center;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin: 0 0 1mm;
+  }
+
+  .track {
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+    margin-bottom: 1.6mm;
+  }
+  .track .name {
+    flex: 1;
+    text-align: right;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .boxes { display: flex; }
+  .boxes input { position: absolute; opacity: 0; pointer-events: none; }
+  .boxes label { display: block; margin-left: -1pt; }
+  .boxes label > span {
+    width: 6.2mm;
+    height: 6.2mm;
+    border: 1pt solid var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9pt;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .boxes label > span:hover { background: var(--focus); }
+  .boxes input:checked + span {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .boxes label.off > span { border-color: var(--faded); color: transparent; }
+  .boxes label.off input:checked + span { border-color: var(--accent); color: #fff; }
+
+  .consequences { margin-top: 3.5mm; }
+  .cons {
+    display: flex;
+    align-items: center;
+    gap: 2.5mm;
+    margin-bottom: 3.2mm;
+  }
+  .cons .tag {
+    width: 9mm;
+    height: 6.4mm;
+    flex: none;
+    border: 1pt solid var(--ink);
+    clip-path: polygon(0 0, 100% 0, 100% 62%, 76% 100%, 0 100%);
+    display: flex;
+    align-items: center;
+    padding-left: 1mm;
+    font-size: 11pt;
+    font-weight: 700;
+  }
+  .cons .rule {
+    flex: 1;
+    border-bottom: 1px solid var(--line);
+    height: 6.4mm;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+  }
+  .cons .rule > .label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .cons .rule .f {
+    font-size: 10.5pt;
+    padding: 0 0 .4mm 17mm;
+  }
+  .cons.off .tag { border-color: var(--faded); color: var(--faded); }
+  .cons.off .rule { border-bottom-color: var(--faded); }
+  .cons.off .rule > .label { color: var(--faded); }
+
+  /* ---------- Stunts ---------- */
+  .stunts-area {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .stunts-area .f {
+    height: 100%;
+    font-size: 10.5pt;
+    line-height: 1.5;
+  }
+
+  /* ---------- Erholungsrate ---------- */
+  .refresh {
+    position: relative;
+    margin: 4mm -9mm 0 -9mm;
+    padding-left: 9mm;
+    height: 10mm;
+    flex: none;
+  }
+  .refresh .bar {
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    padding-right: 3mm;
+  }
+  .refresh .bar h2 {
+    margin: 0;
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 18pt;
+    line-height: .95;
+    letter-spacing: .03em;
+    color: #fff;
+    text-transform: uppercase;
+    transform: skewX(-6deg);
+  }
+  .refresh .bar small {
+    font-size: 6.4pt;
+    font-style: italic;
+    color: #fff;
+    margin-top: .4mm;
+  }
+  .refresh .circle {
+    position: absolute;
+    left: 13mm;
+    bottom: 0.5mm;
+    width: 21mm;
+    height: 21mm;
+    border: 1.4pt solid var(--accent);
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .refresh .circle .f {
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-size: 20pt;
+    text-align: center;
+    border-radius: 50%;
+    height: 12mm;
+  }
+
+  /* ---------- Fertigkeiten ---------- */
+  .skills {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 3.5mm;
+    min-height: 0;
+  }
+  .skill {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5mm;
+  }
+  .skill .plus { font-size: 18pt; line-height: 1; }
+  .skill .slot {
+    width: 17mm;
+    flex: none;
+    border-bottom: 1.2px solid var(--ink);
+  }
+  .skill .slot .f {
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-size: 17pt;
+    text-align: center;
+    padding-bottom: .3mm;
+  }
+  .skill .n {
+    font-family: Oswald, "Arial Narrow", Arial, sans-serif;
+    font-weight: 400;
+    font-size: 18pt;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+  @media print {
+    html, body { background: #fff; }
+    .page { margin: 0; box-shadow: none; }
+    .toolbar { display: none; }
+    .f:focus { background: transparent; }
+    .boxes label > span:hover { background: transparent; }
+    @page { size: A4 portrait; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button type="button" id="print">Drucken / als PDF speichern</button>
+  <button type="button" id="clear">Bogen leeren</button>
+  <span class="status" id="status">Eingaben werden automatisch im Browser gespeichert.</span>
+</div>
+
+<div class="page">
+
+  <header class="head">
+    <div class="field">
+      <span class="label">Name</span>
+      <span class="rule"><input class="f" name="name" type="text"></span>
+    </div>
+    <div class="field">
+      <span class="label">Alter</span>
+      <span class="rule"><input class="f" name="alter" type="text" maxlength="4"></span>
+    </div>
+    <div class="field">
+      <span class="label">Pronomen</span>
+      <span class="rule"><input class="f" name="pronomen" type="text"></span>
+    </div>
+    <div class="logo"><span class="swash"></span>FATE</div>
+  </header>
+
+  <div class="body">
+
+    <!-- ============ Linke Spalte ============ -->
+    <section class="col left">
+
+      <div class="top">
+        <div class="banner left"><h2>Aspekte</h2></div>
+        <div class="aspects">
+          <div class="aspect"><span class="label">Konzept</span><textarea class="f grow" name="aspekt-konzept" rows="2"></textarea></div>
+          <div class="aspect"><span class="label">Dilemma</span><textarea class="f grow" name="aspekt-dilemma" rows="2"></textarea></div>
+          <div class="aspect"><span class="label">Beziehung</span><textarea class="f grow" name="aspekt-beziehung" rows="2"></textarea></div>
+          <div class="aspect"><span class="label">Freier Aspekt</span><textarea class="f grow" name="aspekt-frei-1" rows="2"></textarea></div>
+          <div class="aspect"><span class="label">Freier Aspekt</span><textarea class="f grow" name="aspekt-frei-2" rows="2"></textarea></div>
+        </div>
+      </div>
+
+      <div class="bottom">
+        <div class="banner left"><h2>Stunts</h2></div>
+        <p class="hint">Die ersten drei Stunts sind gratis. Du kannst weitere Stunts für den Preis von je einem
+          Punkt Erholungsrate dazukaufen, solange die Erholungsrate nicht unter eins fällt.</p>
+        <div class="stunts-area">
+          <textarea class="f" name="stunts"></textarea>
+        </div>
+
+        <div class="refresh">
+          <div class="bar">
+            <h2>Erholungsrate</h2>
+            <small>Zu Anfang drei Punkte.</small>
+          </div>
+          <div class="circle"><input class="f" name="erholungsrate" type="text" maxlength="2"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ Rechte Spalte ============ -->
+    <section class="col right">
+
+      <div class="top">
+        <div class="banner right"><h2>Zustand</h2></div>
+
+        <p class="sub">Stress</p>
+        <div class="track">
+          <span class="name">Körperlich</span>
+          <div class="boxes">
+            <label><input type="checkbox" name="stress-koerper-1"><span>1</span></label>
+            <label><input type="checkbox" name="stress-koerper-2"><span>1</span></label>
+            <label><input type="checkbox" name="stress-koerper-3"><span>1</span></label>
+            <label><input type="checkbox" name="stress-koerper-4"><span>1</span></label>
+            <label class="off"><input type="checkbox" name="stress-koerper-5"><span>1</span></label>
+            <label class="off"><input type="checkbox" name="stress-koerper-6"><span>1</span></label>
+          </div>
+        </div>
+        <div class="track">
+          <span class="name">Geistig</span>
+          <div class="boxes">
+            <label><input type="checkbox" name="stress-geist-1"><span>1</span></label>
+            <label><input type="checkbox" name="stress-geist-2"><span>1</span></label>
+            <label><input type="checkbox" name="stress-geist-3"><span>1</span></label>
+            <label><input type="checkbox" name="stress-geist-4"><span>1</span></label>
+            <label class="off"><input type="checkbox" name="stress-geist-5"><span>1</span></label>
+            <label class="off"><input type="checkbox" name="stress-geist-6"><span>1</span></label>
+          </div>
+        </div>
+
+        <p class="sub" style="margin-top:2.5mm">Konsequenzen</p>
+        <div class="consequences">
+          <div class="cons">
+            <span class="tag">2</span>
+            <span class="rule"><span class="label">Leicht</span><input class="f" name="kons-leicht-1" type="text"></span>
+          </div>
+          <div class="cons">
+            <span class="tag">4</span>
+            <span class="rule"><span class="label">Mittlere</span><input class="f" name="kons-mittlere" type="text"></span>
+          </div>
+          <div class="cons">
+            <span class="tag">6</span>
+            <span class="rule"><span class="label">Schwere</span><input class="f" name="kons-schwere" type="text"></span>
+          </div>
+          <div class="cons off">
+            <span class="tag">2</span>
+            <span class="rule"><span class="label">Leicht</span><input class="f" name="kons-leicht-2" type="text"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom">
+        <div class="banner right"><h2>Fertigkeiten</h2></div>
+        <p class="hint">Verteile zweimal eine Gute (+3), dreimal eine Ordentliche (+2) und zweimal
+          eine Durchschnittliche (+1). Der Rest ist Mäßig (+0).</p>
+
+        <div class="skills">
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-athletik" type="text" maxlength="2"></span><span class="n">Athletik</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-diplomatie" type="text" maxlength="2"></span><span class="n">Diplomatie</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-geschicklichkeit" type="text" maxlength="2"></span><span class="n">Geschicklichkeit</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-geschwindigkeit" type="text" maxlength="2"></span><span class="n">Geschwindigkeit</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-heimlichkeit" type="text" maxlength="2"></span><span class="n">Heimlichkeit</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-kaempfen" type="text" maxlength="2"></span><span class="n">Kämpfen</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-wahrnehmung" type="text" maxlength="2"></span><span class="n">Wahrnehmung</span></div>
+          <div class="skill"><span class="plus">+</span><span class="slot"><input class="f" name="skill-wissen" type="text" maxlength="2"></span><span class="n">Wissen</span></div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'fate-charakterbogen';
+  const fields = Array.from(document.querySelectorAll('[name]'));
+  const status = document.getElementById('status');
+
+  const read = (f) => f.type === 'checkbox' ? f.checked : f.value;
+  const write = (f, v) => { if (f.type === 'checkbox') f.checked = !!v; else f.value = v ?? ''; };
+
+  function load() {
+    let data;
+    try { data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+    catch { return; }
+    fields.forEach(f => { if (f.name in data) write(f, data[f.name]); });
+  }
+
+  function save() {
+    const data = {};
+    fields.forEach(f => { data[f.name] = read(f); });
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      status.textContent = 'Gespeichert ' + new Date().toLocaleTimeString('de-DE');
+    } catch {
+      status.textContent = 'Speichern nicht möglich (Browser blockiert den lokalen Speicher).';
+    }
+  }
+
+  // Aspektfelder wachsen mit dem Inhalt; der Stunts-Bereich darunter gibt den Platz her.
+  const growing = Array.from(document.querySelectorAll('.grow'));
+  const grow = (el) => {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  };
+  const growAll = () => growing.forEach(grow);
+
+  let timer;
+  fields.forEach(f => f.addEventListener('input', () => {
+    if (f.classList.contains('grow')) grow(f);
+    clearTimeout(timer);
+    timer = setTimeout(save, 400);
+  }));
+
+  document.getElementById('print').addEventListener('click', () => window.print());
+  document.getElementById('clear').addEventListener('click', () => {
+    if (!confirm('Alle Eingaben auf diesem Bogen löschen?')) return;
+    fields.forEach(f => write(f, f.type === 'checkbox' ? false : ''));
+    growAll();
+    save();
+  });
+
+  load();
+  growAll();
+  document.fonts.ready.then(growAll);
+</script>
+</body>
+</html>

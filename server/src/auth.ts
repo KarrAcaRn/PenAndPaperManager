@@ -1,11 +1,30 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { canAccessSection, type Role, type Section, type User } from '@pnp/shared';
+import { canAccessSection, type Role, type Section, type SessionUser, type User } from '@pnp/shared';
 import { getRow, run, type Db } from './db.ts';
-import { forbidden, gmOnly, unauthorized } from './errors.ts';
+import { adminOnly, forbidden, gmOnly, unauthorized } from './errors.ts';
 
 export const SESSION_COOKIE = 'sid';
 const SESSION_DAYS = 30;
+
+/** Seitenweite Admins stehen in der Konfiguration (ADMIN_EMAILS, kommagetrennt), nicht in der Datenbank. */
+export type AdminEmails = ReadonlySet<string>;
+
+export function parseAdminEmails(list: string | undefined): AdminEmails {
+  return new Set((list ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean));
+}
+
+const isAdmin = (user: User, admins: AdminEmails): boolean => admins.has(user.email.toLowerCase());
+
+export function toSessionUser(user: User, admins: AdminEmails): SessionUser {
+  return { ...user, isAdmin: isAdmin(user, admins) };
+}
+
+export function requireAdmin(db: Db, req: FastifyRequest, admins: AdminEmails): User {
+  const user = requireUser(db, req);
+  if (!isAdmin(user, admins)) throw adminOnly();
+  return user;
+}
 
 export function findOrCreateUser(db: Db, email: string): User {
   const normalized = email.trim().toLowerCase();
