@@ -3,7 +3,7 @@ import { MAX_PATH_LENGTH, isWithin, pathPrefixes, type Folder, type Section } fr
 import { allRows, getRow, run, transaction, type Db } from '../db.ts';
 import { assertSection, requireMember, type MemberContext } from '../auth.ts';
 import { VISIBLE_ARTICLE_SQL, canManageFolder, visibilityParams } from '../access.ts';
-import { IN_SECTION_SQL, ensureFolders, parseFolderPath, withinSql } from '../folders.ts';
+import { IN_SECTION_SQL, ensureFolders, parseFolderPath, sectionParams, withinSql } from '../folders.ts';
 import { badRequest, conflict, forbidden, notFound } from '../errors.ts';
 import { gidParams, objectOf, sectionProp } from '../schemas.ts';
 
@@ -12,7 +12,7 @@ const location = { section: sectionProp, path: { type: 'string', minLength: 1 } 
 export function folderRoutes(app: FastifyInstance, db: Db): void {
   /** Explizite Ordner plus alle Pfad-Präfixe der für den Anfragenden sichtbaren Artikel. */
   const listFolders = (ctx: MemberContext, section: Section): Folder[] => {
-    const inSection = { gid: ctx.groupId, section };
+    const inSection = sectionParams(ctx.groupId, section);
     const folders = new Map<string, Folder>();
     const add = (path: string, explicit: boolean, createdBy: number | null) =>
       folders.set(path, { path, explicit, canManage: canManageFolder(ctx.user.id, ctx.role, { createdBy }) });
@@ -27,7 +27,7 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
     const articlePaths = allRows<{ path: string }>(
       db,
       `SELECT DISTINCT a.path FROM articles a
-       WHERE a.group_id = :gid AND a.section = :section AND a.path <> '' AND ${VISIBLE_ARTICLE_SQL}`,
+       WHERE ${IN_SECTION_SQL} AND a.path <> '' AND ${VISIBLE_ARTICLE_SQL}`,
       { ...inSection, ...visibilityParams(ctx.user.id, ctx.role) },
     );
     for (const row of articlePaths) {
@@ -86,16 +86,15 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
         // verraten) - die Inhalte landen dann im selben Ordner.
         if (visible.some((f) => f.path === newPath)) throw conflict('Es gibt bereits einen Ordner mit diesem Namen');
 
-        const inSection = { gid: ctx.groupId, section: body.section };
-        const longest = getRow<{ n: number | null }>(
+        const inSection = sectionParams(ctx.groupId, body.section);
+        // Längen in JS messen: SQLite zählt Codepoints, normalizePath aber UTF-16-Einheiten (Emoji!).
+        const moved = allRows<{ path: string }>(
           db,
-          `SELECT MAX(n) AS n FROM (
-             SELECT MAX(length(path)) AS n FROM folders WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}
-             UNION ALL
-             SELECT MAX(length(path)) FROM articles WHERE ${IN_SECTION_SQL} AND ${withinSql('path')})`,
+          `SELECT path FROM folders WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}
+           UNION SELECT path FROM articles WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}`,
           { ...inSection, path },
-        )!.n;
-        if ((longest ?? path.length) - path.length + newPath.length > MAX_PATH_LENGTH) {
+        );
+        if (moved.some((m) => m.path.length - path.length + newPath.length > MAX_PATH_LENGTH)) {
           throw badRequest(`Pfade im Ordner würden zu lang (max. ${MAX_PATH_LENGTH} Zeichen)`);
         }
         // Zieht Unterordner und alle Artikel (auch für den Anfragenden unsichtbare) mit um.
@@ -125,7 +124,7 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
       const path = parseFolderPath(query.path);
       transaction(db, () => {
         requireManageable(listFolders(ctx, query.section), path);
-        const params = { gid: ctx.groupId, section: query.section, path };
+        const params = { ...sectionParams(ctx.groupId, query.section), path };
         // Zählt bewusst auch Artikel, die der Anfragende nicht sehen kann.
         const hasArticles = getRow(db, `SELECT 1 FROM articles WHERE ${IN_SECTION_SQL} AND ${withinSql('path')} LIMIT 1`, params);
         const hasSubfolders = getRow(

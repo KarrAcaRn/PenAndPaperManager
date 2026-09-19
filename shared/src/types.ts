@@ -80,6 +80,7 @@ export interface ApiError {
 }
 
 export const MAX_TITLE_LENGTH = 200;
+export const MAX_BODY_LENGTH = 200_000;
 export const MAX_GROUP_NAME_LENGTH = 100;
 export const MAX_EMAIL_LENGTH = 254;
 

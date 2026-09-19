@@ -200,6 +200,20 @@ describe('FolderView', () => {
     expect(api.articles).toHaveBeenCalledWith(7, 'locations', 'bar');
   });
 
+  it('findet den Ordner auch über einen nicht normalisierten Link', async () => {
+    api.folders.mockResolvedValue([folder('B\u00e4r'), folder('B\u00e4r/kind')]);
+    api.articles.mockResolvedValue([]);
+    render(FolderView, { ...props, path: ' Ba\u0308r /' });
+    expect(await screen.findByRole('link', { name: 'kind' })).toBeTruthy();
+    expect(api.articles).toHaveBeenCalledWith(7, 'locations', 'B\u00e4r');
+  });
+
+  it('behandelt ungültige Pfade wie fehlende Ordner', async () => {
+    mockEmptyFolder(api);
+    render(FolderView, { ...props, path: 'a/../b' });
+    expect(await screen.findByText(/Diesen Ordner gibt es nicht/)).toBeTruthy();
+  });
+
   it('zeigt Leer- und Fehlzustand', async () => {
     api.folders.mockResolvedValue([folder('bar')]);
     api.articles.mockResolvedValue([]);

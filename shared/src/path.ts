@@ -3,10 +3,13 @@ export const MAX_SEGMENT_LENGTH = 60;
 
 export class PathError extends Error {}
 
-/** Steuerzeichen - auch als Regex-Quelltext für JSON-Schemas nutzbar */
-export const CONTROL_CHARS_SOURCE = '[\\u0000-\\u001f\\u007f-\\u009f]';
-const CONTROL_CHARS = new RegExp(CONTROL_CHARS_SOURCE);
-const INVISIBLE_CHARS = /[\p{Cf}\p{Z}]/gu;
+// Als Regex-Quelltext, damit die JSON-Schemas des Servers dieselben Zeichenklassen nutzen können.
+/** Steuerzeichen und Zeilentrenner */
+export const CONTROL_CHARS_SOURCE = '[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]';
+/** Zeichen, die man nicht sieht: Leerraum und Formatzeichen wie Zero-Width-Space */
+export const INVISIBLE_CHARS_SOURCE = '[\\p{Cf}\\p{Z}\\s]';
+const CONTROL_CHARS = new RegExp(CONTROL_CHARS_SOURCE, 'u');
+const INVISIBLE_CHARS = new RegExp(INVISIBLE_CHARS_SOURCE, 'gu');
 
 /**
  * Bringt einen Ordnerpfad in kanonische Form: "bar/foo", '' = Wurzel des Bereichs.

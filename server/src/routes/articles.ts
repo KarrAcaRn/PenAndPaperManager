@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  MAX_BODY_LENGTH,
   MAX_TITLE_LENGTH,
   VISIBILITIES,
   canAccessSection,
@@ -11,7 +12,7 @@ import {
 import { allRows, getRow, insertRow, run, type Db } from '../db.ts';
 import { assertSection, getRole, requireMember, type MemberContext } from '../auth.ts';
 import { VISIBLE_ARTICLE_SQL, canEditArticle, canSeeArticle, visibilityParams } from '../access.ts';
-import { parsePath } from '../folders.ts';
+import { IN_SECTION_SQL, parsePath, sectionParams } from '../folders.ts';
 import { forbidden, notFound } from '../errors.ts';
 import { gidParams, idParams, nonBlank, objectOf, sectionProp } from '../schemas.ts';
 
@@ -21,7 +22,7 @@ const articleBody = objectOf(
     section: sectionProp,
     path: { type: 'string', default: '' },
     title: nonBlank(MAX_TITLE_LENGTH),
-    bodyMd: { type: 'string', maxLength: 200_000, default: '' },
+    bodyMd: { type: 'string', maxLength: MAX_BODY_LENGTH, default: '' },
     visibility: { enum: VISIBILITIES },
   },
   ['section', 'title', 'visibility'],
@@ -54,8 +55,7 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       const { section, path } = req.query as { section: Section; path?: string };
       assertSection(ctx, section);
       const params: Record<string, string | number> = {
-        gid: ctx.groupId,
-        section,
+        ...sectionParams(ctx.groupId, section),
         ...visibilityParams(ctx.user.id, ctx.role),
       };
       // node:sqlite lehnt unbenutzte benannte Parameter ab, daher :path nur bei Bedarf
@@ -63,7 +63,7 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       return allRows<ArticleSummary>(
         db,
         `SELECT ${SUMMARY_COLUMNS} FROM articles a JOIN users u ON u.id = a.author_id
-         WHERE a.group_id = :gid AND a.section = :section ${path === undefined ? '' : 'AND a.path = :path'}
+         WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : 'AND a.path = :path'}
            AND ${VISIBLE_ARTICLE_SQL}
          ORDER BY a.title COLLATE NOCASE`,
         params,
@@ -108,9 +108,10 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
     if (existing.authorId !== ctx.user.id) {
       // Sonst würde sich ein Spielleiter selbst aus einem fremden Artikel aussperren ...
       if (input.visibility === 'private') throw forbidden('Nur der Autor kann einen Artikel auf "Privat" stellen');
-      // ... oder den Autor aus dessen eigenem Artikel.
+      // ... oder den Autor aus dessen eigenem Artikel. (Nur beim Verschieben: liegt der Artikel eines
+      // degradierten Spielleiters schon im SL-Bereich, muss er bearbeitbar bleiben.)
       const authorRole = getRole(db, ctx.groupId, existing.authorId);
-      if (authorRole && !canAccessSection(authorRole, input.section)) {
+      if (input.section !== existing.section && authorRole && !canAccessSection(authorRole, input.section)) {
         throw forbidden('Der Autor hätte in diesem Bereich keinen Zugriff mehr auf seinen Artikel');
       }
     }

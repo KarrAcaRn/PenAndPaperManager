@@ -5,6 +5,7 @@
     VISIBILITY_LABELS,
     baseName,
     joinPath,
+    normalizePath,
     parentPath,
     type ArticleSummary,
     type Folder,
@@ -16,7 +17,17 @@
   import { createTask } from '../lib/task.svelte.ts';
   import Breadcrumb from '../lib/Breadcrumb.svelte';
 
-  let { group, section, path }: { group: Group; section: Section; path: string } = $props();
+  let { group, section, path: rawPath }: { group: Group; section: Section; path: string } = $props();
+
+  // Von Hand getippte oder eingefügte Links in dieselbe Form bringen, die der Server liefert.
+  // Ungültige Pfade bleiben roh und enden als "Ordner gibt es nicht".
+  const path = $derived.by(() => {
+    try {
+      return normalizePath(rawPath);
+    } catch {
+      return rawPath;
+    }
+  });
 
   let folders = $state<Folder[]>([]);
   let articles = $state<ArticleSummary[]>([]);

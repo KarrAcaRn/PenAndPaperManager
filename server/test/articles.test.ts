@@ -42,6 +42,9 @@ describe('Sichtbarkeit von Artikeln', () => {
     expect((await alice.post(`${base}/articles`, article('public', { section: 'quatsch' }))).status).toBe(400);
     expect((await alice.post(`${base}/articles`, article('public', { path: 'a/../b' }))).status).toBe(400);
     expect((await alice.post(`${base}/articles`, article('public', { title: 'a\u0000b' }))).status).toBe(400);
+    expect((await alice.post(`${base}/articles`, article('public', { title: '\u200b' }))).status).toBe(400);
+    expect((await alice.post(`${base}/articles`, article('public', { title: 'x\u2028y' }))).status).toBe(400);
+    expect((await alice.post(`${base}/articles`, article('public', { title: ' Zoë 😀 Sta\u0308dte ' }))).body.title).toBe('Zoë 😀 Sta\u0308dte');
     expect((await alice.post(`${base}/articles`, article('public', { title: 'x'.repeat(201) }))).status).toBe(400);
     expect((await alice.get(`${base}/articles?section=npcs&path=a&path=b`)).status).toBe(400);
     expect((await alice.get(`${base}/articles/99999999999999999999`)).status).toBeLessThan(500);
@@ -114,6 +117,9 @@ describe('Artikel von Mitgliedern, die ihren Zugriff verlieren', () => {
     const diary = (await alice.post(`${base}/articles`, article('private'))).body.id;
 
     await gm.patch(`${base}/members/${alice.userId}`, { role: 'player' });
+    // Der Artikel bleibt im SL-Bereich und muss dort für die Spielleiter bearbeitbar bleiben
+    const edited = await gm.put(`${base}/articles/${secret}`, article('private_gm', { section: 'gm', path: 'plot', title: 'Neu' }));
+    expect(edited.body.title).toBe('Neu');
     expect((await alice.get(`${base}/articles/${secret}`)).status).toBe(404);
     expect((await gm.get(`${base}/articles/${secret}`)).body.visibility).toBe('private_gm');
     expect((await gm.get(`${base}/articles/${diary}`)).status).toBe(404);

@@ -1,4 +1,4 @@
-import { CONTROL_CHARS_SOURCE, MAX_EMAIL_LENGTH, SECTIONS } from '@pnp/shared';
+import { CONTROL_CHARS_SOURCE, INVISIBLE_CHARS_SOURCE, MAX_EMAIL_LENGTH, SECTIONS } from '@pnp/shared';
 
 /** URL-Parameter: immer :gid, dazu die genannten weiteren IDs */
 export const idParams = (...names: string[]) => ({
@@ -9,12 +9,13 @@ export const idParams = (...names: string[]) => ({
 export const gidParams = idParams();
 
 const NO_CONTROL = CONTROL_CHARS_SOURCE.replace('[', '[^');
+const VISIBLE = INVISIBLE_CHARS_SOURCE.replace('[', '[^');
 
-/** Einzeiliger String ohne Steuerzeichen, der nicht nur aus Leerzeichen besteht */
+/** Einzeiliger String ohne Steuerzeichen mit mindestens einem sichtbaren Zeichen (Ajv nutzt das u-Flag) */
 export const nonBlank = (maxLength: number) => ({
   type: 'string',
   maxLength,
-  pattern: `^(?=.*\\S)${NO_CONTROL}*$`,
+  pattern: `^(?=.*${VISIBLE})${NO_CONTROL}*$`,
 });
 
 export const sectionProp = { enum: SECTIONS };

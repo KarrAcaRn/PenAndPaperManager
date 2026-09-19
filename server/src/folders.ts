@@ -33,8 +33,12 @@ export function ensureFolders(db: Db, groupId: number, section: Section, path: s
   }
 }
 
-/** SQL-Bedingung "gehört zu Gruppe :gid und Bereich :section" */
+/** SQL-Bedingung "gehört zu Gruppe :gid und Bereich :section"; die Parameter dazu liefert sectionParams() */
 export const IN_SECTION_SQL = 'group_id = :gid AND section = :section';
+
+export function sectionParams(groupId: number, section: Section): { gid: number; section: Section } {
+  return { gid: groupId, section };
+}
 
 /**
  * SQL-Bedingung "Spalte liegt in oder unter :path". Bewusst ohne LIKE,

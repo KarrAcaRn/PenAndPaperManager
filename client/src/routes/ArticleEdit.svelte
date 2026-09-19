@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    MAX_BODY_LENGTH,
     MAX_PATH_LENGTH,
     MAX_TITLE_LENGTH,
     SECTION_LABELS,
@@ -116,7 +117,7 @@
       <!-- renderMarkdown liefert durch DOMPurify bereinigtes HTML -->
       <div class="card markdown preview">{@html renderMarkdown(form.bodyMd)}</div>
     {:else}
-      <textarea bind:value={form.bodyMd} aria-label="Text (Markdown)"></textarea>
+      <textarea bind:value={form.bodyMd} maxlength={MAX_BODY_LENGTH} aria-label="Text (Markdown)"></textarea>
     {/if}
 
     {#if saving.error}<p class="error">{saving.error}</p>{/if}

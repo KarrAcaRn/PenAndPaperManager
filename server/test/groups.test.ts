@@ -81,6 +81,7 @@ describe('Login und Gruppen', () => {
     const { gm } = await setupGroup(makeApp());
     expect((await gm.get('/api/groups/99999999999999999999/members')).status).toBeLessThan(500);
     expect((await gm.post('/api/groups', { name: 'a\nb' })).status).toBe(400);
+    expect((await gm.post('/api/groups', { name: '\u200b \u00a0' })).status).toBe(400);
   });
 
   it('erlaubt Spielern den Austritt', async () => {

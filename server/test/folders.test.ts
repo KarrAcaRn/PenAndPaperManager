@@ -119,6 +119,14 @@ describe('Ordner', () => {
     expect((await gm.patch(`${base}/folders`, { section: 'npcs', path: 'a', newPath: 'kurz' })).status).toBe(200);
   });
 
+  it('misst die Pfadlänge beim Umbenennen auch bei Emoji richtig', async () => {
+    const { base, gm } = await setupGroup(makeApp());
+    const deep = ['a', '😀'.repeat(30), '😁'.repeat(30), '😂'.repeat(30)].join('/');
+    const id = (await gm.post(`${base}/articles`, article('public', { section: 'npcs', path: deep }))).body.id;
+    expect((await gm.patch(`${base}/folders`, { section: 'npcs', path: 'a', newPath: 'b'.repeat(60) })).status).toBe(400);
+    expect((await gm.get(`${base}/articles/${id}`)).body.path).toBe(deep);
+  });
+
   it('macht implizite Ordner beim Umbenennen nicht für alle sichtbar', async () => {
     const { base, gm, bob } = await setupGroup(makeApp());
     await gm.post(`${base}/articles`, article('private_gm', { section: 'npcs', path: 'Verrat' }));
