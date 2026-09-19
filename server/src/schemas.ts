@@ -44,9 +44,6 @@ export const objectOf = (properties: Record<string, object>, required: string[] 
   additionalProperties: false,
 });
 
-/** Einzeiliger Text ohne Steuerzeichen, darf leer sein */
-export const singleLine = (maxLength: number) => ({ type: 'string', maxLength, pattern: `^${NO_CONTROL}*$` });
-
 export const emailBody = objectOf({
   email: { type: 'string', maxLength: MAX_EMAIL_LENGTH, pattern: '^\\s*[^@\\s]+@[^@\\s]+\\.[^@\\s]+\\s*$' },
 });

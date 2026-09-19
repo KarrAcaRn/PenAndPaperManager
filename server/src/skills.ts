@@ -47,7 +47,10 @@ export function replaceGroupSkills(db: Db, groupId: number, items: readonly Skil
   return listGroupSkills(db, groupId);
 }
 
-/** Übernimmt eine Namensliste (z.B. aus einer Variante); gleichnamige Fertigkeiten behalten ihre ID. */
+/**
+ * Übernimmt eine Namensliste (z.B. aus einer Variante); gleichnamige Fertigkeiten behalten ihre ID.
+ * Die Namen werden hier schon normalisiert, damit der Abgleich mit den bestehenden Namen stimmt.
+ */
 export function applySkillNames(db: Db, groupId: number, names: readonly string[]): Skill[] {
   const idByName = new Map(listGroupSkills(db, groupId).map((skill) => [skillKey(skill.name), skill.id]));
   return replaceGroupSkills(

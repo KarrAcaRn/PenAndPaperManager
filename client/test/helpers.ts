@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import {
+  DEFAULT_PRESET_NAME,
   emptySheet,
   type Article,
   type ArticleSummary,
@@ -52,7 +53,7 @@ export const member = (user: { id: number; email: string }, role: Member['role']
 export const sheetData = (over: Partial<SheetData> = {}): SheetData => ({ ...emptySheet(), ...over });
 export const presetFixture = (over: Partial<SkillPreset> = {}): SkillPreset => ({
   id: 1,
-  name: 'Fate Core',
+  name: DEFAULT_PRESET_NAME,
   description: 'Quelle',
   skills: ['Athletik', 'Wille'],
   ...over,

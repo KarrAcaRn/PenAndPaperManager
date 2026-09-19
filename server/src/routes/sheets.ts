@@ -9,7 +9,7 @@ import {
   STRESS_BOXES,
   STRESS_LABELS,
   canHaveSheet,
-  emptySheet,
+  normalizeSheet,
   type Article,
   type Sheet,
   type SheetData,
@@ -19,12 +19,14 @@ import { requireMember, type MemberContext } from '../auth.ts';
 import { loadVisibleArticle } from '../articles.ts';
 import { badRequest, conflict, forbidden, notFound } from '../errors.ts';
 import { listGroupSkills } from '../skills.ts';
-import { idParams, objectOf, singleLine } from '../schemas.ts';
+import { idParams, objectOf } from '../schemas.ts';
 
 const sheetParams = idParams('id');
-const line = singleLine(MAX_SHEET_LINE_LENGTH);
-// Aspekte sind mehrzeilige Felder
+const noSheet = () => notFound('Dieser Artikel hat keinen FATE-Bogen');
+// Das Schema begrenzt nur Form und Längen; Steuerzeichen in einzeiligen Feldern (z.B. ein mitkopierter Tab)
+// ersetzt normalizeSheet, statt das Autospeichern mit einer kryptischen Meldung scheitern zu lassen.
 const text = (maxLength: number) => ({ type: 'string', maxLength });
+const line = text(MAX_SHEET_LINE_LENGTH);
 const fields = (keys: readonly string[], schema: object) => objectOf(Object.fromEntries(keys.map((key) => [key, schema])));
 const stressTrack = { type: 'array', minItems: STRESS_BOXES, maxItems: STRESS_BOXES, items: { type: 'boolean' } };
 
@@ -32,7 +34,7 @@ const sheetData = objectOf({
   name: line,
   age: line,
   pronouns: line,
-  aspects: fields(Object.keys(ASPECT_LABELS), text(MAX_SHEET_LINE_LENGTH)),
+  aspects: fields(Object.keys(ASPECT_LABELS), line),
   stunts: text(MAX_STUNTS_LENGTH),
   refresh: line,
   stress: fields(Object.keys(STRESS_LABELS), stressTrack),
@@ -56,11 +58,12 @@ export function sheetRoutes(app: FastifyInstance, db: Db): void {
       'SELECT data, version FROM character_sheets WHERE article_id = ?',
       articleId,
     );
-    return row && { data: parseJson<SheetData>(row.data, emptySheet()), version: row.version };
+    return row && { data: normalizeSheet(parseJson<unknown>(row.data, null)), version: row.version };
   };
 
-  /** Werte inzwischen gelöschter Fertigkeiten stillschweigend verwerfen, statt das Speichern zu verweigern */
-  const withKnownSkills = (groupId: number, data: SheetData): SheetData => {
+  /** Bereinigt die Eingabe; Werte inzwischen gelöschter Fertigkeiten werden verworfen, statt das Speichern zu verweigern */
+  const withKnownSkills = (groupId: number, input: SheetData): SheetData => {
+    const data = normalizeSheet(input);
     const known = new Set(listGroupSkills(db, groupId).map((skill) => String(skill.id)));
     return { ...data, skills: Object.fromEntries(Object.entries(data.skills).filter(([id]) => known.has(id))) };
   };
@@ -72,7 +75,7 @@ export function sheetRoutes(app: FastifyInstance, db: Db): void {
     const { id } = req.params as { id: number };
     loadVisibleArticle(db, ctx, id);
     const sheet = loadSheet(id);
-    if (!sheet) throw notFound('Dieser Artikel hat keinen FATE-Bogen');
+    if (!sheet) throw noSheet();
     return sheet;
   });
 
@@ -112,7 +115,7 @@ export function sheetRoutes(app: FastifyInstance, db: Db): void {
       body.version,
     );
     if (!updated) {
-      if (!loadSheet(id)) throw notFound('Dieser Artikel hat keinen FATE-Bogen');
+      if (!loadSheet(id)) throw noSheet();
       throw conflict('Der Bogen wurde inzwischen von jemand anderem geändert');
     }
     return { data, version: body.version + 1 } satisfies Sheet;

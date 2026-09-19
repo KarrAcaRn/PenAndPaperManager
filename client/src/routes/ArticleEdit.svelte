@@ -69,7 +69,9 @@
     saving.run(async () => {
       const saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
       if (id === undefined && withSheet && canHaveSheet(saved.section)) {
-        await api.createSheet(group.id, saved.id, emptySheet(saved.title));
+        // Scheitert nur der Bogen, ist der Artikel trotzdem angelegt: nicht im Formular bleiben (ein zweites
+        // Speichern legte ihn doppelt an) - in der Artikelansicht lässt sich der Bogen nachholen.
+        await api.createSheet(group.id, saved.id, emptySheet(saved.title)).catch(() => {});
       }
       notifyContentChanged();
       navigate(href.article(group.id, saved.section, saved.id));

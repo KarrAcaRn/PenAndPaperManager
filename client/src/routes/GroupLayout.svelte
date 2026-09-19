@@ -15,8 +15,9 @@
   let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
-  const gmTab = $derived(route.name === 'manage' || route.name === 'skills');
-  const activeSection = $derived(route.name === 'manage' || route.name === 'skills' ? 'gm' : route.section);
+  // Routen ohne eigenen Bereich (Verwalten, Fertigkeiten) sind Reiter des SL-Bereichs
+  const gmTab = $derived(!('section' in route));
+  const activeSection = $derived('section' in route ? route.section : 'gm');
   const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
   /** Alle Artikelbereiche: Ordnerbaum links, Inhalt rechts, um schnell zwischen Artikeln zu springen */
   const withTree = $derived(route.name !== 'manage' && route.name !== 'skills');

@@ -171,12 +171,31 @@ describe('FATE-Bogen', () => {
     expect((await put(sheet({ skills: { 1: 1.5 } }))).status).toBe(400);
     expect((await put(sheet({ name: 'x'.repeat(301) }))).status).toBe(400);
     expect((await put(sheet({ stunts: 'x'.repeat(5001) }))).status).toBe(400);
-    expect((await put(sheet({ name: 'a\u0000b' }))).status).toBe(400);
+    expect((await put(sheet({ name: { kein: 'Text' } }))).status).toBe(400);
     expect((await put({ name: 'unvollständig' })).status).toBe(400);
     expect((await alice.put(url, { data: sheet() })).status).toBe(400);
     expect((await alice.post(`${base}/articles/99999/sheet`, sheet())).status).toBe(404);
-    // Mehrzeilige Aspekte und Stunts sind erlaubt
-    expect((await put(sheet({ stunts: 'a\nb', aspects: { concept: 'a\nb', trouble: '', relationship: '', free1: '', free2: '' } }))).status).toBe(200);
+  });
+
+  it('ersetzt Steuerzeichen in einzeiligen Feldern, statt das Speichern zu verweigern', async () => {
+    const { base, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
+    // z.B. ein aus einer Tabelle mitkopierter Tab
+    const saved = await alice.post(
+      `${base}/articles/${id}/sheet`,
+      sheet({
+        name: 'Zoë\tWashburne',
+        stunts: 'Zeile 1\nZeile 2',
+        aspects: { concept: 'mehr\nzeilig', trouble: '', relationship: '', free1: '', free2: '' },
+        consequences: { mild: 'a\u0000b', moderate: '', severe: '', mild2: '' },
+      }),
+    );
+    expect(saved.body.data).toMatchObject({
+      name: 'Zoë Washburne',
+      stunts: 'Zeile 1\nZeile 2',
+      aspects: { concept: 'mehr\nzeilig' },
+      consequences: { mild: 'a b' },
+    });
   });
 
   it('speichert keine unbekannten Felder', async () => {
@@ -205,9 +224,29 @@ describe('FATE-Bogen', () => {
     const { base, alice } = await setupGroup(app);
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     await alice.post(`${base}/articles/${id}/sheet`, sheet());
-    db.exec(`UPDATE character_sheets SET data = '{kaputt'; UPDATE skill_presets SET skills = 'kaputt' WHERE id = 1`);
-    expect((await alice.get(`${base}/articles/${id}/sheet`)).body.data.name).toBe('');
-    const presets = (await alice.get('/api/presets')).body;
-    expect(presets.find((p: any) => p.id === 1).skills).toEqual([]);
+    const sheetUrl = `${base}/articles/${id}/sheet`;
+    db.exec(`UPDATE character_sheets SET data = '{kaputt'`);
+    expect((await alice.get(sheetUrl)).body.data.name).toBe('');
+    // Gültiges JSON in falscher Form wird ebenfalls zu einem vollständigen Bogen
+    db.exec(`UPDATE character_sheets SET data = '{"name":"x","stress":{"physical":[true]},"skills":{"1":"viel"}}'`);
+    const repaired = (await alice.get(sheetUrl)).body;
+    expect(repaired.data).toMatchObject({ name: 'x', refresh: '3', skills: {}, aspects: { concept: '' } });
+    expect(repaired.data.stress).toEqual({ physical: [true, false, false, false, false, false], mental: Array(6).fill(false) });
+    expect((await alice.put(sheetUrl, repaired)).status).toBe(200);
+  });
+
+  it('wendet beschädigte oder leere Varianten nicht an', async () => {
+    const db = openDb(':memory:');
+    const app = buildApp(db, { adminEmails: ADMIN_EMAIL });
+    const { base, gm } = await setupGroup(app);
+    const [skill] = (await gm.put(`${base}/skills`, { skills: [{ name: 'Bleibt' }] })).body;
+    for (const broken of ['kaputt', '{"a":1}', '[1,2]', '[]']) {
+      db.prepare('UPDATE skill_presets SET skills = ? WHERE id = 1').run(broken);
+      expect((await gm.get('/api/presets')).body.find((p: any) => p.id === 1).skills, broken).toEqual([]);
+      expect((await gm.post(`${base}/skills/from-preset`, { presetId: 1 })).status, broken).toBe(409);
+      expect((await gm.post('/api/groups', { name: 'Neu', presetId: 1 })).status, broken).toBe(409);
+    }
+    expect((await gm.get(`${base}/skills`)).body).toEqual([skill]);
+    expect((await gm.get('/api/groups')).body).toHaveLength(1);
   });
 });

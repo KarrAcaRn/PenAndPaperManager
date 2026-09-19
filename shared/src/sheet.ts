@@ -1,8 +1,8 @@
-import { hasControlChars, hasVisibleText } from './text.ts';
+import { hasControlChars, hasVisibleText, replaceControlChars } from './text.ts';
 import type { Section } from './types.ts';
 
 /** Bereiche, in denen Artikel einen FATE-Bogen haben können */
-export const SHEET_SECTIONS: readonly Section[] = ['characters', 'notes'];
+const SHEET_SECTIONS: readonly Section[] = ['characters', 'notes'];
 export const canHaveSheet = (section: Section): boolean => SHEET_SECTIONS.includes(section);
 
 export const STRESS_BOXES = 6;
@@ -68,6 +68,46 @@ export function emptySheet(name = ''): SheetData {
     consequences: { mild: '', moderate: '', severe: '', mild2: '' },
     skills: {},
   };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Macht aus beliebigen gespeicherten Daten einen vollständigen Bogen: Fehlendes oder Unpassendes
+ * (älterer Stand, Eingriff von Hand in die Datenbank) wird durch die Vorgabe ersetzt, einzeilige Felder
+ * werden von Steuerzeichen befreit. Fertigkeitswerte prüft der Server gegen die Liste der Gruppe.
+ */
+export function normalizeSheet(raw: unknown): SheetData {
+  const sheet = emptySheet();
+  if (!isRecord(raw)) return sheet;
+
+  const line = (value: unknown, fallback: string) => (typeof value === 'string' ? replaceControlChars(value) : fallback);
+  const text = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback);
+  const group = <K extends string>(target: Record<K, string>, source: unknown, read: typeof line) => {
+    if (!isRecord(source)) return;
+    for (const key of Object.keys(target) as K[]) target[key] = read(source[key], target[key]);
+  };
+
+  sheet.name = line(raw.name, sheet.name);
+  sheet.age = line(raw.age, sheet.age);
+  sheet.pronouns = line(raw.pronouns, sheet.pronouns);
+  sheet.refresh = line(raw.refresh, sheet.refresh);
+  sheet.stunts = text(raw.stunts, sheet.stunts);
+  group(sheet.aspects, raw.aspects, text);
+  group(sheet.consequences, raw.consequences, line);
+  if (isRecord(raw.stress)) {
+    for (const key of Object.keys(sheet.stress) as StressKey[]) {
+      const boxes = raw.stress[key];
+      if (Array.isArray(boxes)) sheet.stress[key] = sheet.stress[key].map((_, i) => boxes[i] === true);
+    }
+  }
+  if (isRecord(raw.skills)) {
+    for (const [id, value] of Object.entries(raw.skills)) {
+      if (Number.isInteger(value)) sheet.skills[id] = value as number;
+    }
+  }
+  return sheet;
 }
 
 /** Fertigkeit einer Gruppe */

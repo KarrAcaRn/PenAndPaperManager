@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { emptySheet, type Article, type Group, type SheetData, type Skill } from '@pnp/shared';
+  import { normalizeSheet, type Article, type Group, type SheetData, type Skill } from '@pnp/shared';
   import { ApiFailure, api } from './api.ts';
   import { createTask } from './task.svelte.ts';
   import CharacterSheet from './CharacterSheet.svelte';
@@ -21,19 +21,18 @@
 
   // Version des zuletzt geladenen/gespeicherten Stands, siehe Sheet in shared
   let version = 0;
-  /** gesetzt, solange ungespeicherte Änderungen auf ihr entprelltes Speichern warten */
+  /** Es gibt Eingaben, die der Server noch nicht hat (auch nach einem fehlgeschlagenen Speichern) */
+  let dirty = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  /** Änderungen, die während eines laufenden Speicherns dazukamen */
-  let changedWhileSaving = false;
 
   const load = () =>
     loading.run(async () => {
       const [sheet, groupSkills] = await Promise.all([api.sheet(group.id, article.id), api.skills(group.id)]);
-      // Felder der obersten Ebene, die ein älterer Bogen noch nicht kennt, mit den Vorgaben auffüllen
-      data = { ...emptySheet(), ...sheet.data };
+      data = normalizeSheet(sheet.data);
       version = sheet.version;
       skills = groupSkills;
       conflict = false;
+      dirty = false;
     });
   load();
 
@@ -44,34 +43,34 @@
 
   async function save() {
     cancelPendingSave();
-    if (removing || conflict) return;
-    // Nie zwei Speichervorgänge gleichzeitig: der zweite trüge noch die alte Version und liefe in einen Konflikt
-    if (saving.busy) {
-      changedWhileSaving = true;
-      return;
-    }
-    changedWhileSaving = false;
+    // Nie zwei Speichervorgänge gleichzeitig: der zweite trüge noch die alte Version und liefe in einen
+    // Konflikt. Was währenddessen dazukommt, bleibt dirty und wird unten nachgereicht.
+    if (removing || conflict || saving.busy) return;
+    dirty = false;
     const ok = await saving.run(async () => {
       try {
         version = (await api.saveSheet(group.id, article.id, { data: $state.snapshot(data!), version })).version;
         savedAt = new Date().toLocaleTimeString('de-DE');
       } catch (err) {
         conflict = err instanceof ApiFailure && err.status === 409;
+        dirty = true;
         throw err;
       }
     });
-    if (ok && changedWhileSaving) await save();
+    if (ok && dirty) await save();
   }
 
   function scheduleSave() {
     if (removing || conflict) return;
+    dirty = true;
     cancelPendingSave();
     timer = setTimeout(save, SAVE_DELAY_MS);
   }
 
-  // Beim Verlassen nichts verlieren: ausstehende Änderungen sofort speichern
+  // Beim Verlassen nichts verlieren: Ungespeichertes sofort speichern - auch nach einem fehlgeschlagenen
+  // Versuch. Läuft gerade ein Speichern, reicht es den Rest danach selbst nach.
   $effect(() => () => {
-    if (timer !== undefined) save();
+    if (dirty) save();
   });
 
   function remove() {

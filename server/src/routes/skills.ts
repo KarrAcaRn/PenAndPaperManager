@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { SkillInput } from '@pnp/shared';
 import { transaction, type Db } from '../db.ts';
 import { requireGm, requireMember } from '../auth.ts';
-import { loadPreset } from '../presets.ts';
+import { loadUsablePreset } from '../presets.ts';
 import { applySkillNames, listGroupSkills, replaceGroupSkills } from '../skills.ts';
 import { gidParams, objectOf, skillList, skillName } from '../schemas.ts';
 
@@ -28,7 +28,7 @@ export function skillRoutes(app: FastifyInstance, db: Db): void {
     (req) => {
       const { groupId } = requireGm(db, req);
       const { presetId } = req.body as { presetId: number };
-      return transaction(db, () => applySkillNames(db, groupId, loadPreset(db, presetId).skills));
+      return transaction(db, () => applySkillNames(db, groupId, loadUsablePreset(db, presetId).skills));
     },
   );
 }

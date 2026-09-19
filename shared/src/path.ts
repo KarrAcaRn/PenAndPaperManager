@@ -5,7 +5,6 @@ export const MAX_SEGMENT_LENGTH = 60;
 
 export class PathError extends Error {}
 
-
 /**
  * Bringt einen Ordnerpfad in kanonische Form: "bar/foo", '' = Wurzel des Bereichs.
  * Wirft PathError bei ungültigen Pfaden.

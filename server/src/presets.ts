@@ -7,7 +7,13 @@ import { DEFAULT_PRESETS } from './presets/defaults.ts';
 type PresetRow = Omit<SkillPreset, 'skills'> & { skills: string };
 
 const COLUMNS = 'id, name, description, skills';
-const fromRow = (row: PresetRow): SkillPreset => ({ ...row, skills: parseJson<string[]>(row.skills, []) });
+const presetNotFound = () => notFound('Variante nicht gefunden');
+function fromRow(row: PresetRow): SkillPreset {
+  // Nach einem Eingriff von Hand kann hier alles Mögliche stehen - dann gilt die Variante als leer.
+  const skills = parseJson<unknown>(row.skills, []);
+  const valid = Array.isArray(skills) && skills.every((skill) => typeof skill === 'string');
+  return { ...row, skills: valid ? skills : [] };
+}
 
 export function listPresets(db: Db): SkillPreset[] {
   return allRows<PresetRow>(db, `SELECT ${COLUMNS} FROM skill_presets ORDER BY name COLLATE NOCASE`).map(fromRow);
@@ -15,8 +21,15 @@ export function listPresets(db: Db): SkillPreset[] {
 
 export function loadPreset(db: Db, id: number): SkillPreset {
   const row = getRow<PresetRow>(db, `SELECT ${COLUMNS} FROM skill_presets WHERE id = ?`, id);
-  if (!row) throw notFound('Variante nicht gefunden');
+  if (!row) throw presetNotFound();
   return fromRow(row);
+}
+
+/** Für "Variante übernehmen": Eine leere (oder beschädigte) Variante würde alle Fertigkeiten der Gruppe löschen. */
+export function loadUsablePreset(db: Db, id: number): SkillPreset {
+  const preset = loadPreset(db, id);
+  if (preset.skills.length === 0) throw conflict('Diese Variante enthält keine Fertigkeiten');
+  return preset;
 }
 
 function assertNameFree(db: Db, name: string, exceptId?: number): void {
@@ -37,9 +50,8 @@ export function insertPreset(db: Db, preset: SkillPresetInput): SkillPreset {
 }
 
 export function updatePreset(db: Db, id: number, preset: SkillPresetInput): SkillPreset {
-  loadPreset(db, id);
   assertNameFree(db, preset.name, id);
-  run(
+  const updated = run(
     db,
     `UPDATE skill_presets SET name = ?, description = ?, skills = ?, updated_at = datetime('now') WHERE id = ?`,
     preset.name,
@@ -47,12 +59,12 @@ export function updatePreset(db: Db, id: number, preset: SkillPresetInput): Skil
     JSON.stringify(preset.skills),
     id,
   );
+  if (!updated) throw presetNotFound();
   return { id, ...preset };
 }
 
 export function deletePreset(db: Db, id: number): void {
-  loadPreset(db, id);
-  run(db, 'DELETE FROM skill_presets WHERE id = ?', id);
+  if (!run(db, 'DELETE FROM skill_presets WHERE id = ?', id)) throw presetNotFound();
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { DEFAULT_FOLDERS, MAX_GROUP_NAME_LENGTH, type Group } from '@pnp/shared';
 import { allRows, insertRow, run, transaction, type Db } from '../db.ts';
-import { loadPreset } from '../presets.ts';
+import { loadUsablePreset } from '../presets.ts';
 import { applySkillNames } from '../skills.ts';
 import { requireUser } from '../auth.ts';
 import { nonBlank, objectOf } from '../schemas.ts';
@@ -33,7 +33,7 @@ export function groupRoutes(app: FastifyInstance, db: Db): void {
         }
       }
       // Optional gleich mit den Fertigkeiten einer Variante starten
-      if (presetId !== undefined) applySkillNames(db, id, loadPreset(db, presetId).skills);
+      if (presetId !== undefined) applySkillNames(db, id, loadUsablePreset(db, presetId).skills);
       return { id, name, role: 'gm' };
     });
     reply.code(201);

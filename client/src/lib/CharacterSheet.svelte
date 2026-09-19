@@ -39,7 +39,6 @@
     const value = Number.parseInt(raw, 10);
     if (Number.isNaN(value)) delete data.skills[id];
     else data.skills[id] = Math.min(MAX_SKILL_VALUE, Math.max(MIN_SKILL_VALUE, value));
-    onchange();
   }
 
   /** Aspektfelder wachsen mit dem Inhalt; der Stunts-Bereich darunter gibt den Platz her. */
@@ -55,6 +54,7 @@
 </script>
 
 <div class="scroll">
+  <!-- Alle Felder (auch Kästchen und Fertigkeiten) melden Änderungen über das hochlaufende input-Ereignis -->
   <div class="page" oninput={onchange}>
     <header class="head">
       <label class="field"><span class="label">Name</span><span class="rule"><input class="f" bind:value={data.name} {readonly} maxlength={MAX_SHEET_LINE_LENGTH} /></span></label>
@@ -112,7 +112,6 @@
                       type="checkbox"
                       bind:checked={data.stress[track][index]}
                       disabled={readonly}
-                      onchange={onchange}
                       aria-label="{STRESS_LABELS[track]}er Stress {index + 1}"
                     />
                     <span>1</span>

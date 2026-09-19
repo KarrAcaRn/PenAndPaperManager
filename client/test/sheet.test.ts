@@ -105,6 +105,21 @@ describe('FATE-Bogen am Artikel', () => {
     expect(await screen.findByText(/^Gespeichert/)).toBeTruthy();
   });
 
+  it('holt ein fehlgeschlagenes Speichern beim Verlassen nach, auch ohne weitere Eingabe', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockRejectedValueOnce(new Error('Failed to fetch'));
+    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    await screen.findByText(/Nicht gespeichert: Failed to fetch/);
+
+    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    view.unmount();
+    expect(api.saveSheet).toHaveBeenCalledTimes(2);
+    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 1, data: { name: 'A' } });
+  });
+
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
@@ -210,7 +225,8 @@ describe('FATE-Bogen am Artikel', () => {
   it('ist für Leser schreibgeschützt und ohne Bearbeiten-Aktionen', async () => {
     signIn(PLAYER, [playerGroup]);
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, canEdit: false }));
-    api.sheet.mockResolvedValue(sheetOf({ name: 'Zoë' }));
+    // auch ein unvollständig gespeicherter Bogen wird vollständig dargestellt
+    api.sheet.mockResolvedValue({ version: 1, data: { name: 'Zoë' } as never });
     api.skills.mockResolvedValue(SKILLS);
     render(ArticleView, { group: playerGroup, id: 1 });
     expect(((await screen.findByLabelText('Name')) as HTMLInputElement).readOnly).toBe(true);
@@ -274,6 +290,18 @@ describe('FATE-Bogen am Artikel', () => {
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
     expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë' }));
+  });
+
+  it('landet auch dann beim neuen Artikel, wenn nur das Anlegen des Bogens scheitert', async () => {
+    api.folders.mockResolvedValue([]);
+    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', title: 'Zoë' }));
+    api.createSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+    render(ArticleEdit, { group: gmGroup, section: 'characters' });
+    await user.type(await screen.findByLabelText('Titel'), 'Zoë');
+    await user.click(screen.getByLabelText(/Mit FATE-Bogen/));
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
+    expect(api.createArticle).toHaveBeenCalledTimes(1);
   });
 
   it('wird im Editor nur für neue Artikel in passenden Bereichen angeboten', async () => {
