@@ -19,8 +19,6 @@
   const gmTab = $derived(!('section' in route));
   const activeSection = $derived('section' in route ? route.section : 'gm');
   const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
-  /** Alle Artikelbereiche: Ordnerbaum links, Inhalt rechts, um schnell zwischen Artikeln zu springen */
-  const withTree = $derived(route.name !== 'manage' && route.name !== 'skills');
   const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
   /** Unterpunkte des SL-Bereichs erscheinen als zweite Zeile in der Navigation */
   const showGmTabs = $derived(activeSection === 'gm' && allowed);
@@ -51,7 +49,7 @@
     <a href={href.groups()}>Zur Gruppenauswahl</a>
   </main>
 {:else}
-  <header class="no-print" class:wide={withTree}>
+  <header class="no-print">
     <div class="bar vine-frame">
       <div class="row" bind:this={navRow}>
         <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
@@ -77,7 +75,7 @@
     </div>
   </header>
 
-  <main class:wide={withTree}>
+  <main class="wide">
     {#if !allowed}
       <p class="error">Dieser Bereich ist nur für Spielleiter.</p>
     {:else}
@@ -119,8 +117,9 @@
 
 <style>
   /* Gleiche Breite, Zentrierung und Seitenabstände wie main, damit Navigation und Inhalt bündig stehen */
-  header { max-width: 60rem; margin: 0 auto; padding: 1.25rem 1rem 0; }
-  header.wide, main.wide { max-width: 90rem; }
+  /* Alle Seiten einer Gruppe gleich breit (Platz für Ordnerbaum + Inhalt), auch Fertigkeiten/Verwalten */
+  header { max-width: 90rem; margin: 0 auto; padding: 1.25rem 1rem 0; }
+  main.wide { max-width: 90rem; }
   .bar { background: var(--surface); border-radius: var(--radius); }
   /* Abstand, damit sich die Ranken von Navigation und Ordnerbaum nicht berühren */
   main { padding-top: 1.75rem; }

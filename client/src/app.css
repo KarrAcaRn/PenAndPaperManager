@@ -28,6 +28,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Platz für die Scrollleiste immer freihalten, sonst springt die Seite zwischen kurzen und langen Seiten */
+html { scrollbar-gutter: stable; }
 body { margin: 0; }
 a { color: var(--accent); }
 h1, h2, h3 { line-height: 1.2; }
