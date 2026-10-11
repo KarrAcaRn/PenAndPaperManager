@@ -180,10 +180,17 @@ describe('GroupLayout', () => {
 
   it('zeigt Spielleitern den Bereich samt Verwaltungs-Tab', async () => {
     signIn(GM, [gmGroup]);
-    renderLayout('#/g/7/manage');
+    const view = renderLayout('#/g/7/manage');
     expect(nav()).toContain('Spielleiter');
-    expect(screen.getByRole('link', { name: 'Gruppe verwalten' })).toBeTruthy();
+    // Die Unterpunkte stehen als eigene Zeile in der Navigation, der aktive ist markiert
+    const sub = within(screen.getByRole('banner')).getByRole('navigation', { name: 'Spielleiter' });
+    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['Artikel', 'Fertigkeiten', 'Gruppe verwalten']);
+    expect(within(sub).getByRole('link', { name: 'Gruppe verwalten' }).classList.contains('active')).toBe(true);
     expect(await screen.findByText('Mitglieder')).toBeTruthy();
+    view.unmount();
+    // In anderen Bereichen gibt es keine Unterpunkte
+    renderLayout('#/g/7/notes');
+    expect(screen.queryByRole('navigation', { name: 'Spielleiter' })).toBeNull();
   });
 
   it('meldet unbekannte Gruppen', () => {
