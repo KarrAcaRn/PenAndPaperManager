@@ -1,18 +1,26 @@
 <script lang="ts">
-  import { SECTION_LABELS, accessibleSections, canAccessSection } from '@pnp/shared';
+  import { SECTION_LABELS, accessibleSections, canAccessSection, type Section } from '@pnp/shared';
   import { href, type Route } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
+  import FolderTree, { type TreeSelection } from '../lib/FolderTree.svelte';
   import FolderView from './FolderView.svelte';
   import ArticleView from './ArticleView.svelte';
   import ArticleEdit from './ArticleEdit.svelte';
   import GmManage from './GmManage.svelte';
+
+  type ContentRoute = Exclude<Route, { name: 'groups' } | { name: 'manage' }>;
+
+  /** Bereiche mit Ordnerbaum links und Inhalt rechts, um schnell zwischen Artikeln zu springen */
+  const TREE_SECTIONS: readonly Section[] = ['notes', 'gm'];
 
   let { route }: { route: Exclude<Route, { name: 'groups' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
   const activeSection = $derived(route.name === 'manage' ? 'gm' : route.section);
   const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
+  const withTree = $derived(route.name !== 'manage' && TREE_SECTIONS.includes(route.section));
+  const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
 </script>
 
 {#if !group}
@@ -22,7 +30,7 @@
   </main>
 {:else}
   <header>
-    <div class="row bar">
+    <div class="row bar" class:wide={withTree}>
       <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
       <nav class="row">
         {#each accessibleSections(group.role) as section}
@@ -34,7 +42,7 @@
     </div>
   </header>
 
-  <main>
+  <main class:wide={withTree}>
     {#if !allowed}
       <p class="error">Dieser Bereich ist nur für Spielleiter.</p>
     {:else}
@@ -47,26 +55,46 @@
 
       {#if route.name === 'manage'}
         <GmManage {group} />
-      {:else if route.name === 'folder'}
-        {#key `${route.section}/${route.path}`}
-          <FolderView {group} section={route.section} path={route.path} />
-        {/key}
-      {:else if route.name === 'new'}
-        {#key `${route.section}/${route.path}`}<ArticleEdit {group} section={route.section} path={route.path} />{/key}
-      {:else if route.edit}
-        {#key route.id}<ArticleEdit {group} section={route.section} id={route.id} />{/key}
+      {:else if withTree}
+        <div class="split">
+          <aside class="card">
+            {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
+          </aside>
+          <section class="pane">{@render content(route)}</section>
+        </div>
       {:else}
-        {#key route.id}<ArticleView {group} id={route.id} />{/key}
+        {@render content(route)}
       {/if}
     {/if}
   </main>
 {/if}
 
+{#snippet content(r: ContentRoute)}
+  {#if group}
+    {#if r.name === 'folder'}
+      {#key `${r.section}/${r.path}`}<FolderView {group} section={r.section} path={r.path} />{/key}
+    {:else if r.name === 'new'}
+      {#key `${r.section}/${r.path}`}<ArticleEdit {group} section={r.section} path={r.path} />{/key}
+    {:else if r.edit}
+      {#key r.id}<ArticleEdit {group} section={r.section} id={r.id} />{/key}
+    {:else}
+      {#key r.id}<ArticleView {group} id={r.id} />{/key}
+    {/if}
+  {/if}
+{/snippet}
+
 <style>
   header { background: var(--surface); border-bottom: 1px solid var(--border); }
   .bar { max-width: 60rem; margin: 0 auto; padding: 0.6rem 1rem; }
+  .bar.wide, main.wide { max-width: 90rem; }
   .name { font-weight: 700; font-size: 1.1rem; text-decoration: none; margin-right: 1rem; }
   nav a, .tabs a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--radius); color: var(--text); }
   nav a.active, .tabs a.active { background: var(--accent); color: var(--accent-text); }
   .tabs { margin-bottom: 1rem; }
+  .split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+  aside { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; padding: 0.6rem; }
+  @media (max-width: 45rem) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    aside { position: static; max-height: 40vh; }
+  }
 </style>

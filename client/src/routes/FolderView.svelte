@@ -13,6 +13,7 @@
     type Section,
   } from '@pnp/shared';
   import { api } from '../lib/api.ts';
+  import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import Breadcrumb from '../lib/Breadcrumb.svelte';
@@ -47,7 +48,12 @@
   /** Aktion ausführen und danach die Ansicht aktualisieren */
   const runAndReload = (action: () => Promise<unknown>) =>
     task.run(async () => {
-      await action();
+      try {
+        await action();
+      } finally {
+        // Auch bei Fehlern, die Teiländerungen nicht ausschließen, z.B. Ordnerbaum aktualisieren
+        notifyContentChanged();
+      }
       await load();
     });
 

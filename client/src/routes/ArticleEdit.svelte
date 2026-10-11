@@ -13,6 +13,7 @@
     type Visibility,
   } from '@pnp/shared';
   import { api } from '../lib/api.ts';
+  import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { renderMarkdown } from '../lib/markdown.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
@@ -63,6 +64,7 @@
     event.preventDefault();
     saving.run(async () => {
       const saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
+      notifyContentChanged();
       navigate(href.article(group.id, saved.section, saved.id));
     });
   }

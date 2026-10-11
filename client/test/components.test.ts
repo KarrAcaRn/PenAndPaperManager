@@ -12,6 +12,8 @@ import FolderView from '../src/routes/FolderView.svelte';
 import ArticleView from '../src/routes/ArticleView.svelte';
 import ArticleEdit from '../src/routes/ArticleEdit.svelte';
 import GmManage from '../src/routes/GmManage.svelte';
+import FolderTree from '../src/lib/FolderTree.svelte';
+import { notifyContentChanged } from '../src/lib/content.svelte.ts';
 import {
   GM,
   PLAYER,
@@ -180,6 +182,78 @@ describe('GroupLayout', () => {
     edit.unmount();
     renderLayout('#/g/7/notes/new/bar');
     expect(await screen.findByRole('heading', { name: 'Neuer Artikel' })).toBeTruthy();
+  });
+
+  it('zeigt in Notizen und Spielleiter links den Ordnerbaum, in Charaktere nicht', async () => {
+    signIn(GM, [gmGroup]);
+    const first = renderLayout('#/g/7/notes');
+    expect(await screen.findByRole('navigation', { name: 'Ordnerbaum' })).toBeTruthy();
+    first.unmount();
+    const gm = renderLayout('#/g/7/gm');
+    expect(await screen.findByRole('navigation', { name: 'Ordnerbaum' })).toBeTruthy();
+    gm.unmount();
+    renderLayout('#/g/7/characters');
+    await waitFor(() => expect(api.folders).toHaveBeenCalledWith(7, 'characters'));
+    expect(screen.queryByRole('navigation', { name: 'Ordnerbaum' })).toBeNull();
+  });
+
+  it('zeigt den gewählten Artikel rechts neben dem Baum, Bearbeiten oben rechts', async () => {
+    signIn(GM, [gmGroup]);
+    api.folders.mockResolvedValue([folder('NPCs')]);
+    api.articles.mockResolvedValue([summary({ path: 'NPCs' })]);
+    api.article.mockResolvedValue(fullArticle({ path: 'NPCs' }));
+    renderLayout('#/g/7/notes/a/1');
+    const tree = await screen.findByRole('navigation', { name: 'Ordnerbaum' });
+    // Ordner des gewählten Artikels ist aufgeklappt und der Artikel markiert
+    const current = await within(tree).findByRole('link', { name: /Wirt/ });
+    expect(current.getAttribute('aria-current')).toBe('page');
+    expect(await screen.findByRole('heading', { name: 'Wirt' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Bearbeiten' }).getAttribute('href')).toBe('#/g/7/notes/a/1/edit');
+  });
+});
+
+describe('FolderTree', () => {
+  const tree = () => screen.getByRole('navigation', { name: 'Ordnerbaum' });
+
+  it('klappt Ordner auf und zu und sortiert Ordner vor Artikeln', async () => {
+    api.folders.mockResolvedValue([folder('Orte'), folder('NPCs'), folder('NPCs/Adel')]);
+    api.articles.mockResolvedValue([
+      summary({ id: 2, title: 'Zwerg', path: 'NPCs' }),
+      summary({ id: 3, title: 'Graf', path: 'NPCs/Adel' }),
+      summary({ id: 4, title: 'Notiz', path: '' }),
+    ]);
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+    await within(tree()).findByRole('link', { name: /NPCs/ });
+    const names = () => within(tree()).getAllByRole('link').map((a) => a.textContent!.trim());
+    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Orte', '📄 Notiz']);
+    expect(within(tree()).getAllByRole('link', { name: /NPCs/ })[0].getAttribute('href')).toBe('#/g/7/notes/f/NPCs');
+
+    await user.click(screen.getByRole('button', { name: 'NPCs aufklappen' }));
+    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Adel', '📄 Zwerg', '📁 Orte', '📄 Notiz']);
+    expect(screen.queryByRole('button', { name: /Orte/ })).toBeNull(); // leerer Ordner ohne Pfeil
+    await user.click(screen.getByRole('button', { name: 'NPCs zuklappen' }));
+    expect(names()).not.toContain('📁 Adel');
+  });
+
+  it('klappt den Weg zum gewählten Ordner auf und lädt nach Änderungen neu', async () => {
+    api.folders.mockResolvedValue([folder('a'), folder('a/b'), folder('a/b/c')]);
+    api.articles.mockResolvedValue([]);
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'a/b' } });
+    const link = await within(tree()).findByRole('link', { name: 'b' });
+    expect(link.getAttribute('aria-current')).toBe('page');
+    expect(within(tree()).getByRole('link', { name: 'c' })).toBeTruthy();
+
+    api.articles.mockResolvedValue([summary({ id: 9, title: 'Neu', path: 'a/b' })]);
+    notifyContentChanged();
+    expect(await within(tree()).findByRole('link', { name: /Neu/ })).toBeTruthy();
+    expect(api.folders).toHaveBeenCalledTimes(2);
+  });
+
+  it('zeigt Ladefehler', async () => {
+    api.folders.mockRejectedValue(new ApiFailure(403, 'Nur für Spielleiter'));
+    api.articles.mockResolvedValue([]);
+    render(FolderTree, { group: gmGroup, section: 'gm', current: { folder: '' } });
+    expect(await screen.findByText('Nur für Spielleiter')).toBeTruthy();
   });
 });
 

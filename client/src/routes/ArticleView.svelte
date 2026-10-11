@@ -1,6 +1,7 @@
 <script lang="ts">
   import { VISIBILITY_LABELS, type Article, type Group } from '@pnp/shared';
   import { api } from '../lib/api.ts';
+  import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { renderMarkdown } from '../lib/markdown.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
@@ -20,6 +21,7 @@
     if (!confirm(`Artikel "${a.title}" wirklich löschen?`)) return;
     task.run(async () => {
       await api.deleteArticle(group.id, a.id);
+      notifyContentChanged();
       navigate(href.folder(group.id, a.section, a.path));
     });
   }
@@ -29,16 +31,18 @@
 
 {#if article}
   {@const a = article}
-  <Breadcrumb gid={group.id} section={a.section} path={a.path} />
+  <div class="row top">
+    <Breadcrumb gid={group.id} section={a.section} path={a.path} />
+    <span class="spacer"></span>
+    {#if a.canEdit}
+      <a class="button primary" href={href.edit(group.id, a.section, a.id)}>Bearbeiten</a>
+      <button class="danger" disabled={task.busy} onclick={() => remove(a)}>Löschen</button>
+    {/if}
+  </div>
 
   <div class="row">
     <h1>{a.title}</h1>
     <span class="badge {a.visibility}">{VISIBILITY_LABELS[a.visibility]}</span>
-    <span class="spacer"></span>
-    {#if a.canEdit}
-      <a class="button" href={href.edit(group.id, a.section, a.id)}>Bearbeiten</a>
-      <button class="danger" disabled={task.busy} onclick={() => remove(a)}>Löschen</button>
-    {/if}
   </div>
   <p class="muted">von {a.authorEmail} · zuletzt geändert {new Date(a.updatedAt + 'Z').toLocaleString('de-DE')}</p>
 
@@ -47,5 +51,6 @@
 {/if}
 
 <style>
+  .top { min-height: 2.4rem; }
   h1 { margin: 0.5rem 0; }
 </style>
