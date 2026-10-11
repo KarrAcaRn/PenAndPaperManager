@@ -22,6 +22,20 @@ describe('Login und Gruppen', () => {
     expect((await alice.get('/api/groups')).body).toEqual([{ id: gid, name: 'Testrunde', role: 'player' }]);
   });
 
+  it('legt in Notizen und Spielleiter die Standardordner an', async () => {
+    const { base, gm, alice } = await setupGroup(makeApp());
+    for (const section of ['notes', 'gm']) {
+      const folders = (await gm.get(`${base}/folders?section=${section}`)).body;
+      expect(folders).toEqual(['NPCs', 'Orte', 'Sessions'].map((path) => ({ path, explicit: true, canManage: true })));
+    }
+    expect((await gm.get(`${base}/folders?section=characters`)).body).toEqual([]);
+    // Spieler sehen die Ordner, dürfen sie aber nicht umbauen
+    const notes = (await alice.get(`${base}/folders?section=notes`)).body;
+    expect(notes.map((f: { canManage: boolean }) => f.canManage)).toEqual([false, false, false]);
+    expect((await alice.del(`${base}/folders?section=notes&path=NPCs`)).status).toBe(403);
+    expect((await alice.post(`${base}/folders`, { section: 'notes', path: 'NPCs/Händler' })).status).toBe(201);
+  });
+
   it('zeigt eine Einladung an eine unbekannte E-Mail nach deren erstem Login', async () => {
     const app = makeApp();
     const { base, gm } = await setupGroup(app);

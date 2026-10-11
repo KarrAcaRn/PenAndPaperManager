@@ -86,6 +86,12 @@ export const MAX_EMAIL_LENGTH = 254;
 /** Bereich, in dem man nach der Gruppenwahl landet */
 export const DEFAULT_SECTION: Section = 'characters';
 
+/** Ordner, die jede neue Gruppe vorab bekommt, damit eine Struktur vorgegeben ist */
+export const DEFAULT_FOLDERS: Partial<Record<Section, readonly string[]>> = {
+  notes: ['NPCs', 'Orte', 'Sessions'],
+  gm: ['NPCs', 'Orte', 'Sessions'],
+};
+
 /** Der Bereich "Spielleiter" ist für Spieler komplett unsichtbar. */
 export function canAccessSection(role: Role, section: Section): boolean {
   return section !== 'gm' || role === 'gm';
