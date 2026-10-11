@@ -19,6 +19,7 @@
   import { href, navigate } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
+  import { showNotice } from '../lib/notice.svelte.ts';
 
   let { group, section, path = '', id }: { group: Group; section: Section; path?: string; id?: number } = $props();
 
@@ -71,7 +72,9 @@
       if (id === undefined && withSheet && canHaveSheet(saved.section)) {
         // Scheitert nur der Bogen, ist der Artikel trotzdem angelegt: nicht im Formular bleiben (ein zweites
         // Speichern legte ihn doppelt an) - in der Artikelansicht lässt sich der Bogen nachholen.
-        await api.createSheet(group.id, saved.id, emptySheet(saved.title)).catch(() => {});
+        await api
+          .createSheet(group.id, saved.id, emptySheet(saved.title))
+          .catch((err: Error) => showNotice(`Artikel angelegt, der FATE-Bogen aber nicht (${err.message}). Er lässt sich hier nachholen.`));
       }
       notifyContentChanged();
       navigate(href.article(group.id, saved.section, saved.id));

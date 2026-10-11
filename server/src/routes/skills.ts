@@ -1,14 +1,19 @@
 import type { FastifyInstance } from 'fastify';
-import type { SkillInput } from '@pnp/shared';
+import type { Skill, SkillInput } from '@pnp/shared';
 import { transaction, type Db } from '../db.ts';
 import { requireGm, requireMember } from '../auth.ts';
 import { loadUsablePreset } from '../presets.ts';
-import { applySkillNames, listGroupSkills, replaceGroupSkills } from '../skills.ts';
+import { applySkillNames, assertSkillsUnchanged, listGroupSkills, replaceGroupSkills } from '../skills.ts';
 import { gidParams, objectOf, skillList, skillName } from '../schemas.ts';
 
-const skillsBody = objectOf({
-  skills: skillList(objectOf({ id: { type: 'integer' }, name: skillName }, ['name'])),
-});
+/** Stand der Liste, von dem der Client ausgeht (optional) - weicht der aktuelle ab, gibt es 409 */
+const expected = skillList(objectOf({ id: { type: 'integer' }, name: { type: 'string' } }));
+
+const skillsBody = objectOf(
+  { skills: skillList(objectOf({ id: { type: 'integer' }, name: skillName }, ['name'])), expected },
+  ['skills'],
+);
+const presetBody = objectOf({ presetId: { type: 'integer' }, expected }, ['presetId']);
 
 export function skillRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/groups/:gid/skills', { schema: { params: gidParams } }, (req) => {
@@ -18,17 +23,23 @@ export function skillRoutes(app: FastifyInstance, db: Db): void {
 
   app.put('/api/groups/:gid/skills', { schema: { params: gidParams, body: skillsBody } }, (req) => {
     const { groupId } = requireGm(db, req);
-    const { skills } = req.body as { skills: SkillInput[] };
-    return transaction(db, () => replaceGroupSkills(db, groupId, skills));
+    const body = req.body as { skills: SkillInput[]; expected?: Skill[] };
+    return transaction(db, () => {
+      assertSkillsUnchanged(db, groupId, body.expected);
+      return replaceGroupSkills(db, groupId, body.skills);
+    });
   });
 
   app.post(
     '/api/groups/:gid/skills/from-preset',
-    { schema: { params: gidParams, body: objectOf({ presetId: { type: 'integer' } }) } },
+    { schema: { params: gidParams, body: presetBody } },
     (req) => {
       const { groupId } = requireGm(db, req);
-      const { presetId } = req.body as { presetId: number };
-      return transaction(db, () => applySkillNames(db, groupId, loadUsablePreset(db, presetId).skills));
+      const body = req.body as { presetId: number; expected?: Skill[] };
+      return transaction(db, () => {
+        assertSkillsUnchanged(db, groupId, body.expected);
+        return applySkillNames(db, groupId, loadUsablePreset(db, body.presetId).skills);
+      });
     },
   );
 }

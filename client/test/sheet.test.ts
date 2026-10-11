@@ -6,6 +6,7 @@ import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
 import { session } from '../src/lib/session.svelte.ts';
 import { contentChanges } from '../src/lib/content.svelte.ts';
+import { clearNotice, notice } from '../src/lib/notice.svelte.ts';
 import App from '../src/App.svelte';
 import CharacterSheet from '../src/lib/CharacterSheet.svelte';
 import SkillListEditor from '../src/lib/SkillListEditor.svelte';
@@ -40,6 +41,7 @@ const SKILLS: Skill[] = [
 ];
 
 beforeEach(() => {
+  clearNotice();
   api = mockApi();
   api.presets.mockResolvedValue([presetFixture()]);
   location.hash = '#/';
@@ -119,6 +121,36 @@ describe('FATE-Bogen am Artikel', () => {
     view.unmount();
     expect(api.saveSheet).toHaveBeenCalledTimes(2);
     expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 1, data: { name: 'A' } });
+  });
+
+  it('meldet einen Fehler beim Nachspeichern nach dem Verlassen als Hinweis', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, title: 'Zoë' }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockRejectedValue(new Error('Failed to fetch'));
+    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    await screen.findByText(/Nicht gespeichert/);
+    view.unmount();
+    await waitFor(() => expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert/));
+  });
+
+  it('speichert beim Schließen des Tabs sofort und fragt nach', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    render(ArticleView, { group: gmGroup, id: 1 });
+    const name = await screen.findByLabelText('Name');
+    const unload = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(unload()).toBe(false); // nichts offen
+    await user.type(name, 'A'); // Speichern erst nach Verzögerung geplant
+    expect(unload()).toBe(true);
+    expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
 
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
@@ -306,6 +338,7 @@ describe('FATE-Bogen am Artikel', () => {
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
     expect(api.createArticle).toHaveBeenCalledTimes(1);
+    expect(notice.text).toMatch(/^Artikel angelegt, der FATE-Bogen aber nicht \(Interner Fehler\)/);
   });
 
   it('wird im Editor nur für neue Artikel in passenden Bereichen angeboten', async () => {
@@ -369,7 +402,7 @@ describe('GmSkills', () => {
     await user.type(screen.getByPlaceholderText('Neue Fertigkeit'), 'Kochen{Enter}');
     expect(screen.getByText('Ungespeicherte Änderungen')).toBeTruthy();
     await user.click(save);
-    await waitFor(() => expect(api.saveSkills).toHaveBeenCalledWith(7, [...SKILLS, { name: 'Kochen' }]));
+    await waitFor(() => expect(api.saveSkills).toHaveBeenCalledWith(7, [...SKILLS, { name: 'Kochen' }], SKILLS));
     await waitFor(() => expect(save.disabled).toBe(true));
   });
 
@@ -386,8 +419,19 @@ describe('GmSkills', () => {
     expect(api.applyPreset).not.toHaveBeenCalled();
     confirm.mockReturnValueOnce(true);
     await user.click(screen.getByRole('button', { name: 'Übernehmen' }));
-    await waitFor(() => expect(api.applyPreset).toHaveBeenCalledWith(7, 2));
+    await waitFor(() => expect(api.applyPreset).toHaveBeenCalledWith(7, 2, SKILLS));
     await waitFor(() => expect((screen.getByLabelText('Fertigkeit 1') as HTMLInputElement).value).toBe('Flink'));
+  });
+
+  it('warnt vor ungespeicherten Änderungen beim Laden einer Variante und zeigt Konflikte', async () => {
+    api.skills.mockResolvedValue(SKILLS);
+    api.applyPreset.mockRejectedValue(new ApiFailure(409, 'Die Fertigkeiten wurden inzwischen geändert'));
+    render(GmSkills, { group: gmGroup });
+    await user.type(await screen.findByPlaceholderText('Neue Fertigkeit'), 'Kochen{Enter}');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    await user.click(screen.getByRole('button', { name: 'Übernehmen' }));
+    expect(confirm.mock.calls[0][0]).toMatch(/^Ungespeicherte Änderungen verwerfen/);
+    expect(await screen.findByText('Die Fertigkeiten wurden inzwischen geändert')).toBeTruthy();
   });
 
   it('fragt bei leerer Liste nicht nach und kommt ohne Varianten zurecht', async () => {
@@ -396,7 +440,7 @@ describe('GmSkills', () => {
     const confirm = vi.spyOn(window, 'confirm');
     const first = render(GmSkills, { group: gmGroup });
     await user.click(await screen.findByRole('button', { name: 'Übernehmen' }));
-    await waitFor(() => expect(api.applyPreset).toHaveBeenCalledWith(7, 1));
+    await waitFor(() => expect(api.applyPreset).toHaveBeenCalledWith(7, 1, []));
     expect(confirm).not.toHaveBeenCalled();
     first.unmount();
 

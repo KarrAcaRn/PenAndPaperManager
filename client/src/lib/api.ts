@@ -89,8 +89,11 @@ export const api = {
   deleteSheet: (gid: number, articleId: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${articleId}/sheet`),
 
   skills: (gid: number) => request<Skill[]>('GET', `/groups/${gid}/skills`),
-  saveSkills: (gid: number, skills: SkillInput[]) => request<Skill[]>('PUT', `/groups/${gid}/skills`, { skills }),
-  applyPreset: (gid: number, presetId: number) => request<Skill[]>('POST', `/groups/${gid}/skills/from-preset`, { presetId }),
+  /** expected: Stand, von dem der Client ausgeht; hat ihn jemand anderes inzwischen geändert, gibt es 409 */
+  saveSkills: (gid: number, skills: SkillInput[], expected?: Skill[]) =>
+    request<Skill[]>('PUT', `/groups/${gid}/skills`, { skills, expected }),
+  applyPreset: (gid: number, presetId: number, expected?: Skill[]) =>
+    request<Skill[]>('POST', `/groups/${gid}/skills/from-preset`, { presetId, expected }),
 
   presets: () => request<SkillPreset[]>('GET', '/presets'),
   createPreset: (preset: SkillPresetInput) => request<SkillPreset>('POST', '/presets', preset),

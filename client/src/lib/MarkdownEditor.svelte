@@ -1,12 +1,7 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { Editor } from '@tiptap/core';
-  import StarterKit from '@tiptap/starter-kit';
-  import { Markdown } from '@tiptap/markdown';
-  import { TableKit } from '@tiptap/extension-table';
-  import Image from '@tiptap/extension-image';
-  import { TaskItem, TaskList } from '@tiptap/extension-list';
-  import { Placeholder } from '@tiptap/extensions';
+  import { containsHtml, editorExtensions } from './editorExtensions.ts';
 
   let {
     value = $bindable(''),
@@ -17,28 +12,16 @@
 
   let element: HTMLDivElement;
   let editor = $state<Editor | null>(null);
-  /** Markdown-Quelltext statt WYSIWYG anzeigen */
-  let source = $state(false);
+  /** Markdown-Quelltext statt WYSIWYG anzeigen; Texte mit HTML starten dort, weil der Editor HTML verliert */
+  let source = $state(untrack(() => containsHtml(value)));
+  const hasHtml = $derived(containsHtml(value));
   /** Wird bei jeder Änderung von Inhalt oder Auswahl hochgezählt, damit die Werkzeugleiste den Zustand neu liest */
   let tick = $state(0);
 
   onMount(() => {
     editor = new Editor({
       element,
-      extensions: [
-        // Unterstreichen gibt es in Markdown nicht
-        StarterKit.configure({ underline: false, link: { openOnClick: false, autolink: true, defaultProtocol: 'https' } }),
-        TableKit,
-        Image,
-        TaskList,
-        TaskItem.configure({
-          nested: true,
-          a11y: { checkboxLabel: (node) => `Erledigt: ${node.textContent || 'leerer Eintrag'}` },
-        }),
-        Placeholder.configure({ placeholder }),
-        // Wie in der Anzeige (lib/markdown.ts): einfache Zeilenumbrüche bleiben Zeilenumbrüche
-        Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
-      ],
+      extensions: editorExtensions(placeholder),
       content: value,
       contentType: 'markdown',
       editorProps: {
@@ -54,6 +37,9 @@
   onDestroy(() => editor?.destroy());
 
   function toggleSource() {
+    if (source && hasHtml && !confirm('Der Text enthält HTML. Im Editor geht es beim Bearbeiten verloren. Trotzdem wechseln?')) {
+      return;
+    }
     // Beim Zurückwechseln den (evtl. von Hand geänderten) Quelltext übernehmen, ohne ihn neu zu formatieren
     if (source) editor?.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
     source = !source;
@@ -147,6 +133,9 @@
       Markdown
     </button>
   </div>
+  {#if hasHtml}
+    <p class="notice">Der Text enthält HTML, das der Editor nicht darstellen kann – am besten im Markdown-Modus bearbeiten.</p>
+  {/if}
   {#if !source && isActive('table')}
     <div class="toolbar table-tools" role="toolbar" aria-label="Tabelle">
       {#each tableTools as tool}
@@ -178,6 +167,7 @@
   .toolbar button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   .toolbar .mode { border-color: var(--border); }
   .table-tools { font-size: 0.85rem; }
+  .notice { margin: 0; padding: 0.35rem 0.75rem; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--border); }
   .surface :global(.ProseMirror) { min-height: 20rem; padding: 0.75rem 1rem; outline: none; }
   .surface :global(.ProseMirror p.is-editor-empty:first-child::before) {
     content: attr(data-placeholder);

@@ -31,6 +31,32 @@ describe('Fertigkeiten einer Gruppe', () => {
     expect(res.body.map((s: any) => s.id)).not.toContain(c.id);
   });
 
+  it('behalten ihre ID, wenn man sie entfernt und gleichnamig neu eintippt', async () => {
+    const { base, gm } = await setupGroup(makeApp());
+    const [kampf, wissen] = (await gm.put(`${base}/skills`, { skills: [{ name: 'Kämpfen' }, { name: 'Wissen' }] })).body;
+    const res = await gm.put(`${base}/skills`, { skills: [{ id: wissen.id, name: 'Wissen' }, { name: 'KÄMPFEN' }] });
+    expect(res.body).toEqual([wissen, { id: kampf.id, name: 'KÄMPFEN' }]);
+  });
+
+  it('melden 409, wenn sich die Liste seit dem Laden geändert hat', async () => {
+    const app = makeApp();
+    const { base, gm } = await setupGroup(app);
+    const admin = await loginAs(app, ADMIN_EMAIL);
+    const presetId = (await admin.post('/api/presets', { name: 'Test', skills: ['Reden'] })).body.id;
+    const geladen = (await gm.put(`${base}/skills`, { skills: [{ name: 'A' }] })).body;
+    // Ein zweiter Spielleiter fügt "Magie" hinzu ...
+    const neu = (await gm.put(`${base}/skills`, { skills: [...geladen, { name: 'Magie' }], expected: geladen })).body;
+    // ... der erste speichert mit seinem alten Stand: abgelehnt statt "Magie" still zu löschen
+    for (const res of [
+      await gm.put(`${base}/skills`, { skills: [{ ...geladen[0], name: 'B' }], expected: geladen }),
+      await gm.post(`${base}/skills/from-preset`, { presetId, expected: geladen }),
+    ]) {
+      expect(res.status).toBe(409);
+    }
+    expect((await gm.get(`${base}/skills`)).body).toEqual(neu);
+    expect((await gm.post(`${base}/skills/from-preset`, { presetId, expected: neu })).status).toBe(200);
+  });
+
   it('lehnt ungültige Listen ab und lässt die alte unverändert', async () => {
     const app = makeApp();
     const { base, gm } = await setupGroup(app);

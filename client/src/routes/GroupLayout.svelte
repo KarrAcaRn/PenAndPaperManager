@@ -2,6 +2,7 @@
   import { SECTION_LABELS, accessibleSections, canAccessSection } from '@pnp/shared';
   import { href, type Route } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
+  import { clearNotice, notice } from '../lib/notice.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
   import FolderTree, { type TreeSelection } from '../lib/FolderTree.svelte';
   import FolderView from './FolderView.svelte';
@@ -55,33 +56,47 @@
         </div>
       {/if}
 
-      {#if route.name === 'manage'}
-        <GmManage {group} />
-      {:else if route.name === 'skills'}
-        <GmSkills {group} />
-      {:else}
-        <div class="split">
-          <aside class="card no-print">
-            {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
-          </aside>
-          <section class="pane">{@render content(route)}</section>
-        </div>
+      {#if notice.text}
+        <p class="row card notice no-print" role="status">
+          {notice.text}
+          <span class="spacer"></span>
+          <button class="link" onclick={clearNotice}>Ausblenden</button>
+        </p>
       {/if}
+
+      <!-- Seiten laden ihre Daten einmal beim Erzeugen: bei Gruppenwechsel per Link alles neu aufbauen -->
+      {#key group.id}
+        {#if route.name === 'manage'}
+          <GmManage {group} />
+        {:else if route.name === 'skills'}
+          <GmSkills {group} />
+        {:else}
+          <div class="split">
+            <aside class="card no-print">
+              {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
+            </aside>
+            <section class="pane">{@render content(route)}</section>
+          </div>
+        {/if}
+      {/key}
     {/if}
   </main>
 {/if}
 
 {#snippet content(r: ContentRoute)}
+  <!-- Jede Route (Ordner, Artikel, Bearbeiten …) bekommt eine frische Komponente -->
   {#if group}
-    {#if r.name === 'folder'}
-      {#key `${r.section}/${r.path}`}<FolderView {group} section={r.section} path={r.path} />{/key}
-    {:else if r.name === 'new'}
-      {#key `${r.section}/${r.path}`}<ArticleEdit {group} section={r.section} path={r.path} />{/key}
-    {:else if r.edit}
-      {#key r.id}<ArticleEdit {group} section={r.section} id={r.id} />{/key}
-    {:else}
-      {#key r.id}<ArticleView {group} id={r.id} />{/key}
-    {/if}
+    {#key JSON.stringify(r)}
+      {#if r.name === 'folder'}
+        <FolderView {group} section={r.section} path={r.path} />
+      {:else if r.name === 'new'}
+        <ArticleEdit {group} section={r.section} path={r.path} />
+      {:else if r.edit}
+        <ArticleEdit {group} section={r.section} id={r.id} />
+      {:else}
+        <ArticleView {group} id={r.id} />
+      {/if}
+    {/key}
   {/if}
 {/snippet}
 
@@ -93,6 +108,7 @@
   nav a, .tabs a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--radius); color: var(--text); }
   nav a.active, .tabs a.active { background: var(--accent); color: var(--accent-text); }
   .tabs { margin-bottom: 1rem; }
+  .notice { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border-color: var(--accent); }
   .split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
   aside { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; padding: 0.6rem; }
   @media (max-width: 45rem) {

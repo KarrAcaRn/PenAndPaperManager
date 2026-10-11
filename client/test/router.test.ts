@@ -14,6 +14,11 @@ describe('parseHash', () => {
   });
 
   it('erkennt Ordner', () => {
+    // Lesezeichen aus der Zeit vor "Notizen"
+    expect(parseHash('#/g/3/npcs')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: 'NPCs' });
+    expect(parseHash('#/g/3/locations/f/Stadt')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: 'Orte/Stadt' });
+    expect(parseHash('#/g/3/npcs/new')).toEqual({ name: 'new', gid: 3, section: 'notes', path: 'NPCs' });
+    expect(parseHash('#/g/3/npcs/a/5/edit')).toEqual({ name: 'article', gid: 3, section: 'notes', id: 5, edit: true });
     expect(parseHash('#/g/3/notes')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: '' });
     expect(parseHash('#/g/3/notes/f/bar/foo')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: 'bar/foo' });
     expect(parseHash('#/g/3')).toEqual({ name: 'folder', gid: 3, section: 'characters', path: '' });

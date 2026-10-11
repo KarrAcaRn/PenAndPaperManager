@@ -15,6 +15,7 @@ import GmManage from '../src/routes/GmManage.svelte';
 import FolderTree from '../src/lib/FolderTree.svelte';
 import MarkdownEditorHarness from './MarkdownEditorHarness.svelte';
 import { notifyContentChanged } from '../src/lib/content.svelte.ts';
+import { showNotice } from '../src/lib/notice.svelte.ts';
 import {
   GM,
   PLAYER,
@@ -205,6 +206,20 @@ describe('GroupLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Ordnerbaum' })).toBeNull();
   });
 
+  it('baut die Seite beim Gruppenwechsel per Link neu auf und zeigt Hinweise bis zum Ausblenden', async () => {
+    const otherGroup = { ...gmGroup, id: 8, name: 'Andere Runde' };
+    signIn(GM, [gmGroup, otherGroup]);
+    showNotice('Etwas ist schiefgegangen');
+    const view = renderLayout('#/g/7/notes');
+    await waitFor(() => expect(api.articles).toHaveBeenCalledWith(7, 'notes', ''));
+    await view.rerender({ route: parseHash('#/g/8/notes') as never });
+    await waitFor(() => expect(api.articles).toHaveBeenCalledWith(8, 'notes', ''));
+    expect(api.folders).toHaveBeenCalledWith(8, 'notes');
+    expect(screen.getByRole('status').textContent).toContain('Etwas ist schiefgegangen');
+    await user.click(screen.getByRole('button', { name: 'Ausblenden' }));
+    expect(screen.queryByText('Etwas ist schiefgegangen')).toBeNull();
+  });
+
   it('zeigt den gewählten Artikel rechts neben dem Baum, Bearbeiten oben rechts', async () => {
     signIn(GM, [gmGroup]);
     api.folders.mockResolvedValue([folder('NPCs')]);
@@ -287,6 +302,18 @@ describe('MarkdownEditor', () => {
     expect(props.value).toBe('- Hallo Welt');
     await user.click(screen.getByRole('button', { name: 'Rückgängig' }));
     expect(props.value).not.toMatch(/^- /); // je nach Tempo werden beide Schritte zusammen rückgängig gemacht
+  });
+
+  it('startet Texte mit HTML im Markdown-Modus und warnt vor dem Wechsel', async () => {
+    const props = setup('Text mit <u>HTML</u>');
+    const source = screen.getByLabelText('Text (Markdown-Quelltext)') as HTMLTextAreaElement;
+    expect(source.value).toBe('Text mit <u>HTML</u>');
+    expect(screen.getByText(/enthält HTML/)).toBeTruthy();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    await user.click(screen.getByRole('button', { name: 'Markdown' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText('Text (Markdown-Quelltext)')).toBeTruthy();
+    expect(props.value).toBe('Text mit <u>HTML</u>');
   });
 
   it('wechselt in den Markdown-Quelltext und übernimmt Änderungen beim Zurückwechseln', async () => {

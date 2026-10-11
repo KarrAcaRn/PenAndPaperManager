@@ -1,4 +1,4 @@
-import { DEFAULT_SECTION, SECTIONS, type Section } from '@pnp/shared';
+import { DEFAULT_SECTION, SECTIONS, joinPath, type Section } from '@pnp/shared';
 
 export type Route =
   | { name: 'groups' }
@@ -11,6 +11,9 @@ export type Route =
 
 const isSection = (s: string | undefined): s is Section => SECTIONS.includes(s as Section);
 
+/** Frühere Bereiche, die heute Ordner in "Notizen" sind (Migration 002) - alte Lesezeichen führen dorthin */
+const LEGACY_SECTIONS: Record<string, string> = { npcs: 'NPCs', locations: 'Orte' };
+
 /** Kaputte %-Sequenzen (z.B. von Hand getippt) bleiben roh stehen, statt die Seite abstürzen zu lassen. */
 function safeDecode(part: string): string {
   try {
@@ -22,7 +25,10 @@ function safeDecode(part: string): string {
 
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(safeDecode);
-  const [g, gidRaw, section, kind, ...rest] = parts;
+  const [g, gidRaw, rawSection, kind, ...rest] = parts;
+  const legacyFolder = rawSection === undefined ? undefined : LEGACY_SECTIONS[rawSection];
+  const section = legacyFolder === undefined ? rawSection : 'notes';
+  const subPath = (path: string) => (legacyFolder === undefined || path === '' ? (legacyFolder ?? path) : joinPath(legacyFolder, path));
   if (g === 'admin') return { name: 'admin' };
   const gid = Number(gidRaw);
   if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };
@@ -31,8 +37,8 @@ export function parseHash(hash: string): Route {
   if (kind === 'a' && Number.isInteger(Number(rest[0]))) {
     return { name: 'article', gid, section, id: Number(rest[0]), edit: rest[1] === 'edit' };
   }
-  if (kind === 'new') return { name: 'new', gid, section, path: rest.join('/') };
-  return { name: 'folder', gid, section, path: kind === 'f' ? rest.join('/') : '' };
+  if (kind === 'new') return { name: 'new', gid, section, path: subPath(rest.join('/')) };
+  return { name: 'folder', gid, section, path: subPath(kind === 'f' ? rest.join('/') : '') };
 }
 
 const encodePath = (path: string) => path.split('/').filter(Boolean).map(encodeURIComponent).join('/');

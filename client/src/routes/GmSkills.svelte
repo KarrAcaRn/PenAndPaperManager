@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Group, SkillInput, SkillPreset } from '@pnp/shared';
+  import type { Group, Skill, SkillInput, SkillPreset } from '@pnp/shared';
   import { api } from '../lib/api.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import SkillListEditor from '../lib/SkillListEditor.svelte';
@@ -7,6 +7,8 @@
   let { group }: { group: Group } = $props();
 
   let skills = $state<SkillInput[]>([]);
+  /** Zuletzt geladener/gespeicherter Stand - der Server lehnt ab, wenn ihn inzwischen jemand geändert hat */
+  let baseline: Skill[] = [];
   let presets = $state<SkillPreset[]>([]);
   let presetId = $state<number | null>(null);
   let dirty = $state(false);
@@ -15,22 +17,30 @@
 
   task.run(async () => {
     [skills, presets] = await Promise.all([api.skills(group.id), api.presets()]);
+    baseline = $state.snapshot(skills) as Skill[];
     presetId = presets[0]?.id ?? null;
     loaded = true;
   });
 
   const save = () =>
     task.run(async () => {
-      skills = await api.saveSkills(group.id, skills);
+      const saved = await api.saveSkills(group.id, $state.snapshot(skills), baseline);
+      skills = saved;
+      baseline = saved;
       dirty = false;
     });
 
   function applyPreset() {
     const preset = presets.find((p) => p.id === presetId);
     if (!preset) return;
-    if (skills.length > 0 && !confirm(`Die aktuelle Liste durch „${preset.name}“ ersetzen? Werte gleichnamiger Fertigkeiten bleiben erhalten.`)) return;
+    const question = dirty
+      ? `Ungespeicherte Änderungen verwerfen und die Liste durch „${preset.name}“ ersetzen?`
+      : `Die aktuelle Liste durch „${preset.name}“ ersetzen? Werte gleichnamiger Fertigkeiten bleiben erhalten.`;
+    if (skills.length > 0 && !confirm(question)) return;
     task.run(async () => {
-      skills = await api.applyPreset(group.id, preset.id);
+      const applied = await api.applyPreset(group.id, preset.id, baseline);
+      skills = applied;
+      baseline = applied;
       dirty = false;
     });
   }

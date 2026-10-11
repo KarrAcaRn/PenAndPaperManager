@@ -2,6 +2,7 @@
   import { normalizeSheet, type Article, type Group, type SheetData, type Skill } from '@pnp/shared';
   import { ApiFailure, api } from './api.ts';
   import { createTask } from './task.svelte.ts';
+  import { showNotice } from './notice.svelte.ts';
   import CharacterSheet from './CharacterSheet.svelte';
 
   // Lädt und speichert den FATE-Bogen eines Artikels; mit Bearbeitungsrecht wird automatisch gespeichert.
@@ -24,6 +25,8 @@
   /** Es gibt Eingaben, die der Server noch nicht hat (auch nach einem fehlgeschlagenen Speichern) */
   let dirty = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** Komponente ist weg (Seitenwechsel) - Fehler beim Nachspeichern sähe sonst niemand */
+  let destroyed = false;
 
   const load = () =>
     loading.run(async () => {
@@ -54,6 +57,7 @@
       } catch (err) {
         conflict = err instanceof ApiFailure && err.status === 409;
         dirty = true;
+        if (destroyed) showNotice(`FATE-Bogen „${article.title}“: letzte Eingaben nicht gespeichert (${(err as Error).message})`);
         throw err;
       }
     });
@@ -70,8 +74,16 @@
   // Beim Verlassen nichts verlieren: Ungespeichertes sofort speichern - auch nach einem fehlgeschlagenen
   // Versuch. Läuft gerade ein Speichern, reicht es den Rest danach selbst nach.
   $effect(() => () => {
+    destroyed = true;
     if (dirty) save();
   });
+
+  /** Tab schließen/neu laden: sofort speichern und, solange noch etwas offen ist, nachfragen */
+  function beforeUnload(event: BeforeUnloadEvent) {
+    if (!dirty && !saving.busy) return;
+    if (dirty) save();
+    event.preventDefault();
+  }
 
   function remove() {
     if (!confirm('Den FATE-Bogen dieses Artikels löschen? Alle Eintragungen gehen verloren.')) return;
@@ -88,6 +100,8 @@
     });
   }
 </script>
+
+<svelte:window onbeforeunload={beforeUnload} />
 
 {#if loading.error}<p class="error">{loading.error}</p>{/if}
 
