@@ -14,7 +14,6 @@
   } from '@pnp/shared';
   import { api } from '../lib/api.ts';
   import { notifyContentChanged } from '../lib/content.svelte.ts';
-  import { renderMarkdown } from '../lib/markdown.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
@@ -27,7 +26,6 @@
   let isAuthor = $state(true);
   let ready = $state(false);
   let folders = $state<Folder[]>([]);
-  let preview = $state(false);
   const loading = createTask();
   const saving = createTask();
 
@@ -57,6 +55,9 @@
       stale = true;
     };
   });
+
+  // Der Editor (TipTap/ProseMirror) ist groß und wird nur beim Bearbeiten gebraucht, daher eigenes Bundle
+  const editorModule = import('../lib/MarkdownEditor.svelte');
 
   const cancelHref = $derived(id === undefined ? href.folder(group.id, section, path) : href.article(group.id, section, id));
 
@@ -110,17 +111,13 @@
       </label>
     </div>
 
-    <div class="row">
-      <strong>Text (Markdown)</strong>
-      <span class="spacer"></span>
-      <button type="button" onclick={() => (preview = !preview)}>{preview ? 'Bearbeiten' : 'Vorschau'}</button>
-    </div>
-    {#if preview}
-      <!-- renderMarkdown liefert durch DOMPurify bereinigtes HTML -->
-      <div class="card markdown preview">{@html renderMarkdown(form.bodyMd)}</div>
-    {:else}
-      <textarea bind:value={form.bodyMd} maxlength={MAX_BODY_LENGTH} aria-label="Text (Markdown)"></textarea>
-    {/if}
+    {#await editorModule}
+      <p class="muted">Lade Editor …</p>
+    {:then { default: MarkdownEditor }}
+      <MarkdownEditor bind:value={form.bodyMd} label="Text" maxlength={MAX_BODY_LENGTH} placeholder="Schreib los …" />
+    {:catch}
+      <p class="error">Editor konnte nicht geladen werden. Bitte Seite neu laden.</p>
+    {/await}
 
     {#if saving.error}<p class="error">{saving.error}</p>{/if}
     <div class="row actions">
@@ -132,7 +129,5 @@
 
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 1rem; }
-  .row { margin-bottom: 0.5rem; }
-  .preview { min-height: 20rem; }
   .actions { margin-top: 1rem; }
 </style>

@@ -10,6 +10,12 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('## Unter\n\n- a\n- b')).toMatch(/<h2>Unter<\/h2>[\s\S]*<li>a<\/li>/);
   });
 
+  it('rendert, was der Editor erzeugen kann: Checklisten, Tabellen, Bilder', () => {
+    expect(renderMarkdown('- [x] erledigt')).toMatch(/<input[^>]*checked[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked/);
+    expect(renderMarkdown('| a |\n| --- |\n| 1 |')).toContain('<td>1</td>');
+    expect(renderMarkdown('![Karte](https://x.de/k.png)')).toContain('<img src="https://x.de/k.png" alt="Karte">');
+  });
+
   it('entfernt gefährliches HTML', () => {
     expect(renderMarkdown('<script>alert(1)</script>')).not.toContain('<script');
     expect(renderMarkdown('<img src=x onerror="alert(1)">')).not.toContain('onerror');

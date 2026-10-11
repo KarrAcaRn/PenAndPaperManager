@@ -17,7 +17,8 @@ npm-Workspaces, alles TypeScript (ESM, Imports mit `.ts`-Endung):
   - `schemas.ts` – JSON-Schema-Bausteine für die Fastify-Validierung.
   - `migrations/NNN_name.sql` – werden beim Start automatisch in Dateinamen-Reihenfolge angewendet.
 - `client/` – Svelte 5 (Runes, `*.svelte.ts` für reaktiven Zustand), Vite, eigener Router (`lib/router.svelte.ts`),
-  API-Zugriff nur über `lib/api.ts`. Markdown via `marked` + `DOMPurify` (`lib/markdown.ts`).
+  API-Zugriff nur über `lib/api.ts`. Markdown-Anzeige via `marked` + `DOMPurify` (`lib/markdown.ts`), Bearbeiten im WYSIWYG-Editor TipTap
+  (`lib/MarkdownEditor.svelte`, speichert Markdown, wird per dynamischem Import nachgeladen).
 
 ## Befehle
 

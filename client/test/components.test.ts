@@ -13,6 +13,7 @@ import ArticleView from '../src/routes/ArticleView.svelte';
 import ArticleEdit from '../src/routes/ArticleEdit.svelte';
 import GmManage from '../src/routes/GmManage.svelte';
 import FolderTree from '../src/lib/FolderTree.svelte';
+import MarkdownEditorHarness from './MarkdownEditorHarness.svelte';
 import { notifyContentChanged } from '../src/lib/content.svelte.ts';
 import {
   GM,
@@ -27,6 +28,13 @@ import {
   signIn,
   summary,
 } from './helpers.ts';
+
+// jsdom kennt kein Layout; ProseMirror fragt beim Scrollen zur Auswahl nach Rechtecken
+const emptyRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
+for (const proto of [Element.prototype, Range.prototype] as { getClientRects?: () => DOMRectList }[]) {
+  proto.getClientRects ??= emptyRects;
+}
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const renderLayout = (hash: string) => render(GroupLayout, { route: parseHash(hash) as never });
 
@@ -256,6 +264,58 @@ describe('FolderTree', () => {
   });
 });
 
+describe('MarkdownEditor', () => {
+  const setup = (value: string) => {
+    render(MarkdownEditorHarness, { value });
+    return {
+      get value() {
+        return screen.getByTestId('value').textContent;
+      },
+    };
+  };
+  const editor = () => screen.getByRole('textbox', { name: 'Text' });
+
+  it('formatiert per Werkzeugleiste und liefert Markdown zurück', async () => {
+    const props = setup('Hallo Welt');
+    await waitFor(() => expect(editor().textContent).toBe('Hallo Welt'));
+    await user.click(screen.getByRole('button', { name: 'Überschrift 2' }));
+    expect(props.value).toBe('## Hallo Welt');
+    expect(screen.getByRole('button', { name: 'Überschrift 2' }).getAttribute('aria-pressed')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Aufzählung' }));
+    expect(props.value).toBe('- Hallo Welt');
+    await user.click(screen.getByRole('button', { name: 'Rückgängig' }));
+    expect(props.value).not.toMatch(/^- /); // je nach Tempo werden beide Schritte zusammen rückgängig gemacht
+  });
+
+  it('wechselt in den Markdown-Quelltext und übernimmt Änderungen beim Zurückwechseln', async () => {
+    const props = setup('**fett**');
+    await waitFor(() => expect(within(editor()).getByText('fett').tagName).toBe('STRONG'));
+    await user.click(screen.getByRole('button', { name: 'Markdown' }));
+    const source = screen.getByLabelText('Text (Markdown-Quelltext)') as HTMLTextAreaElement;
+    expect(source.value).toBe('**fett**');
+    expect((screen.getByRole('button', { name: 'Fett' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.clear(source);
+    await user.type(source, '# Neu');
+    await user.click(screen.getByRole('button', { name: 'Markdown' }));
+    expect(within(editor()).getByRole('heading', { name: 'Neu' })).toBeTruthy();
+    expect(props.value).toBe('# Neu');
+  });
+
+  it('fügt Links und Tabellen ein und zeigt Tabellenwerkzeuge nur in Tabellen', async () => {
+    const props = setup('Karte');
+    await waitFor(() => expect(editor().textContent).toBe('Karte'));
+    vi.spyOn(window, 'prompt').mockReturnValueOnce(null).mockReturnValueOnce('https://example.org');
+    await user.click(screen.getByRole('button', { name: 'Link' }));
+    expect(props.value).toBe('Karte');
+    expect(screen.queryByRole('toolbar', { name: 'Tabelle' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Tabelle' }));
+    expect(props.value).toContain('| --- | --- | --- |');
+    expect(screen.getByRole('toolbar', { name: 'Tabelle' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Tabelle löschen' }));
+    expect(props.value).not.toContain('|');
+  });
+});
+
 describe('FolderView', () => {
   const props = { group: gmGroup, section: 'notes' as const, path: 'bar' };
 
@@ -418,7 +478,8 @@ describe('ArticleEdit', () => {
     api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'notes' }));
     render(ArticleEdit, { group: playerGroup, section: 'notes', path: 'bar' });
     await user.type(await screen.findByLabelText('Titel'), 'Taverne');
-    await user.type(screen.getByLabelText('Text (Markdown)'), 'Bier');
+    await user.click(screen.getByRole('button', { name: 'Markdown' }));
+    await user.type(screen.getByLabelText('Text (Markdown-Quelltext)'), 'Bier');
     await user.selectOptions(screen.getByLabelText('Sichtbarkeit'), 'public');
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/5'));
@@ -494,15 +555,19 @@ describe('ArticleEdit', () => {
     expect(container.querySelector('datalist option')?.getAttribute('value')).toBe('neu');
   });
 
-  it('schaltet die Vorschau um und lädt Ordner beim Bereichswechsel neu', async () => {
+  it('zeigt den Text formatiert im Editor und lädt Ordner beim Bereichswechsel neu', async () => {
     signIn(GM, [gmGroup]);
-    render(ArticleEdit, { group: gmGroup, section: 'notes' });
-    await user.type(await screen.findByLabelText('Text (Markdown)'), '# Vorschau');
-    await user.click(screen.getByRole('button', { name: 'Vorschau' }));
-    expect(screen.getByRole('heading', { name: 'Vorschau' })).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    api.article.mockResolvedValue(fullArticle({ authorId: GM.id, bodyMd: '# Hallo\n\nText **fett**' }));
+    api.updateArticle.mockResolvedValue(fullArticle());
+    render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+    const editor = await screen.findByRole('textbox', { name: 'Text' });
+    await waitFor(() => expect(within(editor).getByRole('heading', { name: 'Hallo' })).toBeTruthy());
+    expect(within(editor).getByText('fett').tagName).toBe('STRONG');
     await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
     await waitFor(() => expect(api.folders).toHaveBeenLastCalledWith(7, 'gm'));
+    // Unveränderter Text wird unverändert gespeichert
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(api.updateArticle).toHaveBeenCalledWith(7, 1, expect.objectContaining({ bodyMd: '# Hallo\n\nText **fett**' })));
   });
 
   it('bleibt benutzbar, wenn die Ordnerliste nicht lädt', async () => {

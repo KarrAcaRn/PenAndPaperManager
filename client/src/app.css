@@ -91,4 +91,8 @@ ul.list a.title { font-weight: 600; text-decoration: none; }
 .markdown pre { overflow-x: auto; padding: 0.75rem; background: var(--bg); border-radius: var(--radius); }
 .markdown blockquote { margin-left: 0; padding-left: 1rem; border-left: 3px solid var(--border); color: var(--muted); }
 .markdown table { border-collapse: collapse; }
+.markdown li > p { margin: 0.15rem 0; }
+/* Checklisten; marked legt die Checkbox bei "lockeren" Listen in ein <p> */
+.markdown li:has(> input[type='checkbox'], > p > input[type='checkbox']) { list-style: none; margin-left: -1.25rem; }
+.markdown li input[type='checkbox'] { width: auto; margin: 0 0.4rem 0 0; }
 .markdown th, .markdown td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; }
