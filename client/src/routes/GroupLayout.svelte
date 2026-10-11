@@ -30,8 +30,8 @@
     <a href={href.groups()}>Zur Gruppenauswahl</a>
   </main>
 {:else}
-  <header class="no-print">
-    <div class="row bar vine-frame" class:wide={withTree}>
+  <header class="no-print" class:wide={withTree}>
+    <div class="row bar vine-frame">
       <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
       <nav class="row">
         {#each accessibleSections(group.role) as section}
@@ -92,9 +92,10 @@
 {/snippet}
 
 <style>
-  header { padding: 1.25rem 1rem 0; }
-  .bar { max-width: 60rem; margin: 0 auto; background: var(--surface); border-radius: var(--radius); }
-  .bar.wide, main.wide { max-width: 90rem; }
+  /* Gleiche Breite, Zentrierung und Seitenabstände wie main, damit Navigation und Inhalt bündig stehen */
+  header { max-width: 60rem; margin: 0 auto; padding: 1.25rem 1rem 0; }
+  header.wide, main.wide { max-width: 90rem; }
+  .bar { background: var(--surface); border-radius: var(--radius); }
   /* Abstand, damit sich die Ranken von Navigation und Ordnerbaum nicht berühren */
   main { padding-top: 1.75rem; }
   .name { font-weight: 700; font-size: 1.1rem; text-decoration: none; margin-right: 1rem; }
