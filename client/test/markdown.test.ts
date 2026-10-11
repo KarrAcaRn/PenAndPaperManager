@@ -7,6 +7,7 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('**fett**')).toContain('<strong>fett</strong>');
     expect(renderMarkdown('a\nb')).toContain('<br>');
     expect(renderMarkdown('')).toBe('');
+    expect(renderMarkdown('## Unter\n\n- a\n- b')).toMatch(/<h2>Unter<\/h2>[\s\S]*<li>a<\/li>/);
   });
 
   it('entfernt gefährliches HTML', () => {

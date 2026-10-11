@@ -184,16 +184,15 @@ describe('GroupLayout', () => {
     expect(await screen.findByRole('heading', { name: 'Neuer Artikel' })).toBeTruthy();
   });
 
-  it('zeigt in Notizen und Spielleiter links den Ordnerbaum, in Charaktere nicht', async () => {
+  it('zeigt in allen Artikelbereichen links den Ordnerbaum, beim Verwalten nicht', async () => {
     signIn(GM, [gmGroup]);
-    const first = renderLayout('#/g/7/notes');
-    expect(await screen.findByRole('navigation', { name: 'Ordnerbaum' })).toBeTruthy();
-    first.unmount();
-    const gm = renderLayout('#/g/7/gm');
-    expect(await screen.findByRole('navigation', { name: 'Ordnerbaum' })).toBeTruthy();
-    gm.unmount();
-    renderLayout('#/g/7/characters');
-    await waitFor(() => expect(api.folders).toHaveBeenCalledWith(7, 'characters'));
+    for (const hash of ['#/g/7/characters', '#/g/7/notes', '#/g/7/gm']) {
+      const { unmount } = renderLayout(hash);
+      expect(await screen.findByRole('navigation', { name: 'Ordnerbaum' })).toBeTruthy();
+      unmount();
+    }
+    renderLayout('#/g/7/manage');
+    expect(await screen.findByText('Mitglieder')).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Ordnerbaum' })).toBeNull();
   });
 

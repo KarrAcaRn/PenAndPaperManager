@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SECTION_LABELS, accessibleSections, canAccessSection, type Section } from '@pnp/shared';
+  import { SECTION_LABELS, accessibleSections, canAccessSection } from '@pnp/shared';
   import { href, type Route } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
@@ -11,15 +11,13 @@
 
   type ContentRoute = Exclude<Route, { name: 'groups' } | { name: 'manage' }>;
 
-  /** Bereiche mit Ordnerbaum links und Inhalt rechts, um schnell zwischen Artikeln zu springen */
-  const TREE_SECTIONS: readonly Section[] = ['notes', 'gm'];
-
   let { route }: { route: Exclude<Route, { name: 'groups' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
   const activeSection = $derived(route.name === 'manage' ? 'gm' : route.section);
   const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
-  const withTree = $derived(route.name !== 'manage' && TREE_SECTIONS.includes(route.section));
+  /** Alle Artikelbereiche: Ordnerbaum links, Inhalt rechts, um schnell zwischen Artikeln zu springen */
+  const withTree = $derived(route.name !== 'manage');
   const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
 </script>
 
@@ -55,15 +53,13 @@
 
       {#if route.name === 'manage'}
         <GmManage {group} />
-      {:else if withTree}
+      {:else}
         <div class="split">
           <aside class="card">
             {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
           </aside>
           <section class="pane">{@render content(route)}</section>
         </div>
-      {:else}
-        {@render content(route)}
       {/if}
     {/if}
   </main>
