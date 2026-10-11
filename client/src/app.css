@@ -65,6 +65,20 @@ label { display: block; font-weight: 600; margin-bottom: 0.75rem; }
 label > input, label > select, label > textarea { margin-top: 0.25rem; font-weight: 400; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+
+/*
+ * Fantasy-Rahmen: dünne Ranken mit Blättern, die auf der Kante des Kastens entlanglaufen.
+ * border-image (9-Slice) statt Pseudo-Element, weil scrollende Kästen (Ordnerbaum) Pseudo-Elemente abschneiden.
+ * Die eigentliche Kastenlinie übernimmt der innere Schatten.
+ */
+.vine-frame {
+  --vine-width: 22px;
+  border: 1px solid transparent;
+  border-image: url('./assets/vine-frame.svg') 32 / var(--vine-width) / calc(var(--vine-width) / 2) round;
+  box-shadow: inset 0 0 0 1px var(--border);
+  /* Platz, damit die nach innen ragenden Blätter nicht unter dem Text liegen */
+  padding: calc(var(--vine-width) / 2 + 0.4rem);
+}
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .muted { color: var(--muted); font-size: 0.9em; }

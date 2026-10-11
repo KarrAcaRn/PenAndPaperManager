@@ -31,7 +31,7 @@
   </main>
 {:else}
   <header class="no-print">
-    <div class="row bar" class:wide={withTree}>
+    <div class="row bar vine-frame" class:wide={withTree}>
       <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
       <nav class="row">
         {#each accessibleSections(group.role) as section}
@@ -63,7 +63,7 @@
           <GmSkills {group} />
         {:else}
           <div class="split">
-            <aside class="card no-print">
+            <aside class="card vine-frame no-print">
               {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
             </aside>
             <section class="pane">{@render content(route)}</section>
@@ -92,15 +92,17 @@
 {/snippet}
 
 <style>
-  header { background: var(--surface); border-bottom: 1px solid var(--border); }
-  .bar { max-width: 60rem; margin: 0 auto; padding: 0.6rem 1rem; }
+  header { padding: 1.25rem 1rem 0; }
+  .bar { max-width: 60rem; margin: 0 auto; background: var(--surface); border-radius: var(--radius); }
   .bar.wide, main.wide { max-width: 90rem; }
+  /* Abstand, damit sich die Ranken von Navigation und Ordnerbaum nicht berühren */
+  main { padding-top: 1.75rem; }
   .name { font-weight: 700; font-size: 1.1rem; text-decoration: none; margin-right: 1rem; }
   nav a, .tabs a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--radius); color: var(--text); }
   nav a.active, .tabs a.active { background: var(--accent); color: var(--accent-text); }
   .tabs { margin-bottom: 1rem; }
   .split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-  aside { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; padding: 0.6rem; }
+  aside { position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow-y: auto; }
   @media (max-width: 45rem) {
     .split { grid-template-columns: minmax(0, 1fr); }
     aside { position: static; max-height: 40vh; }
