@@ -78,6 +78,17 @@ describe('App', () => {
     expect(await screen.findByRole('link', { name: 'Testrunde' })).toBeTruthy();
   });
 
+  it('zeigt Hinweise auf jeder Seite, bis man sie ausblendet', async () => {
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([gmGroup]);
+    showNotice('Etwas ist schiefgegangen');
+    render(App);
+    expect(await screen.findByText('Deine Gruppen')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('Etwas ist schiefgegangen');
+    await user.click(screen.getByRole('button', { name: 'Ausblenden' }));
+    expect(screen.queryByText('Etwas ist schiefgegangen')).toBeNull();
+  });
+
   it('meldet einen nicht erreichbaren Server', async () => {
     api.me.mockRejectedValue(new Error('Failed to fetch'));
     render(App);
@@ -206,18 +217,14 @@ describe('GroupLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Ordnerbaum' })).toBeNull();
   });
 
-  it('baut die Seite beim Gruppenwechsel per Link neu auf und zeigt Hinweise bis zum Ausblenden', async () => {
+  it('baut die Seite beim Gruppenwechsel per Link neu auf', async () => {
     const otherGroup = { ...gmGroup, id: 8, name: 'Andere Runde' };
     signIn(GM, [gmGroup, otherGroup]);
-    showNotice('Etwas ist schiefgegangen');
     const view = renderLayout('#/g/7/notes');
     await waitFor(() => expect(api.articles).toHaveBeenCalledWith(7, 'notes', ''));
     await view.rerender({ route: parseHash('#/g/8/notes') as never });
     await waitFor(() => expect(api.articles).toHaveBeenCalledWith(8, 'notes', ''));
     expect(api.folders).toHaveBeenCalledWith(8, 'notes');
-    expect(screen.getByRole('status').textContent).toContain('Etwas ist schiefgegangen');
-    await user.click(screen.getByRole('button', { name: 'Ausblenden' }));
-    expect(screen.queryByText('Etwas ist schiefgegangen')).toBeNull();
   });
 
   it('zeigt den gewählten Artikel rechts neben dem Baum, Bearbeiten oben rechts', async () => {

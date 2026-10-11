@@ -153,6 +153,30 @@ describe('FATE-Bogen am Artikel', () => {
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
 
+  it('speichert nach einem Gruppenwechsel per Link noch in die alte Gruppe', async () => {
+    const other = { ...gmGroup, id: 8, name: 'Andere' };
+    signIn(GM, [gmGroup, other]);
+    api.folders.mockResolvedValue([]);
+    api.articles.mockResolvedValue([]);
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    let finishFirst!: (sheet: Sheet) => void;
+    api.saveSheet
+      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
+      .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
+    const name = await screen.findByLabelText('Name');
+    await user.type(name, 'A');
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1)); // läuft noch
+    await user.type(name, 'B');
+    await view.rerender({ route: parseHash('#/g/8/notes') as never });
+    finishFirst(sheetOf({ name: 'A' }));
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(2));
+    expect(api.saveSheet.mock.calls[1].slice(0, 2)).toEqual([7, 1]);
+    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ data: { name: 'AB' } });
+  });
+
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
@@ -432,6 +456,16 @@ describe('GmSkills', () => {
     await user.click(screen.getByRole('button', { name: 'Übernehmen' }));
     expect(confirm.mock.calls[0][0]).toMatch(/^Ungespeicherte Änderungen verwerfen/);
     expect(await screen.findByText('Die Fertigkeiten wurden inzwischen geändert')).toBeTruthy();
+  });
+
+  it('fragt auch nach, wenn die Liste ungespeichert geleert wurde', async () => {
+    api.skills.mockResolvedValue([SKILLS[0]]);
+    render(GmSkills, { group: gmGroup });
+    await user.click(await screen.findByRole('button', { name: /entfernen/i }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    await user.click(screen.getByRole('button', { name: 'Übernehmen' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(api.applyPreset).not.toHaveBeenCalled();
   });
 
   it('fragt bei leerer Liste nicht nach und kommt ohne Varianten zurecht', async () => {

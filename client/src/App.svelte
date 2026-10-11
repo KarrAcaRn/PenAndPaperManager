@@ -6,6 +6,7 @@
   import GroupSelect from './routes/GroupSelect.svelte';
   import GroupLayout from './routes/GroupLayout.svelte';
   import Admin from './routes/Admin.svelte';
+  import NoticeBar from './lib/NoticeBar.svelte';
 
   const loading = createTask();
   loading.run(loadSession);
@@ -17,10 +18,14 @@
   <main><p class="muted">Lade …</p></main>
 {:else if !session.user}
   <Login />
-{:else if router.route.name === 'groups'}
-  <GroupSelect />
-{:else if router.route.name === 'admin'}
-  <Admin />
 {:else}
-  <GroupLayout route={router.route} />
+  <!-- Hinweise überleben Seitenwechsel, daher hier statt in den einzelnen Seiten -->
+  <NoticeBar />
+  {#if router.route.name === 'groups'}
+    <GroupSelect />
+  {:else if router.route.name === 'admin'}
+    <Admin />
+  {:else}
+    <GroupLayout route={router.route} />
+  {/if}
 {/if}

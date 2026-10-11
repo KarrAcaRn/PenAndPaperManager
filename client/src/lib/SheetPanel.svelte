@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { normalizeSheet, type Article, type Group, type SheetData, type Skill } from '@pnp/shared';
   import { ApiFailure, api } from './api.ts';
   import { createTask } from './task.svelte.ts';
@@ -9,6 +10,10 @@
   let { group, article, onremoved }: { group: Group; article: Article; onremoved: () => void } = $props();
 
   const SAVE_DELAY_MS = 400;
+
+  // Beim Erzeugen festhalten: ein Nachspeichern nach dem Abbau (z.B. Gruppenwechsel per Link) sähe sonst
+  // schon die Props der nächsten Seite und ginge an die falsche Gruppe bzw. den falschen Artikel.
+  const { gid, articleId, title } = untrack(() => ({ gid: group.id, articleId: article.id, title: article.title }));
 
   let data = $state<SheetData | null>(null);
   let skills = $state<Skill[]>([]);
@@ -30,7 +35,7 @@
 
   const load = () =>
     loading.run(async () => {
-      const [sheet, groupSkills] = await Promise.all([api.sheet(group.id, article.id), api.skills(group.id)]);
+      const [sheet, groupSkills] = await Promise.all([api.sheet(gid, articleId), api.skills(gid)]);
       data = normalizeSheet(sheet.data);
       version = sheet.version;
       skills = groupSkills;
@@ -52,12 +57,12 @@
     dirty = false;
     const ok = await saving.run(async () => {
       try {
-        version = (await api.saveSheet(group.id, article.id, { data: $state.snapshot(data!), version })).version;
+        version = (await api.saveSheet(gid, articleId, { data: $state.snapshot(data!), version })).version;
         savedAt = new Date().toLocaleTimeString('de-DE');
       } catch (err) {
         conflict = err instanceof ApiFailure && err.status === 409;
         dirty = true;
-        if (destroyed) showNotice(`FATE-Bogen „${article.title}“: letzte Eingaben nicht gespeichert (${(err as Error).message})`);
+        if (destroyed) showNotice(`FATE-Bogen „${title}“: letzte Eingaben nicht gespeichert (${(err as Error).message})`);
         throw err;
       }
     });
@@ -91,7 +96,7 @@
     removing = true;
     saving.run(async () => {
       try {
-        await api.deleteSheet(group.id, article.id);
+        await api.deleteSheet(gid, articleId);
       } catch (err) {
         removing = false;
         throw err;

@@ -36,6 +36,10 @@ describe('Fertigkeiten einer Gruppe', () => {
     const [kampf, wissen] = (await gm.put(`${base}/skills`, { skills: [{ name: 'Kämpfen' }, { name: 'Wissen' }] })).body;
     const res = await gm.put(`${base}/skills`, { skills: [{ id: wissen.id, name: 'Wissen' }, { name: 'KÄMPFEN' }] });
     expect(res.body).toEqual([wissen, { id: kampf.id, name: 'KÄMPFEN' }]);
+    // Wird ein anderer Eintrag in den alten Namen umbenannt, behält er seine ID und der neue bekommt eine neue
+    const swap = await gm.put(`${base}/skills`, { skills: [{ id: wissen.id, name: 'Kämpfen' }, { name: 'Wissen' }] });
+    expect(swap.body[0]).toEqual({ id: wissen.id, name: 'Kämpfen' });
+    expect([wissen.id, kampf.id]).not.toContain(swap.body[1].id);
   });
 
   it('melden 409, wenn sich die Liste seit dem Laden geändert hat', async () => {
@@ -54,6 +58,8 @@ describe('Fertigkeiten einer Gruppe', () => {
       expect(res.status).toBe(409);
     }
     expect((await gm.get(`${base}/skills`)).body).toEqual(neu);
+    // Auch eine andere Reihenfolge ist ein anderer Stand
+    expect((await gm.put(`${base}/skills`, { skills: neu, expected: [...neu].reverse() })).status).toBe(409);
     expect((await gm.post(`${base}/skills/from-preset`, { presetId, expected: neu })).status).toBe(200);
   });
 

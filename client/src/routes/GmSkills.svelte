@@ -36,7 +36,7 @@
     const question = dirty
       ? `Ungespeicherte Änderungen verwerfen und die Liste durch „${preset.name}“ ersetzen?`
       : `Die aktuelle Liste durch „${preset.name}“ ersetzen? Werte gleichnamiger Fertigkeiten bleiben erhalten.`;
-    if (skills.length > 0 && !confirm(question)) return;
+    if ((dirty || skills.length > 0) && !confirm(question)) return;
     task.run(async () => {
       const applied = await api.applyPreset(group.id, preset.id, baseline);
       skills = applied;

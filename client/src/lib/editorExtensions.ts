@@ -6,20 +6,35 @@ import { TableKit } from '@tiptap/extension-table';
 import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
-import { marked, type Token } from 'marked';
+import { marked } from 'marked';
 
 /**
  * Zeichen, die am Zeilenanfang einen Block beginnen würden (Überschrift, Liste, Zitat, Trennlinie,
- * Setext-Unterstreichung, Codezaun). TipTap escapt sie beim Speichern nicht – aus dem Absatz
- * "2025. war gut" würde sonst eine nummerierte Liste.
+ * Setext-Unterstreichung "==="/"--", Tabellen-Trennzeile, Codezaun). TipTap escapt sie beim Speichern
+ * nicht – aus dem Absatz "2025. war gut" würde sonst eine nummerierte Liste.
  */
-const BLOCK_START = /^( {0,3})(?:(#{1,6}|[-+*])(?=[ \t]|$)|(\d{1,9})([.)])(?=[ \t]|$)|>|(?:[-*_][ \t]*){3,}$|=+[ \t]*$|`{3,}|~{3,})/;
+const BLOCK_START = new RegExp(
+  '^( {0,3})(?:' +
+    [
+      '(#{1,6}|[-+*])(?=[ \\t]|$)', // Überschrift, Aufzählung
+      '(\\d{1,9})([.)])(?=[ \\t]|$)', // nummerierte Liste
+      '>', // Zitat
+      '(?:[-*_][ \\t]*){3,}$', // Trennlinie
+      '(?:=+|-+)[ \\t]*$', // Setext-Unterstreichung
+      '\\|?[ \\t]*:?-+:?[ \\t]*\\|[-:| \\t]*$', // Tabellen-Trennzeile "--- | ---"
+      '`{3,}|~{3,}', // Codezaun
+    ].join('|') +
+    ')',
+);
+/** Ab 4 Leerzeichen oder Tab am Absatzanfang würde ein eingerückter Codeblock daraus */
+const CODE_INDENT = /^(?: {4}|\t)/;
 
 /** Escapt Blockzeichen am Anfang jeder Zeile eines Absatzes (auch nach Zeilenumbrüchen innerhalb). */
 export function escapeBlockStarts(markdown: string): string {
   return markdown
     .split('\n')
-    .map((line) => {
+    .map((line, index) => {
+      if (index === 0 && CODE_INDENT.test(line)) return (line[0] === '\t' ? '&#9;' : '&#32;') + line.slice(1);
       const match = BLOCK_START.exec(line);
       if (!match) return line;
       const [whole, indent, , digits, delimiter] = match;
@@ -64,12 +79,10 @@ export function editorExtensions(placeholder = ''): Extensions {
  * es bei der ersten Änderung als Text speichern bzw. verwerfen.
  */
 export function containsHtml(markdown: string): boolean {
-  const hasHtml = (tokens: Token[] | undefined): boolean =>
-    (tokens ?? []).some(
-      (t) =>
-        t.type === 'html' ||
-        hasHtml('tokens' in t ? t.tokens : undefined) ||
-        ('items' in t && Array.isArray(t.items) && hasHtml(t.items as Token[])),
-    );
-  return hasHtml(marked.lexer(markdown, { gfm: true }));
+  let found = false;
+  // walkTokens besucht auch Listeneinträge und Tabellenzellen
+  marked.walkTokens(marked.lexer(markdown, { gfm: true }), (token) => {
+    if (token.type === 'html') found = true;
+  });
+  return found;
 }
