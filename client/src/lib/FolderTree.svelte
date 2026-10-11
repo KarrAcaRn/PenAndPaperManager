@@ -127,7 +127,7 @@
           <a
             href={href.article(group.id, section, article.id)}
             aria-current={article.id === currentArticle ? 'page' : undefined}
-            ><span aria-hidden="true">📄</span> {article.title}</a
+            ><span aria-hidden="true" title={article.hasSheet ? 'mit FATE-Bogen' : undefined}>{article.hasSheet ? '🎭' : '📄'}</span> {article.title}</a
           >
         </div>
       </li>

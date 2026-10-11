@@ -229,15 +229,16 @@ describe('FolderTree', () => {
       summary({ id: 2, title: 'Zwerg', path: 'NPCs' }),
       summary({ id: 3, title: 'Graf', path: 'NPCs/Adel' }),
       summary({ id: 4, title: 'Notiz', path: '' }),
+      summary({ id: 5, title: 'Held', path: '', hasSheet: true }),
     ]);
     render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
     await within(tree()).findByRole('link', { name: /NPCs/ });
     const names = () => within(tree()).getAllByRole('link').map((a) => a.textContent!.trim());
-    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Orte', '📄 Notiz']);
+    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Orte', '🎭 Held', '📄 Notiz']);
     expect(within(tree()).getAllByRole('link', { name: /NPCs/ })[0].getAttribute('href')).toBe('#/g/7/notes/f/NPCs');
 
     await user.click(screen.getByRole('button', { name: 'NPCs aufklappen' }));
-    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Adel', '📄 Zwerg', '📁 Orte', '📄 Notiz']);
+    expect(names()).toEqual(['Notizen', '📁 NPCs', '📁 Adel', '📄 Zwerg', '📁 Orte', '🎭 Held', '📄 Notiz']);
     expect(screen.queryByRole('button', { name: /Orte/ })).toBeNull(); // leerer Ordner ohne Pfeil
     await user.click(screen.getByRole('button', { name: 'NPCs zuklappen' }));
     expect(names()).not.toContain('📁 Adel');
