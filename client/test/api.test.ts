@@ -26,21 +26,21 @@ describe('api', () => {
 
   it('kodiert Query-Parameter und lässt fehlende weg', async () => {
     const fetch = mockFetch(200, []);
-    await api.articles(1, 'npcs');
-    await api.articles(1, 'npcs', '');
-    await api.articles(1, 'npcs', 'a b/ö&x');
-    await api.deleteFolder(1, 'npcs', 'a/b');
+    await api.articles(1, 'notes');
+    await api.articles(1, 'notes', '');
+    await api.articles(1, 'notes', 'a b/ö&x');
+    await api.deleteFolder(1, 'notes', 'a/b');
     expect(fetch.mock.calls.map((c) => c[0])).toEqual([
-      '/api/groups/1/articles?section=npcs',
-      '/api/groups/1/articles?section=npcs&path=',
-      '/api/groups/1/articles?section=npcs&path=a+b%2F%C3%B6%26x',
-      '/api/groups/1/folders?section=npcs&path=a%2Fb',
+      '/api/groups/1/articles?section=notes',
+      '/api/groups/1/articles?section=notes&path=',
+      '/api/groups/1/articles?section=notes&path=a+b%2F%C3%B6%26x',
+      '/api/groups/1/folders?section=notes&path=a%2Fb',
     ]);
   });
 
   it('wirft ApiFailure mit der Server-Meldung', async () => {
     mockFetch(409, { error: 'Ordner ist nicht leer' });
-    const err = await api.deleteFolder(1, 'npcs', 'a').catch((e) => e);
+    const err = await api.deleteFolder(1, 'notes', 'a').catch((e) => e);
     expect(err).toBeInstanceOf(ApiFailure);
     expect(err).toMatchObject({ status: 409, message: 'Ordner ist nicht leer' });
   });
@@ -69,7 +69,7 @@ describe('api', () => {
 
   it('ruft alle Endpunkte mit der richtigen Methode auf', async () => {
     const fetch = mockFetch(200, {});
-    const input = { section: 'npcs', path: '', title: 't', bodyMd: '', visibility: 'public' } as const;
+    const input = { section: 'notes', path: '', title: 't', bodyMd: '', visibility: 'public' } as const;
     await api.me();
     await api.logout();
     await api.createGroup('g');
@@ -81,9 +81,9 @@ describe('api', () => {
     await api.createArticle(1, input);
     await api.updateArticle(1, 3, input);
     await api.deleteArticle(1, 3);
-    await api.folders(1, 'npcs');
-    await api.createFolder(1, 'npcs', 'a');
-    await api.renameFolder(1, 'npcs', 'a', 'b');
+    await api.folders(1, 'notes');
+    await api.createFolder(1, 'notes', 'a');
+    await api.renameFolder(1, 'notes', 'a', 'b');
     expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
       'GET /api/auth/me',
       'POST /api/auth/logout',
@@ -96,7 +96,7 @@ describe('api', () => {
       'POST /api/groups/1/articles',
       'PUT /api/groups/1/articles/3',
       'DELETE /api/groups/1/articles/3',
-      'GET /api/groups/1/folders?section=npcs',
+      'GET /api/groups/1/folders?section=notes',
       'POST /api/groups/1/folders',
       'PATCH /api/groups/1/folders',
     ]);

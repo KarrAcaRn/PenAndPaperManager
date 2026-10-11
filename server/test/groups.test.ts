@@ -36,8 +36,8 @@ describe('Login und Gruppen', () => {
     const { base } = await setupGroup(app);
     const fremd = await loginAs(app, 'fremd@test.de');
     expect((await fremd.get(`${base}/members`)).status).toBe(403);
-    expect((await fremd.get(`${base}/articles?section=npcs`)).status).toBe(403);
-    expect((await fremd.post(`${base}/folders`, { section: 'npcs', path: 'x' })).status).toBe(403);
+    expect((await fremd.get(`${base}/articles?section=notes`)).status).toBe(403);
+    expect((await fremd.post(`${base}/folders`, { section: 'notes', path: 'x' })).status).toBe(403);
   });
 
   it('lässt nur Spielleiter einladen und befördern', async () => {

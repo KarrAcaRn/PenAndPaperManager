@@ -1,4 +1,4 @@
-export const SECTIONS = ['characters', 'npcs', 'locations', 'gm'] as const;
+export const SECTIONS = ['characters', 'notes', 'gm'] as const;
 export type Section = (typeof SECTIONS)[number];
 
 export const VISIBILITIES = ['private', 'private_gm', 'public'] as const;
@@ -9,8 +9,7 @@ export type Role = (typeof ROLES)[number];
 
 export const SECTION_LABELS: Record<Section, string> = {
   characters: 'Charaktere',
-  npcs: 'NPCs',
-  locations: 'Orte',
+  notes: 'Notizen',
   gm: 'Spielleiter',
 };
 

@@ -46,7 +46,7 @@ describe('Sichtbarkeit von Artikeln', () => {
     expect((await alice.post(`${base}/articles`, article('public', { title: 'x\u2028y' }))).status).toBe(400);
     expect((await alice.post(`${base}/articles`, article('public', { title: ' Zoë 😀 Sta\u0308dte ' }))).body.title).toBe('Zoë 😀 Sta\u0308dte');
     expect((await alice.post(`${base}/articles`, article('public', { title: 'x'.repeat(201) }))).status).toBe(400);
-    expect((await alice.get(`${base}/articles?section=npcs&path=a&path=b`)).status).toBe(400);
+    expect((await alice.get(`${base}/articles?section=notes&path=a&path=b`)).status).toBe(400);
     expect((await alice.get(`${base}/articles/99999999999999999999`)).status).toBeLessThan(500);
   });
 

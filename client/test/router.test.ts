@@ -3,7 +3,7 @@ import { href, navigate, parseHash, router } from '../src/lib/router.svelte.ts';
 
 describe('parseHash', () => {
   it('fällt auf die Gruppenauswahl zurück', () => {
-    for (const hash of ['', '#', '#/', '#/quatsch', '#/g/abc/npcs']) {
+    for (const hash of ['', '#', '#/', '#/quatsch', '#/g/abc/notes']) {
       expect(parseHash(hash)).toEqual({ name: 'groups' });
     }
   });
@@ -14,8 +14,8 @@ describe('parseHash', () => {
   });
 
   it('erkennt Ordner', () => {
-    expect(parseHash('#/g/3/npcs')).toEqual({ name: 'folder', gid: 3, section: 'npcs', path: '' });
-    expect(parseHash('#/g/3/npcs/f/bar/foo')).toEqual({ name: 'folder', gid: 3, section: 'npcs', path: 'bar/foo' });
+    expect(parseHash('#/g/3/notes')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: '' });
+    expect(parseHash('#/g/3/notes/f/bar/foo')).toEqual({ name: 'folder', gid: 3, section: 'notes', path: 'bar/foo' });
     expect(parseHash('#/g/3')).toEqual({ name: 'folder', gid: 3, section: 'characters', path: '' });
     expect(parseHash('#/g/3/unbekannt')).toEqual({ name: 'folder', gid: 3, section: 'characters', path: '' });
   });
@@ -23,8 +23,8 @@ describe('parseHash', () => {
   it('erkennt Artikel, Editor, Neu und Verwaltung', () => {
     expect(parseHash('#/g/3/gm/a/7')).toEqual({ name: 'article', gid: 3, section: 'gm', id: 7, edit: false });
     expect(parseHash('#/g/3/gm/a/7/edit')).toEqual({ name: 'article', gid: 3, section: 'gm', id: 7, edit: true });
-    expect(parseHash('#/g/3/locations/new/bar/foo')).toEqual({ name: 'new', gid: 3, section: 'locations', path: 'bar/foo' });
-    expect(parseHash('#/g/3/locations/new')).toEqual({ name: 'new', gid: 3, section: 'locations', path: '' });
+    expect(parseHash('#/g/3/notes/new/bar/foo')).toEqual({ name: 'new', gid: 3, section: 'notes', path: 'bar/foo' });
+    expect(parseHash('#/g/3/notes/new')).toEqual({ name: 'new', gid: 3, section: 'notes', path: '' });
     expect(parseHash('#/g/3/manage')).toEqual({ name: 'manage', gid: 3 });
   });
 });
@@ -32,10 +32,10 @@ describe('parseHash', () => {
 describe('href', () => {
   it('ist die Umkehrung von parseHash, auch mit Sonderzeichen', () => {
     const path = 'Über uns/50% & mehr/a#b?c';
-    expect(parseHash(href.folder(3, 'npcs', path))).toEqual({ name: 'folder', gid: 3, section: 'npcs', path });
-    expect(parseHash(href.newArticle(3, 'npcs', path))).toEqual({ name: 'new', gid: 3, section: 'npcs', path });
-    expect(parseHash(href.article(3, 'npcs', 9))).toMatchObject({ name: 'article', id: 9, edit: false });
-    expect(parseHash(href.edit(3, 'npcs', 9))).toMatchObject({ name: 'article', id: 9, edit: true });
+    expect(parseHash(href.folder(3, 'notes', path))).toEqual({ name: 'folder', gid: 3, section: 'notes', path });
+    expect(parseHash(href.newArticle(3, 'notes', path))).toEqual({ name: 'new', gid: 3, section: 'notes', path });
+    expect(parseHash(href.article(3, 'notes', 9))).toMatchObject({ name: 'article', id: 9, edit: false });
+    expect(parseHash(href.edit(3, 'notes', 9))).toMatchObject({ name: 'article', id: 9, edit: true });
     expect(parseHash(href.manage(3))).toEqual({ name: 'manage', gid: 3 });
     expect(parseHash(href.groups())).toEqual({ name: 'groups' });
     expect(parseHash(href.group(3))).toEqual({ name: 'folder', gid: 3, section: 'characters', path: '' });
@@ -44,8 +44,8 @@ describe('href', () => {
 
 describe('router', () => {
   it('folgt Hash-Änderungen', async () => {
-    navigate(href.folder(5, 'locations', 'x'));
+    navigate(href.folder(5, 'notes', 'x'));
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    expect(router.route).toEqual({ name: 'folder', gid: 5, section: 'locations', path: 'x' });
+    expect(router.route).toEqual({ name: 'folder', gid: 5, section: 'notes', path: 'x' });
   });
 });

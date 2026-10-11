@@ -23,7 +23,7 @@ describe('canAccessSection', () => {
 describe('accessibleSections', () => {
   it('liefert Spielern alles außer dem Bereich Spielleiter', () => {
     expect(accessibleSections('gm')).toEqual([...SECTIONS]);
-    expect(accessibleSections('player')).toEqual(['characters', 'npcs', 'locations']);
+    expect(accessibleSections('player')).toEqual(['characters', 'notes']);
     expect(accessibleSections('player')).toContain(DEFAULT_SECTION);
   });
 });

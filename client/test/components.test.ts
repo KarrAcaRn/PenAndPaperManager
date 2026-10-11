@@ -57,7 +57,7 @@ describe('App', () => {
   });
 
   it('zeigt erst einen Ladezustand und dann die Gruppe aus der URL', async () => {
-    router.route = parseHash('#/g/7/npcs');
+    router.route = parseHash('#/g/7/notes');
     api.me.mockResolvedValue({ user: GM });
     api.groups.mockResolvedValue([gmGroup]);
     mockEmptyFolder(api);
@@ -140,8 +140,8 @@ describe('GroupLayout', () => {
 
   it('versteckt den Bereich Spielleiter vor Spielern', () => {
     signIn(PLAYER, [playerGroup]);
-    renderLayout('#/g/7/npcs');
-    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'NPCs', 'Orte']);
+    renderLayout('#/g/7/notes');
+    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen']);
   });
 
   it('sperrt Spieler auch bei direktem Aufruf aus', () => {
@@ -165,39 +165,39 @@ describe('GroupLayout', () => {
 
   it('meldet unbekannte Gruppen', () => {
     signIn(GM, []);
-    renderLayout('#/g/99/npcs');
+    renderLayout('#/g/99/notes');
     expect(screen.getByText(/gibt es nicht oder du bist kein Mitglied/)).toBeTruthy();
   });
 
   it('rendert Artikelansicht, Editor und Neu-Formular', async () => {
     signIn(GM, [gmGroup]);
     api.article.mockResolvedValue(fullArticle());
-    const view = renderLayout('#/g/7/npcs/a/1');
+    const view = renderLayout('#/g/7/notes/a/1');
     expect(await screen.findByRole('heading', { name: 'Wirt' })).toBeTruthy();
     view.unmount();
-    const edit = renderLayout('#/g/7/npcs/a/1/edit');
+    const edit = renderLayout('#/g/7/notes/a/1/edit');
     expect(await screen.findByRole('heading', { name: 'Artikel bearbeiten' })).toBeTruthy();
     edit.unmount();
-    renderLayout('#/g/7/npcs/new/bar');
+    renderLayout('#/g/7/notes/new/bar');
     expect(await screen.findByRole('heading', { name: 'Neuer Artikel' })).toBeTruthy();
   });
 });
 
 describe('FolderView', () => {
-  const props = { group: gmGroup, section: 'locations' as const, path: 'bar' };
+  const props = { group: gmGroup, section: 'notes' as const, path: 'bar' };
 
   it('zeigt Breadcrumb, direkte Unterordner und Artikel', async () => {
     api.folders.mockResolvedValue([folder('bar'), folder('bar/foo'), folder('bar/foo/tief'), folder('anders')]);
-    api.articles.mockResolvedValue([summary({ section: 'locations', path: 'bar', title: 'Taverne', visibility: 'private_gm' })]);
+    api.articles.mockResolvedValue([summary({ section: 'notes', path: 'bar', title: 'Taverne', visibility: 'private_gm' })]);
     render(FolderView, props);
     expect(await screen.findByRole('link', { name: 'foo' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'tief' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'anders' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Taverne' }).getAttribute('href')).toBe('#/g/7/locations/a/1');
+    expect(screen.getByRole('link', { name: 'Taverne' }).getAttribute('href')).toBe('#/g/7/notes/a/1');
     expect(screen.getByText('Privat & Spielleiter')).toBeTruthy();
-    expect(within(screen.getByRole('navigation', { name: 'Pfad' })).getAllByRole('link').map((a) => a.textContent)).toEqual(['Orte', 'bar']);
-    expect(screen.getByRole('link', { name: 'Neuer Artikel' }).getAttribute('href')).toBe('#/g/7/locations/new/bar');
-    expect(api.articles).toHaveBeenCalledWith(7, 'locations', 'bar');
+    expect(within(screen.getByRole('navigation', { name: 'Pfad' })).getAllByRole('link').map((a) => a.textContent)).toEqual(['Notizen', 'bar']);
+    expect(screen.getByRole('link', { name: 'Neuer Artikel' }).getAttribute('href')).toBe('#/g/7/notes/new/bar');
+    expect(api.articles).toHaveBeenCalledWith(7, 'notes', 'bar');
   });
 
   it('findet den Ordner auch über einen nicht normalisierten Link', async () => {
@@ -205,7 +205,7 @@ describe('FolderView', () => {
     api.articles.mockResolvedValue([]);
     render(FolderView, { ...props, path: ' Ba\u0308r /' });
     expect(await screen.findByRole('link', { name: 'kind' })).toBeTruthy();
-    expect(api.articles).toHaveBeenCalledWith(7, 'locations', 'B\u00e4r');
+    expect(api.articles).toHaveBeenCalledWith(7, 'notes', 'B\u00e4r');
   });
 
   it('behandelt ungültige Pfade wie fehlende Ordner', async () => {
@@ -224,8 +224,8 @@ describe('FolderView', () => {
     api.folders.mockResolvedValue([]);
     render(FolderView, props);
     expect(await screen.findByText(/Diesen Ordner gibt es nicht/)).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Zurück zu Orte' }));
-    expect(location.hash).toBe('#/g/7/locations');
+    await user.click(screen.getByRole('button', { name: 'Zurück zu Notizen' }));
+    expect(location.hash).toBe('#/g/7/notes');
   });
 
   it('legt Ordner im aktuellen Ordner an', async () => {
@@ -238,7 +238,7 @@ describe('FolderView', () => {
     expect(api.createFolder).not.toHaveBeenCalled(); // leerer Name
     await user.type(screen.getByPlaceholderText('Ordnername'), ' neu ');
     await user.click(screen.getByRole('button', { name: 'Anlegen' }));
-    await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith(7, 'locations', 'bar/neu'));
+    await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith(7, 'notes', 'bar/neu'));
     await waitFor(() => expect(screen.queryByPlaceholderText('Ordnername')).toBeNull());
     expect(api.folders).toHaveBeenCalledTimes(2);
   });
@@ -269,7 +269,7 @@ describe('FolderView', () => {
     expect(api.renameFolder).not.toHaveBeenCalled();
     prompt.mockReturnValueOnce('bar/neu');
     await user.click(screen.getByRole('button', { name: 'Umbenennen' }));
-    await waitFor(() => expect(api.renameFolder).toHaveBeenCalledWith(7, 'locations', 'bar/meins', 'bar/neu'));
+    await waitFor(() => expect(api.renameFolder).toHaveBeenCalledWith(7, 'notes', 'bar/meins', 'bar/neu'));
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
     await user.click(screen.getByRole('button', { name: 'Löschen' }));
@@ -295,8 +295,8 @@ describe('ArticleView', () => {
     const { container } = render(ArticleView, { group: gmGroup, id: 1 });
     expect(await screen.findByRole('heading', { name: 'Hallo' })).toBeTruthy();
     expect(container.querySelector('script')).toBeNull();
-    expect(screen.getByRole('link', { name: 'foo' }).getAttribute('href')).toBe('#/g/7/npcs/f/bar/foo');
-    expect(screen.getByRole('link', { name: 'Bearbeiten' }).getAttribute('href')).toBe('#/g/7/npcs/a/1/edit');
+    expect(screen.getByRole('link', { name: 'foo' }).getAttribute('href')).toBe('#/g/7/notes/f/bar/foo');
+    expect(screen.getByRole('link', { name: 'Bearbeiten' }).getAttribute('href')).toBe('#/g/7/notes/a/1/edit');
   });
 
   it('versteckt Aktionen ohne Bearbeitungsrecht', async () => {
@@ -317,7 +317,7 @@ describe('ArticleView', () => {
     expect(api.deleteArticle).not.toHaveBeenCalled();
     confirm.mockReturnValueOnce(true);
     await user.click(button);
-    await waitFor(() => expect(location.hash).toBe('#/g/7/npcs/f/bar'));
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/bar'));
   });
 
   it('zeigt Lade- und Löschfehler', async () => {
@@ -342,35 +342,35 @@ describe('ArticleEdit', () => {
 
   it('legt einen Artikel im vorgegebenen Ordner an', async () => {
     signIn(PLAYER, [playerGroup]);
-    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'locations' }));
-    render(ArticleEdit, { group: playerGroup, section: 'locations', path: 'bar' });
+    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'notes' }));
+    render(ArticleEdit, { group: playerGroup, section: 'notes', path: 'bar' });
     await user.type(await screen.findByLabelText('Titel'), 'Taverne');
     await user.type(screen.getByLabelText('Text (Markdown)'), 'Bier');
     await user.selectOptions(screen.getByLabelText('Sichtbarkeit'), 'public');
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(location.hash).toBe('#/g/7/locations/a/5'));
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/5'));
     expect(api.createArticle).toHaveBeenCalledWith(7, {
-      section: 'locations',
+      section: 'notes',
       path: 'bar',
       title: 'Taverne',
       bodyMd: 'Bier',
       visibility: 'public',
     });
-    expect((screen.getByRole('link', { name: 'Abbrechen' }) as HTMLAnchorElement).hash).toBe('#/g/7/locations/f/bar');
+    expect((screen.getByRole('link', { name: 'Abbrechen' }) as HTMLAnchorElement).hash).toBe('#/g/7/notes/f/bar');
   });
 
   it('bietet Spielern den Bereich Spielleiter nicht an', async () => {
     signIn(PLAYER, [playerGroup]);
-    render(ArticleEdit, { group: playerGroup, section: 'npcs' });
+    render(ArticleEdit, { group: playerGroup, section: 'notes' });
     const options = within(await screen.findByLabelText('Bereich')).getAllByRole('option');
-    expect(options.map((o) => o.textContent)).toEqual(['Charaktere', 'NPCs', 'Orte']);
+    expect(options.map((o) => o.textContent)).toEqual(['Charaktere', 'Notizen']);
   });
 
   it('lädt einen bestehenden Artikel und speichert Änderungen', async () => {
     signIn(PLAYER, [playerGroup]);
     api.article.mockResolvedValue(fullArticle({ path: 'bar' }));
     api.updateArticle.mockResolvedValue(fullArticle());
-    render(ArticleEdit, { group: playerGroup, section: 'npcs', id: 1 });
+    render(ArticleEdit, { group: playerGroup, section: 'notes', id: 1 });
     const title = (await screen.findByLabelText('Titel')) as HTMLInputElement;
     expect(title.value).toBe('Wirt');
     expect((screen.getByLabelText('Ordner') as HTMLInputElement).value).toBe('bar');
@@ -383,11 +383,11 @@ describe('ArticleEdit', () => {
   it('sperrt bei fremden Artikeln "Privat" und den Bereich Spielleiter', async () => {
     signIn(GM, [gmGroup]);
     api.article.mockResolvedValue(fullArticle({ authorId: PLAYER.id }));
-    render(ArticleEdit, { group: gmGroup, section: 'npcs', id: 1 });
+    render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
     const select = await screen.findByLabelText('Sichtbarkeit');
     expect((within(select).getByRole('option', { name: 'Privat' }) as HTMLOptionElement).disabled).toBe(true);
     const sections = within(screen.getByLabelText('Bereich')).getAllByRole('option');
-    expect(sections.map((o) => o.textContent)).toEqual(['Charaktere', 'NPCs', 'Orte']);
+    expect(sections.map((o) => o.textContent)).toEqual(['Charaktere', 'Notizen']);
   });
 
   it('behält den Bereich Spielleiter bei fremden Artikeln, die schon dort liegen', async () => {
@@ -401,29 +401,29 @@ describe('ArticleEdit', () => {
   it('zeigt ohne Bearbeitungsrecht kein Formular', async () => {
     signIn(PLAYER, [playerGroup]);
     api.article.mockResolvedValue(fullArticle({ canEdit: false }));
-    render(ArticleEdit, { group: playerGroup, section: 'npcs', id: 1 });
+    render(ArticleEdit, { group: playerGroup, section: 'notes', id: 1 });
     expect(await screen.findByText('Du darfst diesen Artikel nicht bearbeiten')).toBeTruthy();
     expect(screen.queryByLabelText('Titel')).toBeNull();
-    expect((screen.getByRole('link', { name: 'Zurück' }) as HTMLAnchorElement).hash).toBe('#/g/7/npcs/a/1');
+    expect((screen.getByRole('link', { name: 'Zurück' }) as HTMLAnchorElement).hash).toBe('#/g/7/notes/a/1');
   });
 
   it('verwirft veraltete Ordnerlisten bei schnellem Bereichswechsel', async () => {
     signIn(GM, [gmGroup]);
-    let resolveNpcs!: (f: unknown) => void;
+    let resolveNotes!: (f: unknown) => void;
     api.folders.mockImplementation((_gid: number, section: string) =>
-      section === 'npcs' ? new Promise((resolve) => (resolveNpcs = resolve)) : Promise.resolve([folder('neu')]),
+      section === 'notes' ? new Promise((resolve) => (resolveNotes = resolve)) : Promise.resolve([folder('neu')]),
     );
-    const { container } = render(ArticleEdit, { group: gmGroup, section: 'npcs' });
-    await user.selectOptions(await screen.findByLabelText('Bereich'), 'locations');
+    const { container } = render(ArticleEdit, { group: gmGroup, section: 'notes' });
+    await user.selectOptions(await screen.findByLabelText('Bereich'), 'characters');
     await waitFor(() => expect(container.querySelector('datalist option')?.getAttribute('value')).toBe('neu'));
-    resolveNpcs([folder('alt')]);
+    resolveNotes([folder('alt')]);
     await new Promise((r) => setTimeout(r, 0));
     expect(container.querySelector('datalist option')?.getAttribute('value')).toBe('neu');
   });
 
   it('schaltet die Vorschau um und lädt Ordner beim Bereichswechsel neu', async () => {
     signIn(GM, [gmGroup]);
-    render(ArticleEdit, { group: gmGroup, section: 'npcs' });
+    render(ArticleEdit, { group: gmGroup, section: 'notes' });
     await user.type(await screen.findByLabelText('Text (Markdown)'), '# Vorschau');
     await user.click(screen.getByRole('button', { name: 'Vorschau' }));
     expect(screen.getByRole('heading', { name: 'Vorschau' })).toBeTruthy();
@@ -437,7 +437,7 @@ describe('ArticleEdit', () => {
     api.folders.mockImplementation(async () => {
       throw new ApiFailure(500, 'kaputt');
     });
-    const { container } = render(ArticleEdit, { group: gmGroup, section: 'npcs' });
+    const { container } = render(ArticleEdit, { group: gmGroup, section: 'notes' });
     expect(await screen.findByLabelText('Titel')).toBeTruthy();
     expect(container.querySelectorAll('datalist option')).toHaveLength(0);
   });
@@ -445,13 +445,13 @@ describe('ArticleEdit', () => {
   it('zeigt Lade- und Speicherfehler', async () => {
     signIn(GM, [gmGroup]);
     api.article.mockRejectedValueOnce(new ApiFailure(404, 'Artikel nicht gefunden'));
-    const first = render(ArticleEdit, { group: gmGroup, section: 'npcs', id: 1 });
+    const first = render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
     expect(await screen.findByText('Artikel nicht gefunden')).toBeTruthy();
     expect(screen.queryByLabelText('Titel')).toBeNull();
     first.unmount();
 
     api.createArticle.mockRejectedValue(new ApiFailure(400, 'Pfad zu lang'));
-    render(ArticleEdit, { group: gmGroup, section: 'npcs' });
+    render(ArticleEdit, { group: gmGroup, section: 'notes' });
     await user.type(await screen.findByLabelText('Titel'), 'x');
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
     expect(await screen.findByText('Pfad zu lang')).toBeTruthy();

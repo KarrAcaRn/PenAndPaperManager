@@ -23,7 +23,7 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 
 - Login per E-Mail, in der Testphase ohne Passwort (`server/src/auth.ts`).
 - Wer eine Gruppe anlegt, ist Spielleiter; Eingeladene sind Spieler. Es gibt immer mindestens einen Spielleiter.
-- Bereiche: Charaktere, NPCs, Orte, Spielleiter. Der Bereich Spielleiter ist für Spieler unsichtbar.
+- Bereiche: Charaktere, Notizen, Spielleiter. Der Bereich Spielleiter ist für Spieler unsichtbar.
 - Artikel-Sichtbarkeit: Privat (nur Autor), Privat & Spielleiter, Öffentlich (`server/src/access.ts`).
 - Bearbeiten: der Autor immer, Spielleiter alles, was sie sehen. Fremde Artikel kann man weder auf "Privat"
   stellen noch in einen Bereich schieben, den der Autor nicht sieht.

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -19,8 +19,9 @@ describe('Datenbank', () => {
     first.close();
 
     const second = openDb(file);
+    const migrations = readdirSync(join(import.meta.dirname, '../src/migrations')).filter((f) => f.endsWith('.sql'));
     expect(second.prepare('SELECT COUNT(*) AS n FROM users').get()!.n).toBe(1);
-    expect(second.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()!.n).toBe(1);
+    expect(second.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()!.n).toBe(migrations.length);
     second.close();
   });
 

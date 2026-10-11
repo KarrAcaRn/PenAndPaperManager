@@ -28,7 +28,7 @@ describe('session', () => {
 
   it('räumt beim Logout auf', async () => {
     signIn(GM, [gmGroup]);
-    location.hash = '#/g/7/npcs';
+    location.hash = '#/g/7/notes';
     api.logout.mockResolvedValue({});
     await logout();
     expect(session).toMatchObject({ user: null, groups: [] });

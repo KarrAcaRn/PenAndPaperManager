@@ -16,7 +16,7 @@ export function signIn(user: User | null, groups: Group[] = []): void {
 
 export const summary = (over: Partial<ArticleSummary> = {}): ArticleSummary => ({
   id: 1,
-  section: 'npcs',
+  section: 'notes',
   path: '',
   title: 'Wirt',
   visibility: 'public',
