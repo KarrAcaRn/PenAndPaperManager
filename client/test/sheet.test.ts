@@ -5,6 +5,7 @@ import type { Sheet, SheetData, Skill } from '@pnp/shared';
 import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
 import { session } from '../src/lib/session.svelte.ts';
+import { contentChanges } from '../src/lib/content.svelte.ts';
 import App from '../src/App.svelte';
 import CharacterSheet from '../src/lib/CharacterSheet.svelte';
 import SkillListEditor from '../src/lib/SkillListEditor.svelte';
@@ -252,8 +253,10 @@ describe('FATE-Bogen am Artikel', () => {
     api.deleteSheet.mockResolvedValue({});
     render(ArticleView, { group: gmGroup, id: 1 });
 
+    const before = contentChanges.version;
     await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
     expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', refresh: '3' }));
+    expect(contentChanges.version).toBe(before + 1); // Ordnerbaum zeigt das Bogen-Symbol
     const removeButton = await screen.findByRole('button', { name: 'Bogen entfernen' });
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
@@ -263,6 +266,7 @@ describe('FATE-Bogen am Artikel', () => {
     await user.click(removeButton);
     await waitFor(() => expect(screen.queryByLabelText('Konzept')).toBeNull());
     expect(screen.getByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeTruthy();
+    expect(contentChanges.version).toBe(before + 2);
   });
 
   it('wird außerhalb von Charaktere und Notizen nicht angeboten', async () => {

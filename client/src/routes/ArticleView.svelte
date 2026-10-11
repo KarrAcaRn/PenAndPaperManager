@@ -22,6 +22,7 @@
     task.run(async () => {
       await api.createSheet(group.id, a.id, emptySheet(a.title));
       a.hasSheet = true;
+      notifyContentChanged(); // Symbol im Ordnerbaum
     });
   }
 
@@ -58,7 +59,10 @@
   <p class="muted no-print">von {a.authorEmail} · zuletzt geändert {new Date(a.updatedAt + 'Z').toLocaleString('de-DE')}</p>
 
   {#if a.hasSheet}
-    <SheetPanel {group} article={a} onremoved={() => (a.hasSheet = false)} />
+    <SheetPanel {group} article={a} onremoved={() => {
+        a.hasSheet = false;
+        notifyContentChanged();
+      }} />
   {/if}
 
   {#if a.bodyMd.trim() || !a.hasSheet}
