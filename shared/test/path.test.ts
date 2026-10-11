@@ -6,6 +6,7 @@ import {
   isWithin,
   joinPath,
   normalizePath,
+  normalizePathOrRaw,
   parentPath,
   pathPrefixes,
 } from '../src/index.ts';
@@ -66,5 +67,12 @@ describe('Pfad-Helfer', () => {
     expect(isWithin('a', '')).toBe(true);
     expect(isWithin('ab', 'a')).toBe(false);
     expect(isWithin('a', 'a/b')).toBe(false);
+  });
+});
+
+describe('normalizePathOrRaw', () => {
+  it('normalisiert gültige Pfade und lässt ungültige unverändert', () => {
+    expect(normalizePathOrRaw(' Ba\u0308r / x/')).toBe('B\u00e4r/x');
+    expect(normalizePathOrRaw('a/../b')).toBe('a/../b');
   });
 });

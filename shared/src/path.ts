@@ -27,6 +27,16 @@ export function normalizePath(input: string): string {
   return path;
 }
 
+/** Wie normalizePath, liefert bei ungültigen Pfaden aber die Eingabe unverändert (z.B. für Links aus der URL) */
+export function normalizePathOrRaw(input: string): string {
+  try {
+    return normalizePath(input);
+  } catch (err) {
+    if (err instanceof PathError) return input;
+    throw err;
+  }
+}
+
 /** "a/b/c" -> ["a", "a/b", "a/b/c"] */
 export function pathPrefixes(path: string): string[] {
   if (path === '') return [];

@@ -5,7 +5,7 @@
     VISIBILITY_LABELS,
     baseName,
     joinPath,
-    normalizePath,
+    normalizePathOrRaw,
     parentPath,
     type ArticleSummary,
     type Folder,
@@ -17,18 +17,13 @@
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import Breadcrumb from '../lib/Breadcrumb.svelte';
+  import ArticleIcon from '../lib/ArticleIcon.svelte';
 
   let { group, section, path: rawPath }: { group: Group; section: Section; path: string } = $props();
 
   // Von Hand getippte oder eingefügte Links in dieselbe Form bringen, die der Server liefert.
   // Ungültige Pfade bleiben roh und enden als "Ordner gibt es nicht".
-  const path = $derived.by(() => {
-    try {
-      return normalizePath(rawPath);
-    } catch {
-      return rawPath;
-    }
-  });
+  const path = $derived(normalizePathOrRaw(rawPath));
 
   let folders = $state<Folder[]>([]);
   let articles = $state<ArticleSummary[]>([]);
@@ -119,7 +114,7 @@
     {/each}
     {#each articles as article (article.id)}
       <li>
-        <span aria-hidden="true" title={article.hasSheet ? 'mit FATE-Bogen' : undefined}>{article.hasSheet ? '🎭' : '📄'}</span>
+        <ArticleIcon {article} />
         <a class="title" href={href.article(group.id, section, article.id)}>{article.title}</a>
         <span class="badge {article.visibility}">{VISIBILITY_LABELS[article.visibility]}</span>
         <span class="spacer"></span>

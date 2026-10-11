@@ -7,7 +7,7 @@
   import {
     SECTION_LABELS,
     baseName,
-    normalizePath,
+    normalizePathOrRaw,
     parentPath,
     pathPrefixes,
     type ArticleSummary,
@@ -21,6 +21,7 @@
   import { contentChanges } from './content.svelte.ts';
   import { href } from './router.svelte.ts';
   import { createTask } from './task.svelte.ts';
+  import ArticleIcon from './ArticleIcon.svelte';
 
   let { group, section, current }: { group: Group; section: Section; current: TreeSelection } = $props();
 
@@ -47,14 +48,7 @@
   const hasChildren = (path: string) => childFolders.has(path) || childArticles.has(path);
 
   const currentArticle = $derived('article' in current ? current.article : null);
-  const currentFolder = $derived.by(() => {
-    if (!('folder' in current)) return null;
-    try {
-      return normalizePath(current.folder);
-    } catch {
-      return current.folder;
-    }
-  });
+  const currentFolder = $derived('folder' in current ? normalizePathOrRaw(current.folder) : null);
   /** Ordner, der aufgeklappt sein muss, damit die Auswahl sichtbar ist */
   const revealPath = $derived(currentFolder ?? articles.find((a) => a.id === currentArticle)?.path ?? '');
 
@@ -127,7 +121,7 @@
           <a
             href={href.article(group.id, section, article.id)}
             aria-current={article.id === currentArticle ? 'page' : undefined}
-            ><span aria-hidden="true" title={article.hasSheet ? 'mit FATE-Bogen' : undefined}>{article.hasSheet ? '🎭' : '📄'}</span> {article.title}</a
+            ><ArticleIcon {article} /> {article.title}</a
           >
         </div>
       </li>
