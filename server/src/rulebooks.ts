@@ -202,12 +202,15 @@ export function searchRules(db: Db, query: string, rulebookId?: number): RuleHit
   if (match === null) return [];
   const rows = allRows<{ rulebook_id: number; page: number; label: string; chapter: string; snippet: string }>(
     db,
-    `SELECT p.rulebook_id, p.page, p.label, p.chapter,
-            snippet(rulebook_search, 1, '${MARK_START}', '${MARK_END}', '…', 24) AS snippet
-     FROM rulebook_search JOIN rulebook_pages p ON p.id = rulebook_search.rowid
-     WHERE rulebook_search MATCH ? AND (? IS NULL OR p.rulebook_id = ?)
-     ORDER BY bm25(rulebook_search, 2.0, 1.0), p.page
-     LIMIT ${MAX_RULE_HITS}`,
+    // Die besten Treffer auswählen, angezeigt werden sie aber in Seitenreihenfolge
+    `SELECT * FROM (
+       SELECT p.rulebook_id, p.page, p.label, p.chapter,
+              snippet(rulebook_search, 1, '${MARK_START}', '${MARK_END}', '…', 24) AS snippet
+       FROM rulebook_search JOIN rulebook_pages p ON p.id = rulebook_search.rowid
+       WHERE rulebook_search MATCH ? AND (? IS NULL OR p.rulebook_id = ?)
+       ORDER BY bm25(rulebook_search, 2.0, 1.0), p.page
+       LIMIT ${MAX_RULE_HITS}
+     ) ORDER BY rulebook_id, page`,
     match,
     rulebookId ?? null,
     rulebookId ?? null,

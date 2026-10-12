@@ -138,6 +138,18 @@ describe('Regelwerk-API', () => {
         snippet: expect.arrayContaining([{ text: 'Konsequenzen', mark: true }]),
       },
     ]);
+    // Treffer in Seitenreihenfolge, auch wenn eine spätere Seite besser passt
+    const other = await importRulebook(db, dir, 'Stressbuch', makePdf([
+      ['Eine Randnotiz zu Stress zwischen vielen anderen Wörtern, die mit der Suche nichts zu tun haben.'],
+      ['Nichts'],
+      ['Stress, Stress und noch mehr Stress.'],
+    ]));
+    expect((await search('Stress', other.id)).map((h: { page: number }) => h.page)).toEqual([1, 3]);
+    expect((await search('Stress')).map((h: { rulebookId: number; page: number }) => [h.rulebookId, h.page])).toEqual([
+      [book.id, 3],
+      [other.id, 1],
+      [other.id, 3],
+    ]);
     // ohne Umlaut, mehrere Wörter müssen alle vorkommen
     expect((await search('uber charakter')).map((h: { page: number }) => h.page)).toEqual([2]);
     expect(await search('Aspekt Stress')).toEqual([]);
