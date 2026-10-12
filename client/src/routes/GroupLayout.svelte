@@ -122,11 +122,12 @@
 <style>
   /* Gleiche Breite, Zentrierung und Seitenabstände wie main, damit Navigation und Inhalt bündig stehen */
   /* Alle Seiten einer Gruppe gleich breit (Platz für Ordnerbaum + Inhalt), auch Fertigkeiten/Verwalten */
-  header { max-width: 90rem; margin: 0 auto; padding: 1.25rem 1rem 0; }
-  main.wide { max-width: 90rem; }
+  /* Seitenabstand --vine-gap: die Zweigrahmen ragen nach außen und dürfen nicht am Bildrand abgeschnitten werden */
+  header { max-width: 90rem; margin: 0 auto; padding: var(--vine-gap) var(--vine-gap) 0; }
+  main.wide { max-width: 90rem; padding-left: var(--vine-gap); padding-right: var(--vine-gap); }
   .bar { background: var(--surface); border-radius: var(--radius); }
-  /* Abstand, damit sich die Ranken von Navigation und Ordnerbaum nicht berühren */
-  main { padding-top: 1.75rem; }
+  /* Abstand, damit sich die Rahmen von Navigation und Ordnerbaum nicht berühren */
+  main { padding-top: calc(var(--vine-width) + 0.75rem); }
   .name { font-weight: 700; font-size: 1.1rem; text-decoration: none; margin-right: 1rem; }
   nav a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--radius); color: var(--text); }
   nav a.active { background: var(--accent); color: var(--accent-text); }
