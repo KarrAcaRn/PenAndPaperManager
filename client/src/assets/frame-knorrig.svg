@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!--
+    Testvariante „knorrig“.
+    Zweigrahmen als 9-Slice für border-image (Slice 32): Ecken 32×32, Kanten-Kachel 64×32.
+    Der braune Zweig läuft in der Mitte des 32er-Bands (y=16) und beginnt/endet dort waagerecht, damit sich die
+    Kacheln nahtlos aneinanderreihen. Kurze Seitenzweige tragen grüne Blätter. Die übrigen Kanten und Ecken sind
+    Drehungen um die Bildmitte. Farben passen sich per prefers-color-scheme dem hellen/dunklen Design an.
+  -->
+  <style>
+    .branch { fill: none; stroke: #4a3220; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .twig { fill: none; stroke: #4a3220; stroke-width: 1.1; stroke-linecap: round; }
+    .bark { fill: none; stroke: #9a7550; stroke-width: 0.45; stroke-linecap: round; }
+    .knot { fill: #4e3520; }
+    .leaf { fill: #7a9b45; stroke: #4c6328; stroke-width: 0.5; }
+    .vein { fill: none; stroke: #46652a; stroke-width: 0.35; }
+    @media (prefers-color-scheme: dark) {
+      .branch, .twig { stroke: #9c7651; }
+      .bark { stroke: #c49d72; }
+      .knot { fill: #6e4f33; }
+      .leaf { fill: #4f7a35; stroke: #8fbf6a; }
+      .vein { stroke: #8fbf6a; }
+    }
+  </style>
+  <defs>
+    <g id="leaf">
+      <path class="leaf" d="M0 0 C2 -2.6 6 -2.8 8.6 0 C6 2.8 2 2.6 0 0Z" />
+      <path class="vein" d="M0.6 0 L7 0" />
+    </g>
+    <g id="leaf-small" transform="scale(0.7)"><use href="#leaf" xlink:href="#leaf" /></g>
+
+    <!-- Kante: leicht geknickter Zweig mit Rindenstrich, zwei beblätterten Seitenzweigen und einem Aststummel -->
+    <g id="edge">
+      <path class="branch" d="M0 16 C4 16 6 15.6 9 15 L15 13.2 L22 14.4 L28 13.4 L34 17.4 L41 18.8 L48 17 L54 16.8 C58 16.2 60 16 64 16" />
+      <path class="bark" d="M4 15.6 C9 15.4 13 14 18 13.5 M36 17.9 C39 18.3 42 18.2 45 17.9" />
+      <ellipse class="knot" cx="31.5" cy="15.6" rx="1.3" ry="0.9" transform="rotate(35 31.5 15.6)" />
+      <ellipse class="knot" cx="15" cy="13.4" rx="1" ry="0.7" />
+      <path class="twig" d="M54 16.8 L56.6 20.2" />
+      <path class="twig" d="M36.5 17.8 L37.8 13.8" />
+      <!-- Aststummel ohne Blatt -->
+      <path class="twig" d="M9.5 15.4 L7.4 11.8" />
+      <!-- Seitenzweig nach oben -->
+      <path class="twig" d="M21 13.6 Q24.2 9.6 28.4 7.6" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(28.4 7.6) rotate(-15)" />
+      <!-- Seitenzweig nach unten -->
+      <path class="twig" d="M43 18.4 Q46.4 22.4 50.6 24" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(50.6 24) rotate(18)" />
+    </g>
+
+    <!-- Ecke: Zweig biegt um die Ecke, nach außen gabelt sich ein Seitenast mit Blattbüschel -->
+    <g id="corner">
+      <path class="branch" d="M32 16 C24 16 16 24 16 32" />
+      <path class="bark" d="M29 16.4 C24 16.8 19.5 19.5 17.6 24" />
+      <path class="twig" d="M20.7 20.7 Q15.6 15.4 9.6 9.8" />
+      <path class="twig" d="M13.6 13.4 L14.2 7.6" />
+      <path class="twig" d="M13.4 13.6 L7.6 14.2" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(9.6 9.8) rotate(-135)" />
+      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(14.2 7.6) rotate(-95)" />
+      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(7.6 14.2) rotate(-175)" />
+      <ellipse class="knot" cx="18.3" cy="24.8" rx="0.9" ry="0.65" transform="rotate(-60 18.3 24.8)" />
+    </g>
+  </defs>
+
+  <use href="#corner" xlink:href="#corner" />
+  <use href="#corner" xlink:href="#corner" transform="rotate(90 64 64)" />
+  <use href="#corner" xlink:href="#corner" transform="rotate(180 64 64)" />
+  <use href="#corner" xlink:href="#corner" transform="rotate(270 64 64)" />
+
+  <use href="#edge" xlink:href="#edge" transform="translate(32 0)" />
+  <use href="#edge" xlink:href="#edge" transform="rotate(90 64 64) translate(32 0)" />
+  <use href="#edge" xlink:href="#edge" transform="rotate(180 64 64) translate(32 0)" />
+  <use href="#edge" xlink:href="#edge" transform="rotate(270 64 64) translate(32 0)" />
+</svg>

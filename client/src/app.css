@@ -81,6 +81,11 @@ label > input, label > select, label > textarea { margin-top: 0.25rem; font-weig
   /* Platz, damit die nach innen ragenden Blätter nicht unter dem Text liegen */
   padding: calc(var(--vine-width) / 2 + 0.4rem);
 }
+/* VORÜBERGEHEND: Testvarianten des Rahmens (Auswahl oben, siehe lib/frameVariants.ts) */
+html[data-frame='kraeftig'] .vine-frame { border-image-source: url('./assets/frame-kraeftig.svg'); }
+html[data-frame='dicht'] .vine-frame { border-image-source: url('./assets/frame-dicht.svg'); }
+html[data-frame='knorrig'] .vine-frame { border-image-source: url('./assets/frame-knorrig.svg'); }
+html[data-frame='ranken'] .vine-frame { border-image-source: url('./assets/frame-ranken.svg'); }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .muted { color: var(--muted); font-size: 0.9em; }
