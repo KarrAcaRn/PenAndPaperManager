@@ -74,10 +74,16 @@ export interface ArticleInput {
   visibility: Visibility;
 }
 
+/**
+ * Ändern eines Artikels. Ohne path bleibt er in seinem Ordner, auch wenn der inzwischen umbenannt oder
+ * verschoben wurde - sonst holte ein offenes Formular den alten Ordnernamen zurück.
+ */
+export type ArticleUpdate = Omit<ArticleInput, 'path'> & { path?: string };
+
+/** Ordner eines Bereichs; alle Mitglieder mit Zugriff auf den Bereich sehen alle Ordner */
 export interface Folder {
   path: string;
-  /** false bei Ordnern, die nur durch Artikelpfade entstehen */
-  explicit: boolean;
+  /** Ersteller oder Spielleiter: darf umbenennen, verschieben und (leer) löschen */
   canManage: boolean;
 }
 

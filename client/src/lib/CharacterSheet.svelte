@@ -1,14 +1,20 @@
 <script lang="ts" module>
-  /** all: alles bearbeitbar (Bearbeiten-Modus); condition: nur Zustand (Stress, Konsequenzen); none: nur lesen */
-  export type SheetEditable = 'all' | 'condition' | 'none';
+  /**
+   * data: der Bogen selbst (Bearbeiten-Modus), condition: nur der Zustand im Spiel (Stress, Konsequenztexte),
+   * none: nur lesen. Bogen und Zustand werden getrennt gespeichert und sind daher nie gleichzeitig bearbeitbar.
+   */
+  export type SheetEditable = 'data' | 'condition' | 'none';
 </script>
 
 <script lang="ts">
   import {
     ASPECT_LABELS,
-    CONSEQUENCES,
+    CONSEQUENCE_LABELS,
+    CONSEQUENCE_VALUES,
+    MAX_CONSEQUENCES,
     MAX_SHEET_LINE_LENGTH,
     MAX_SKILL_VALUE,
+    newConsequenceKey,
     MAX_STUNTS_LENGTH,
     MIN_SKILL_VALUE,
     MIN_STRESS_BOXES,
@@ -16,6 +22,7 @@
     STRESS_LABELS,
     type AspectKey,
     type SheetData,
+    type SheetState,
     type Skill,
     type StressKey,
   } from '@pnp/shared';
@@ -23,21 +30,27 @@
   // Layout nach docs/charakterbogen-vorlage.html (A4, druckbar). Die Fertigkeiten kommen aus der Gruppe.
   let {
     data = $bindable(),
+    state: sheetState = $bindable(),
     skills,
     editable = 'none',
     onchange = () => {},
-  }: { data: SheetData; skills: Skill[]; editable?: SheetEditable; onchange?: () => void } = $props();
+  }: { data: SheetData; state: SheetState; skills: Skill[]; editable?: SheetEditable; onchange?: () => void } = $props();
 
-  const readonly = $derived(editable !== 'all');
-  const conditionReadonly = $derived(editable === 'none');
+  const readonly = $derived(editable !== 'data');
+  const conditionReadonly = $derived(editable !== 'condition');
 
   /** Höhe, die der Fertigkeiten-Block auf der A4-Seite hat */
   const SKILLS_HEIGHT_MM = 150;
   const MM_PER_PT = 0.3528;
 
   // Viele Fertigkeiten (Fate Core: 18) müssen weiter auf eine Seite passen: zweispaltig und kleiner.
+  /** So viele Konsequenzzeilen passen in den Zustand-Block; jede weitere nimmt den Fertigkeiten Platz weg */
+  const FITTING_CONSEQUENCES = 4;
+  const CONSEQUENCE_ROW_MM = 9.6;
+  const extraMm = $derived(Math.max(0, data.consequences.length - FITTING_CONSEQUENCES) * CONSEQUENCE_ROW_MM);
+
   const columns = $derived(skills.length > 9 ? 2 : 1);
-  const rowHeight = $derived(SKILLS_HEIGHT_MM / Math.max(1, Math.ceil(skills.length / columns)));
+  const rowHeight = $derived((SKILLS_HEIGHT_MM - extraMm) / Math.max(1, Math.ceil(skills.length / columns)));
   const skillSize = $derived(Math.min(columns === 1 ? 18 : 12, Math.max(7, (rowHeight * 0.5) / MM_PER_PT)));
 
   const aspectKeys = Object.keys(ASPECT_LABELS) as AspectKey[];
@@ -46,6 +59,21 @@
   /** Nutzbare Kästchen einer Stressleiste; die übrigen sind ausgegraut (durch Fertigkeiten/Stunts freischaltbar) */
   function changeStressBoxes(track: StressKey, delta: number) {
     data.stressBoxes[track] = Math.min(STRESS_BOXES, Math.max(MIN_STRESS_BOXES, data.stressBoxes[track] + delta));
+    onchange();
+  }
+
+  function addConsequence() {
+    if (data.consequences.length >= MAX_CONSEQUENCES) return;
+    data.consequences.push({ key: newConsequenceKey(), value: 2 });
+    onchange();
+  }
+
+  function removeConsequence() {
+    const last = data.consequences.at(-1);
+    if (!last) return;
+    const text = sheetState.consequences[last.key] ?? '';
+    if (text.trim() && !confirm(`Die letzte Konsequenz „${text}“ entfernen?`)) return;
+    data.consequences.pop();
     onchange();
   }
 
@@ -112,14 +140,14 @@
       </section>
 
       <section class="col right">
-        <div class="top">
+        <div class="top" style:height="calc(var(--top-h) + {extraMm}mm)">
           <div class="banner right"><h2>Zustand</h2></div>
 
           <p class="sub">Stress</p>
           {#each stressKeys as track}
             <div class="track">
               <span class="name">{STRESS_LABELS[track]}</span>
-              {#if editable === 'all'}
+              {#if editable === 'data'}
                 <!-- Zwischen Name und Kästchen, damit die Kästchen in Ansicht und Bearbeiten gleich stehen -->
                 <span class="box-count no-print">
                   <button
@@ -137,11 +165,11 @@
                 </span>
               {/if}
               <div class="boxes">
-                {#each data.stress[track] as _, index}
+                {#each sheetState.stress[track] as _, index}
                   <label class:off={index >= data.stressBoxes[track]}>
                     <input
                       type="checkbox"
-                      bind:checked={data.stress[track][index]}
+                      bind:checked={sheetState.stress[track][index]}
                       disabled={conditionReadonly}
                       aria-label="{STRESS_LABELS[track]}er Stress {index + 1}"
                     />
@@ -152,16 +180,47 @@
             </div>
           {/each}
 
-          <p class="sub consequences-title">Konsequenzen</p>
+          <div class="consequences-title">
+            <p class="sub">Konsequenzen</p>
+            {#if editable === 'data'}
+              <span class="box-count no-print">
+                <button
+                  type="button"
+                  disabled={data.consequences.length === 0}
+                  aria-label="Letzte Konsequenz entfernen"
+                  onclick={removeConsequence}>−</button
+                >
+                <button
+                  type="button"
+                  disabled={data.consequences.length >= MAX_CONSEQUENCES}
+                  aria-label="Konsequenz hinzufügen"
+                  onclick={addConsequence}>+</button
+                >
+              </span>
+            {/if}
+          </div>
           <div class="consequences">
-            {#each CONSEQUENCES as cons}
-              <label class="cons" class:off={cons.optional}>
-                <span class="tag">{cons.value}</span>
-                <span class="rule">
-                  <span class="label">{cons.label}</span>
-                  <input class="f" bind:value={data.consequences[cons.key]} readonly={conditionReadonly} maxlength={MAX_SHEET_LINE_LENGTH} />
-                </span>
-              </label>
+            {#each data.consequences as cons, index (cons.key)}
+              <div class="cons">
+                {#if editable === 'data'}
+                  <!-- Stufe frei wählbar: so viel Stress fängt die Zeile ab -->
+                  <select class="tag" bind:value={cons.value} aria-label="Stufe der Konsequenz {index + 1}">
+                    {#each CONSEQUENCE_VALUES as value}<option {value}>{value}</option>{/each}
+                  </select>
+                {:else}
+                  <span class="tag">{cons.value}</span>
+                {/if}
+                <label class="rule">
+                  <span class="label">{CONSEQUENCE_LABELS[cons.value]}</span>
+                  <input
+                    class="f"
+                    bind:value={() => sheetState.consequences[cons.key] ?? '', (text) => (sheetState.consequences[cons.key] = text)}
+                    readonly={conditionReadonly}
+                    maxlength={MAX_SHEET_LINE_LENGTH}
+                    aria-label="Konsequenz {index + 1}: {CONSEQUENCE_LABELS[cons.value]}"
+                  />
+                </label>
+              </div>
             {/each}
           </div>
         </div>
@@ -312,7 +371,8 @@
 
   /* ---------- Zustand ---------- */
   .sub { text-align: center; font-size: 8pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 1mm; }
-  .consequences-title { margin-top: 2.5mm; }
+  .consequences-title { margin-top: 2.5mm; display: flex; justify-content: center; align-items: center; gap: 2mm; }
+  .consequences-title .sub { margin: 0; }
   .track { display: flex; align-items: center; gap: 2mm; margin-bottom: 1.6mm; }
   .track .name { flex: 1; text-align: right; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
   .boxes { display: flex; }
@@ -336,14 +396,18 @@
   .boxes label.off input:checked + span { border-color: var(--accent); color: #fff; }
 
   .consequences { margin-top: 3.5mm; }
-  .cons { align-items: center; gap: 2.5mm; margin-bottom: 3.2mm !important; }
+  .cons { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 3.2mm !important; }
+  /* Stufenwahl sieht aus wie das gedruckte Feld; die globalen Formular-Abstände würden die Zahl abschneiden */
+  .cons select.tag {
+    appearance: none; background: #fff; color: var(--ink); font-family: inherit; cursor: pointer;
+    border-radius: 0; margin: 0; padding: 0 0 0 1mm; line-height: 1; border-color: var(--ink);
+  }
+  /* nach innen: das clip-path der Form würde einen äußeren Rahmen abschneiden */
+  select.tag:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .cons .tag { width: 9mm; height: 6.4mm; flex: none; border: 1pt solid var(--ink); clip-path: polygon(0 0, 100% 0, 100% 62%, 76% 100%, 0 100%); display: flex; align-items: center; padding-left: 1mm; font-size: 11pt; font-weight: 700; }
   .cons .rule { flex: 1; border-bottom: 1px solid var(--line); height: 6.4mm; position: relative; display: flex; align-items: flex-end; }
   .cons .rule > .label { position: absolute; left: 0; top: 0; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; pointer-events: none; }
   .cons .rule .f { font-size: 10.5pt; padding: 0 0 0.4mm 17mm; }
-  .cons.off .tag { border-color: var(--faded); color: var(--faded); }
-  .cons.off .rule { border-bottom-color: var(--faded); }
-  .cons.off .rule > .label { color: var(--faded); }
 
   /* ---------- Stunts ---------- */
   .stunts-area { flex: 1; min-height: 0; display: flex; }

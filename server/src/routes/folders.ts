@@ -1,52 +1,41 @@
 import type { FastifyInstance } from 'fastify';
-import { MAX_PATH_LENGTH, isWithin, pathPrefixes, type Folder, type Section } from '@pnp/shared';
+import { MAX_PATH_LENGTH, baseName, isWithin, parentPath, type Folder, type Section } from '@pnp/shared';
 import { allRows, getRow, run, transaction, type Db } from '../db.ts';
 import { assertSection, requireMember, type MemberContext } from '../auth.ts';
-import { VISIBLE_ARTICLE_SQL, canManageFolder, visibilityParams } from '../access.ts';
-import { IN_SECTION_SQL, ensureFolders, parseFolderPath, sectionParams, withinSql } from '../folders.ts';
+import { canManageFolder } from '../access.ts';
+import { FOLDERS_WITH_PATH, ensureFolderPath, findFolderId, parseFolderPath } from '../folders.ts';
 import { badRequest, conflict, forbidden, notFound } from '../errors.ts';
 import { gidParams, objectOf, sectionProp } from '../schemas.ts';
 
 const location = { section: sectionProp, path: { type: 'string', minLength: 1 } };
 
+/**
+ * Ordner sieht jeder, der den Bereich sieht (der Spielleiter-Bereich ist für Spieler ohnehin gesperrt).
+ * Ein- und ausgeblendet werden nur die Artikel darin.
+ */
 export function folderRoutes(app: FastifyInstance, db: Db): void {
-  /** Explizite Ordner plus alle Pfad-Präfixe der für den Anfragenden sichtbaren Artikel. */
-  const listFolders = (ctx: MemberContext, section: Section): Folder[] => {
-    const inSection = sectionParams(ctx.groupId, section);
-    const folders = new Map<string, Folder>();
-    const add = (path: string, explicit: boolean, createdBy: number | null) =>
-      folders.set(path, { path, explicit, canManage: canManageFolder(ctx.user.id, ctx.role, { createdBy }) });
-
-    const explicit = allRows<{ path: string; createdBy: number }>(
+  const listFolders = (ctx: MemberContext, section: Section): Folder[] =>
+    allRows<{ path: string; createdBy: number }>(
       db,
-      `SELECT path, created_by AS createdBy FROM folders WHERE ${IN_SECTION_SQL}`,
-      inSection,
-    );
-    for (const f of explicit) add(f.path, true, f.createdBy);
+      `SELECT fp.path, f.created_by AS createdBy FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ?`,
+      ctx.groupId,
+      section,
+    )
+      .map(({ path, createdBy }) => ({ path, canManage: canManageFolder(ctx.user.id, ctx.role, { createdBy }) }))
+      .sort((a, b) => a.path.localeCompare(b.path, 'de'));
 
-    const articlePaths = allRows<{ path: string }>(
-      db,
-      `SELECT DISTINCT a.path FROM articles a
-       WHERE ${IN_SECTION_SQL} AND a.path <> '' AND ${VISIBLE_ARTICLE_SQL}`,
-      { ...inSection, ...visibilityParams(ctx.user.id, ctx.role) },
-    );
-    for (const row of articlePaths) {
-      for (const path of pathPrefixes(row.path)) {
-        if (!folders.has(path)) add(path, false, null);
-      }
+  /** Ordner, den der Anfragende ändern darf: 404 wenn es ihn nicht gibt, 403 wenn er fremd ist. */
+  const requireManageable = (ctx: MemberContext, section: Section, path: string): number => {
+    const id = findFolderId(db, ctx.groupId, section, path);
+    if (id == null) throw notFound('Ordner nicht gefunden');
+    const { createdBy } = getRow<{ createdBy: number }>(db, 'SELECT created_by AS createdBy FROM folders WHERE id = ?', id)!;
+    if (!canManageFolder(ctx.user.id, ctx.role, { createdBy })) {
+      throw forbidden('Nur der Ersteller oder ein Spielleiter darf diesen Ordner ändern');
     }
-    return [...folders.values()].sort((a, b) => a.path.localeCompare(b.path, 'de'));
+    return id;
   };
 
-  /** Unsichtbare Ordner gibt es für den Anfragenden nicht (404), fremde darf er nicht ändern (403). */
-  const requireManageable = (visible: Folder[], path: string): Folder => {
-    const folder = visible.find((f) => f.path === path);
-    if (!folder) throw notFound('Ordner nicht gefunden');
-    if (!folder.canManage) throw forbidden('Nur der Ersteller oder ein Spielleiter darf diesen Ordner ändern');
-    return folder;
-  };
-
-  const managedFolder = (path: string): Folder => ({ path, explicit: true, canManage: true });
+  const managedFolder = (path: string): Folder => ({ path, canManage: true });
 
   app.get(
     '/api/groups/:gid/folders',
@@ -64,11 +53,14 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
     const body = req.body as { section: Section; path: string };
     assertSection(ctx, body.section);
     const path = parseFolderPath(body.path);
-    transaction(db, () => ensureFolders(db, ctx.groupId, body.section, path, ctx.user.id));
+    const id = transaction(db, () => ensureFolderPath(db, ctx.groupId, body.section, path, ctx.user.id))!;
+    // Gab es den Ordner schon, gehört er womöglich jemand anderem
+    const { createdBy } = getRow<{ createdBy: number }>(db, 'SELECT created_by AS createdBy FROM folders WHERE id = ?', id)!;
     reply.code(201);
-    return managedFolder(path);
+    return { path, canManage: canManageFolder(ctx.user.id, ctx.role, { createdBy }) } satisfies Folder;
   });
 
+  // Umbenennen und Verschieben: nur die Zeile des Ordners ändert sich, Inhalt hängt an seiner ID.
   app.patch(
     '/api/groups/:gid/folders',
     { schema: { params: gidParams, body: objectOf({ ...location, newPath: { type: 'string', minLength: 1 } }) } },
@@ -79,38 +71,25 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
       const path = parseFolderPath(body.path);
       const newPath = parseFolderPath(body.newPath);
       if (isWithin(newPath, path)) throw badRequest('Ein Ordner kann nicht in sich selbst verschoben werden');
-      const explicit = transaction(db, () => {
-        const visible = listFolders(ctx, body.section);
-        const source = requireManageable(visible, path);
-        // Ein für den Anfragenden unsichtbarer Zielordner wird bewusst nicht gemeldet (das würde ihn
-        // verraten) - die Inhalte landen dann im selben Ordner.
-        if (visible.some((f) => f.path === newPath)) throw conflict('Es gibt bereits einen Ordner mit diesem Namen');
-
-        const inSection = sectionParams(ctx.groupId, body.section);
+      transaction(db, () => {
+        const id = requireManageable(ctx, body.section, path);
+        if (findFolderId(db, ctx.groupId, body.section, newPath) !== undefined) {
+          throw conflict('Es gibt bereits einen Ordner mit diesem Namen');
+        }
         // Längen in JS messen: SQLite zählt Codepoints, normalizePath aber UTF-16-Einheiten (Emoji!).
-        const moved = allRows<{ path: string }>(
+        const inside = allRows<{ path: string }>(
           db,
-          `SELECT path FROM folders WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}
-           UNION SELECT path FROM articles WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}`,
-          { ...inSection, path },
-        );
-        if (moved.some((m) => m.path.length - path.length + newPath.length > MAX_PATH_LENGTH)) {
+          `SELECT fp.path FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ?`,
+          ctx.groupId,
+          body.section,
+        ).filter((f) => isWithin(f.path, path));
+        if (inside.some((f) => f.path.length - path.length + newPath.length > MAX_PATH_LENGTH)) {
           throw badRequest(`Pfade im Ordner würden zu lang (max. ${MAX_PATH_LENGTH} Zeichen)`);
         }
-        // Zieht Unterordner und alle Artikel (auch für den Anfragenden unsichtbare) mit um.
-        for (const table of ['folders', 'articles']) {
-          run(
-            db,
-            `UPDATE ${table} SET path = :newPath || substr(path, length(:path) + 1)
-             WHERE ${IN_SECTION_SQL} AND ${withinSql('path')}`,
-            { ...inSection, path, newPath },
-          );
-        }
-        // Nur aus Artikelpfaden entstandene Ordner bleiben implizit, sonst würde ihr Name für alle sichtbar.
-        if (source.explicit) ensureFolders(db, ctx.groupId, body.section, newPath, ctx.user.id);
-        return source.explicit;
+        const parentId = ensureFolderPath(db, ctx.groupId, body.section, parentPath(newPath), ctx.user.id);
+        run(db, 'UPDATE folders SET parent_id = ?, name = ? WHERE id = ?', parentId, baseName(newPath), id);
       });
-      return { ...managedFolder(newPath), explicit };
+      return managedFolder(newPath);
     },
   );
 
@@ -123,19 +102,14 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
       assertSection(ctx, query.section);
       const path = parseFolderPath(query.path);
       transaction(db, () => {
-        requireManageable(listFolders(ctx, query.section), path);
-        const params = { ...sectionParams(ctx.groupId, query.section), path };
+        const id = requireManageable(ctx, query.section, path);
         // Zählt bewusst auch Artikel, die der Anfragende nicht sehen kann.
-        const hasArticles = getRow(db, `SELECT 1 FROM articles WHERE ${IN_SECTION_SQL} AND ${withinSql('path')} LIMIT 1`, params);
-        const hasSubfolders = getRow(
-          db,
-          `SELECT 1 FROM folders WHERE ${IN_SECTION_SQL} AND path <> :path AND ${withinSql('path')} LIMIT 1`,
-          params,
-        );
+        const hasArticles = getRow(db, 'SELECT 1 FROM articles WHERE folder_id = ? LIMIT 1', id);
+        const hasSubfolders = getRow(db, 'SELECT 1 FROM folders WHERE parent_id = ? LIMIT 1', id);
         if (hasArticles || hasSubfolders) {
           throw conflict('Ordner ist nicht leer (er kann auch Artikel enthalten, die du nicht sehen kannst)');
         }
-        run(db, `DELETE FROM folders WHERE ${IN_SECTION_SQL} AND path = :path`, params);
+        run(db, 'DELETE FROM folders WHERE id = ?', id);
       });
       return { ok: true };
     },

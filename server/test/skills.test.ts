@@ -123,57 +123,90 @@ describe('FATE-Bogen', () => {
     aspects: { concept: 'Schmugglerin', trouble: '', relationship: '', free1: '', free2: '' },
     stunts: 'Schnellziehen',
     refresh: '3',
-    stress: { physical: [true, false, false, false, false, false], mental: Array(6).fill(false) },
-    consequences: { mild: '', moderate: 'Gebrochener Arm', severe: '', mild2: '' },
+    stressBoxes: { physical: 4, mental: 4 },
+    consequences: [{ key: 'k1', value: 2 }, { key: 'k2', value: 4 }],
     skills: {},
+    ...extra,
+  });
+  const state = (extra: object = {}) => ({
+    stress: { physical: [true, false, false, false, false, false], mental: Array(6).fill(false) },
+    consequences: { k2: 'Gebrochener Arm' },
     ...extra,
   });
 
   it('folgt der Sichtbarkeit und den Bearbeitungsrechten des Artikels', async () => {
     const { base, gm, alice, bob } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('private_gm'))).body.id;
-    expect((await alice.get(`${base}/articles/${id}/sheet`)).status).toBe(404);
-    expect((await alice.put(`${base}/articles/${id}/sheet`, { data: sheet(), version: 1 })).status).toBe(404);
-    expect((await alice.post(`${base}/articles/${id}/sheet`, sheet())).body).toMatchObject({ version: 1, data: { name: 'Zoë' } });
+    const url = `${base}/articles/${id}/sheet`;
+    expect((await alice.get(url)).status).toBe(404);
+    expect((await alice.put(url, { data: sheet(), version: 1 })).status).toBe(404);
+    expect((await alice.put(`${url}/state`, { state: state(), stateVersion: 1 })).status).toBe(404);
+    expect((await alice.post(url, { data: sheet() })).body).toMatchObject({ version: 1, stateVersion: 1, data: { name: 'Zoë' } });
     expect((await alice.get(`${base}/articles/${id}`)).body.hasSheet).toBe(true);
     expect((await alice.get(`${base}/articles?section=characters`)).body[0].hasSheet).toBe(true);
 
-    expect((await gm.get(`${base}/articles/${id}/sheet`)).body.data.aspects.concept).toBe('Schmugglerin');
-    expect((await gm.put(`${base}/articles/${id}/sheet`, { data: sheet({ name: 'vom SL' }), version: 1 })).body.version).toBe(2);
-    expect((await bob.get(`${base}/articles/${id}/sheet`)).status).toBe(404);
-    expect((await bob.put(`${base}/articles/${id}/sheet`, { data: sheet(), version: 2 })).status).toBe(404);
-    expect((await bob.post(`${base}/articles/${id}/sheet`, sheet())).status).toBe(404);
+    expect((await gm.get(url)).body.data.aspects.concept).toBe('Schmugglerin');
+    expect((await gm.put(url, { data: sheet({ name: 'vom SL' }), version: 1 })).body.version).toBe(2);
+    expect((await bob.get(url)).status).toBe(404);
+    expect((await bob.put(url, { data: sheet(), version: 2 })).status).toBe(404);
+    expect((await bob.post(url, { data: sheet() })).status).toBe(404);
 
     await alice.put(`${base}/articles/${id}`, article('public'));
-    expect((await bob.get(`${base}/articles/${id}/sheet`)).body.data.name).toBe('vom SL');
-    expect((await bob.put(`${base}/articles/${id}/sheet`, { data: sheet(), version: 2 })).status).toBe(403);
-    expect((await bob.post(`${base}/articles/${id}/sheet`, sheet())).status).toBe(403);
-    expect((await bob.del(`${base}/articles/${id}/sheet`)).status).toBe(403);
+    expect((await bob.get(url)).body.data.name).toBe('vom SL');
+    expect((await bob.put(url, { data: sheet(), version: 2 })).status).toBe(403);
+    expect((await bob.put(`${url}/state`, { state: state(), stateVersion: 1 })).status).toBe(403);
+    expect((await bob.post(url, { data: sheet() })).status).toBe(403);
+    expect((await bob.del(url)).status).toBe(403);
 
-    expect((await alice.del(`${base}/articles/${id}/sheet`)).status).toBe(200);
+    expect((await alice.del(url)).status).toBe(200);
     expect((await alice.get(`${base}/articles/${id}`)).body.hasSheet).toBe(false);
   });
 
-  it('schützt vor gegenseitigem Überschreiben', async () => {
+  it('legt Bogen und Zustand gemeinsam an; ohne Zustand ist er leer', async () => {
+    const { base, alice } = await setupGroup(makeApp());
+    const mk = async () => `${base}/articles/${(await alice.post(`${base}/articles`, article('public'))).body.id}/sheet`;
+    const withState = await alice.post(await mk(), { data: sheet(), state: state() });
+    expect(withState.body.state).toEqual(state());
+    const empty = await alice.post(await mk(), { data: sheet() });
+    expect(empty.body.state).toEqual({ stress: { physical: Array(6).fill(false), mental: Array(6).fill(false) }, consequences: {} });
+  });
+
+  it('schützt vor gegenseitigem Überschreiben, getrennt für Bogen und Zustand', async () => {
     const { base, gm, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('private_gm'))).body.id;
     const url = `${base}/articles/${id}/sheet`;
-    await alice.post(url, sheet());
+    await alice.post(url, { data: sheet() });
     // Anlegen auf einer veralteten Seite darf den ausgefüllten Bogen nicht leeren
-    expect((await gm.post(url, sheet({ name: '' }))).status).toBe(409);
+    expect((await gm.post(url, { data: sheet({ name: '' }) })).status).toBe(409);
 
-    expect((await alice.put(url, { data: sheet({ name: 'Alice 1' }), version: 1 })).body.version).toBe(2);
+    expect((await alice.put(url, { data: sheet({ name: 'Alice 1' }), version: 1 })).body).toMatchObject({ version: 2 });
     expect((await gm.put(url, { data: sheet({ name: 'SL veraltet' }), version: 1 })).status).toBe(409);
-    expect((await gm.get(url)).body).toMatchObject({ version: 2, data: { name: 'Alice 1' } });
-    expect((await gm.put(url, { data: sheet({ name: 'SL aktuell' }), version: 2 })).body.version).toBe(3);
+
+    // Zustand im Spiel ändern stört die Bearbeitung des Bogens nicht - und umgekehrt
+    expect((await gm.put(`${url}/state`, { state: state(), stateVersion: 1 })).body).toEqual({ state: state(), stateVersion: 2 });
+    expect((await alice.put(url, { data: sheet({ name: 'Alice 2' }), version: 2 })).body.version).toBe(3);
+    expect((await alice.put(`${url}/state`, { state: state({ consequences: {} }), stateVersion: 1 })).status).toBe(409);
+    expect((await gm.get(url)).body).toMatchObject({ version: 3, stateVersion: 2, data: { name: 'Alice 2' }, state: state() });
+  });
+
+  it('verwirft Texte zu entfernten Konsequenzzeilen', async () => {
+    const { base, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
+    const url = `${base}/articles/${id}/sheet`;
+    await alice.post(url, { data: sheet(), state: state({ consequences: { k1: 'Prellung', k2: 'Arm' } }) });
+    await alice.put(url, { data: sheet({ consequences: [{ key: 'k2', value: 6 }] }), version: 1 });
+    expect((await alice.get(url)).body.state.consequences).toEqual({ k2: 'Arm' });
+    // eine Ansicht mit altem Bogen speichert ebenfalls nur Texte zu vorhandenen Zeilen
+    const saved = await alice.put(`${url}/state`, { state: state({ consequences: { k1: 'alt', k2: 'Bein' } }), stateVersion: 1 });
+    expect(saved.body.state.consequences).toEqual({ k2: 'Bein' });
   });
 
   it('gibt es nur in Charaktere und Notizen', async () => {
     const { base, gm } = await setupGroup(makeApp());
     const ort = (await gm.post(`${base}/articles`, article('public', { section: 'gm' }))).body.id;
-    expect((await gm.post(`${base}/articles/${ort}/sheet`, sheet())).status).toBe(400);
+    expect((await gm.post(`${base}/articles/${ort}/sheet`, { data: sheet() })).status).toBe(400);
     const npc = (await gm.post(`${base}/articles`, article('public', { section: 'notes' }))).body.id;
-    expect((await gm.post(`${base}/articles/${npc}/sheet`, sheet())).status).toBe(201);
+    expect((await gm.post(`${base}/articles/${npc}/sheet`, { data: sheet() })).status).toBe(201);
     // Mit Bogen nicht in einen Bereich ohne Bögen verschiebbar, zwischen Charaktere/Notizen schon
     expect((await gm.put(`${base}/articles/${npc}`, article('public', { section: 'gm' }))).status).toBe(400);
     expect((await gm.put(`${base}/articles/${npc}`, article('public', { section: 'characters' }))).status).toBe(200);
@@ -183,67 +216,72 @@ describe('FATE-Bogen', () => {
     const { base, gm, alice } = await setupGroup(makeApp());
     const [kampf, wissen] = (await gm.put(`${base}/skills`, { skills: [{ name: 'Kämpfen' }, { name: 'Wissen' }] })).body;
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
-    const saved = await alice.post(`${base}/articles/${id}/sheet`, sheet({ skills: { [kampf.id]: 3, [wissen.id]: 0, 99999: 4, abc: 1 } }));
+    const url = `${base}/articles/${id}/sheet`;
+    const saved = await alice.post(url, { data: sheet({ skills: { [kampf.id]: 3, [wissen.id]: 0, 99999: 4, abc: 1 } }) });
     expect(saved.body.data.skills).toEqual({ [kampf.id]: 3, [wissen.id]: 0 });
 
     await gm.put(`${base}/skills`, { skills: [{ id: kampf.id, name: 'Nahkampf' }] });
-    const stale = (await alice.get(`${base}/articles/${id}/sheet`)).body;
+    const stale = (await alice.get(url)).body;
     expect(stale.data.skills[kampf.id]).toBe(3);
-    expect((await alice.put(`${base}/articles/${id}/sheet`, stale)).body.data.skills).toEqual({ [kampf.id]: 3 });
+    expect((await alice.put(url, { data: stale.data, version: stale.version })).body.data.skills).toEqual({ [kampf.id]: 3 });
   });
 
-  it('speichert die Zahl der nutzbaren Stresskästchen; ohne Angabe gilt die Vorgabe', async () => {
+  it('speichert Stresskästchen und Konsequenzzeilen', async () => {
     const { base, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     const url = `${base}/articles/${id}/sheet`;
-    expect((await alice.post(url, sheet())).body.data.stressBoxes).toEqual({ physical: 4, mental: 4 });
-    const saved = await alice.put(url, { data: sheet({ stressBoxes: { physical: 6, mental: 2 } }), version: 1 });
-    expect(saved.body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
-    expect((await alice.get(url)).body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
-    // eine noch offene ältere Seite schickt das Feld nicht mit: der gespeicherte Wert bleibt
-    const old = await alice.put(url, { data: sheet(), version: 2 });
-    expect(old.body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
+    await alice.post(url, { data: sheet() });
+    const data = sheet({ stressBoxes: { physical: 6, mental: 2 }, consequences: [{ key: 'a', value: 6 }, { key: 'b', value: 6 }] });
+    expect((await alice.put(url, { data, version: 1 })).body.data).toMatchObject({
+      stressBoxes: { physical: 6, mental: 2 },
+      consequences: [{ key: 'a', value: 6 }, { key: 'b', value: 6 }],
+    });
+    expect((await alice.put(url, { data: sheet({ consequences: [] }), version: 2 })).body.data.consequences).toEqual([]);
   });
 
-  it('validiert den Bogen', async () => {
+  it('validiert Bogen und Zustand', async () => {
     const { base, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     const url = `${base}/articles/${id}/sheet`;
-    await alice.post(url, sheet());
+    await alice.post(url, { data: sheet() });
     const put = (data: object) => alice.put(url, { data, version: 1 });
-    expect((await put(sheet({ stress: { physical: [true], mental: Array(6).fill(false) } }))).status).toBe(400);
     expect((await put(sheet({ skills: { 1: 99 } }))).status).toBe(400);
+    expect((await put(sheet({ skills: { 1: 1.5 } }))).status).toBe(400);
+    expect((await put(sheet({ consequences: [{ key: 'a', value: 3 }] }))).status).toBe(400);
+    expect((await put(sheet({ consequences: [{ key: '', value: 2 }] }))).status).toBe(400);
+    expect((await put(sheet({ consequences: Array.from({ length: 7 }, (_, i) => ({ key: `k${i}`, value: 2 })) }))).status).toBe(400);
     expect((await put(sheet({ stressBoxes: { physical: 0, mental: 3 } }))).status).toBe(400);
     expect((await put(sheet({ stressBoxes: { physical: 7, mental: 3 } }))).status).toBe(400);
     expect((await put(sheet({ stressBoxes: { physical: 3 } }))).status).toBe(400);
-    expect((await put(sheet({ skills: { 1: 1.5 } }))).status).toBe(400);
     expect((await put(sheet({ name: 'x'.repeat(301) }))).status).toBe(400);
     expect((await put(sheet({ stunts: 'x'.repeat(5001) }))).status).toBe(400);
     expect((await put(sheet({ name: { kein: 'Text' } }))).status).toBe(400);
     expect((await put({ name: 'unvollständig' })).status).toBe(400);
     expect((await alice.put(url, { data: sheet() })).status).toBe(400);
-    expect((await alice.post(`${base}/articles/99999/sheet`, sheet())).status).toBe(404);
+    expect((await alice.post(`${base}/articles/99999/sheet`, { data: sheet() })).status).toBe(404);
+
+    const putState = (s: object) => alice.put(`${url}/state`, { state: s, stateVersion: 1 });
+    expect((await putState(state({ stress: { physical: [true], mental: Array(6).fill(false) } }))).status).toBe(400);
+    expect((await putState(state({ consequences: { k1: 'x'.repeat(301) } }))).status).toBe(400);
+    expect((await putState(state({ consequences: { ['x'.repeat(21)]: 'zu langer Schlüssel' } }))).status).toBe(400);
+    expect((await putState(state({ consequences: Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`k${i}`, 'x'])) }))).status).toBe(400);
+    expect((await alice.put(`${url}/state`, { state: state() })).status).toBe(400);
   });
 
   it('ersetzt Steuerzeichen in einzeiligen Feldern, statt das Speichern zu verweigern', async () => {
     const { base, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     // z.B. ein aus einer Tabelle mitkopierter Tab
-    const saved = await alice.post(
-      `${base}/articles/${id}/sheet`,
-      sheet({
+    const saved = await alice.post(`${base}/articles/${id}/sheet`, {
+      data: sheet({
         name: 'Zoë\tWashburne',
         stunts: 'Zeile 1\nZeile 2',
         aspects: { concept: 'mehr\nzeilig', trouble: '', relationship: '', free1: '', free2: '' },
-        consequences: { mild: 'a\u0000b', moderate: '', severe: '', mild2: '' },
       }),
-    );
-    expect(saved.body.data).toMatchObject({
-      name: 'Zoë Washburne',
-      stunts: 'Zeile 1\nZeile 2',
-      aspects: { concept: 'mehr\nzeilig' },
-      consequences: { mild: 'a b' },
+      state: state({ consequences: { k1: 'a\u0000b' } }),
     });
+    expect(saved.body.data).toMatchObject({ name: 'Zoë Washburne', stunts: 'Zeile 1\nZeile 2', aspects: { concept: 'mehr\nzeilig' } });
+    expect(saved.body.state.consequences).toEqual({ k1: 'a b' });
   });
 
   it('speichert keine unbekannten Felder', async () => {
@@ -251,17 +289,18 @@ describe('FATE-Bogen', () => {
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     const url = `${base}/articles/${id}/sheet`;
     const junk = { ...sheet(), junk: 'x'.repeat(50_000), aspects: { ...sheet().aspects, more: 'y' } };
-    expect((await alice.post(url, junk)).status).toBe(201);
-    const stored = (await alice.get(url)).body.data;
-    expect(stored.junk).toBeUndefined();
-    expect(stored.aspects.more).toBeUndefined();
-    expect(stored.name).toBe('Zoë');
+    expect((await alice.post(url, { data: junk, state: { ...state(), junk: 1 } })).status).toBe(201);
+    const stored = (await alice.get(url)).body;
+    expect(stored.data.junk).toBeUndefined();
+    expect(stored.data.aspects.more).toBeUndefined();
+    expect(stored.state.junk).toBeUndefined();
+    expect(stored.data.name).toBe('Zoë');
   });
 
   it('verschwindet mit dem Artikel', async () => {
     const { base, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
-    await alice.post(`${base}/articles/${id}/sheet`, sheet());
+    await alice.post(`${base}/articles/${id}/sheet`, { data: sheet() });
     await alice.del(`${base}/articles/${id}`);
     expect((await alice.get(`${base}/articles/${id}/sheet`)).status).toBe(404);
   });
@@ -271,16 +310,19 @@ describe('FATE-Bogen', () => {
     const app = buildApp(db, { adminEmails: ADMIN_EMAIL });
     const { base, alice } = await setupGroup(app);
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
-    await alice.post(`${base}/articles/${id}/sheet`, sheet());
     const sheetUrl = `${base}/articles/${id}/sheet`;
-    db.exec(`UPDATE character_sheets SET data = '{kaputt'`);
-    expect((await alice.get(sheetUrl)).body.data.name).toBe('');
-    // Gültiges JSON in falscher Form wird ebenfalls zu einem vollständigen Bogen
-    db.exec(`UPDATE character_sheets SET data = '{"name":"x","stress":{"physical":[true]},"skills":{"1":"viel"}}'`);
+    await alice.post(sheetUrl, { data: sheet() });
+    db.exec(`UPDATE character_sheets SET data = '{kaputt', state = 'auch kaputt'`);
+    const broken = (await alice.get(sheetUrl)).body;
+    expect(broken.data.name).toBe('');
+    expect(broken.state.stress.physical).toEqual(Array(6).fill(false));
+    // Gültiges JSON in falscher Form wird ebenfalls vollständig
+    db.exec(`UPDATE character_sheets SET data = '{"name":"x","consequences":[{"key":"a","value":3},{"key":"b","value":4}],"skills":{"1":"viel"}}',
+      state = '{"stress":{"physical":[true]},"consequences":{"b":"Arm","weg":"x"}}'`);
     const repaired = (await alice.get(sheetUrl)).body;
-    expect(repaired.data).toMatchObject({ name: 'x', refresh: '3', skills: {}, aspects: { concept: '' } });
-    expect(repaired.data.stress).toEqual({ physical: [true, false, false, false, false, false], mental: Array(6).fill(false) });
-    expect((await alice.put(sheetUrl, repaired)).status).toBe(200);
+    expect(repaired.data).toMatchObject({ name: 'x', refresh: '3', skills: {}, aspects: { concept: '' }, consequences: [{ key: 'b', value: 4 }] });
+    expect(repaired.state).toEqual({ stress: { physical: [true, false, false, false, false, false], mental: Array(6).fill(false) }, consequences: { b: 'Arm' } });
+    expect((await alice.put(sheetUrl, { data: repaired.data, version: repaired.version })).status).toBe(200);
   });
 
   it('wendet beschädigte oder leere Varianten nicht an', async () => {

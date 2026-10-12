@@ -1,5 +1,5 @@
-import { normalizePath, PathError, pathPrefixes, type Section } from '@pnp/shared';
-import { run, type Db } from './db.ts';
+import { normalizePath, PathError, type Section } from '@pnp/shared';
+import { getRow, insertRow, type Db } from './db.ts';
 import { badRequest } from './errors.ts';
 
 /** normalizePath mit 400 statt PathError */
@@ -19,20 +19,6 @@ export function parseFolderPath(input: string): string {
   return path;
 }
 
-/** Legt den Ordner samt fehlender Elternordner an (Invariante der Tabelle folders). */
-export function ensureFolders(db: Db, groupId: number, section: Section, path: string, userId: number): void {
-  for (const prefix of pathPrefixes(path)) {
-    run(
-      db,
-      'INSERT INTO folders (group_id, section, path, created_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
-      groupId,
-      section,
-      prefix,
-      userId,
-    );
-  }
-}
-
 /** SQL-Bedingung "gehört zu Gruppe :gid und Bereich :section"; die Parameter dazu liefert sectionParams() */
 export const IN_SECTION_SQL = 'group_id = :gid AND section = :section';
 
@@ -40,9 +26,47 @@ export function sectionParams(groupId: number, section: Section): { gid: number;
   return { gid: groupId, section };
 }
 
+/** Ordner samt vollständigem Pfad (View folder_paths): Aliase "f" (folders) und "fp" (fp.path) */
+export const FOLDERS_WITH_PATH = 'folders f JOIN folder_paths fp ON fp.id = f.id';
+
+/** ID des Ordners mit diesem (normalisierten) Pfad; '' ist die oberste Ebene (null), undefined = gibt es nicht */
+export function findFolderId(db: Db, groupId: number, section: Section, path: string): number | null | undefined {
+  if (path === '') return null;
+  return getRow<{ id: number }>(
+    db,
+    `SELECT f.id FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ? AND fp.path = ?`,
+    groupId,
+    section,
+    path,
+  )?.id;
+}
+
 /**
- * SQL-Bedingung "Spalte liegt in oder unter :path". Bewusst ohne LIKE,
- * damit % und _ in Ordnernamen nichts anrichten.
+ * ID des Ordners mit diesem (normalisierten) Pfad; fehlende Ordner auf dem Weg werden angelegt.
+ * '' ist die oberste Ebene (null). Muss in einer Transaktion laufen.
  */
-export const withinSql = (column: string) =>
-  `(${column} = :path OR substr(${column}, 1, length(:path) + 1) = :path || '/')`;
+export function ensureFolderPath(db: Db, groupId: number, section: Section, path: string, userId: number): number | null {
+  let parentId: number | null = null;
+  for (const name of path === '' ? [] : path.split('/')) {
+    const existing: { id: number } | undefined = getRow<{ id: number }>(
+      db,
+      'SELECT id FROM folders WHERE group_id = ? AND section = ? AND parent_id IS ? AND name = ?',
+      groupId,
+      section,
+      parentId,
+      name,
+    );
+    parentId =
+      existing?.id ??
+      insertRow(
+        db,
+        'INSERT INTO folders (group_id, section, parent_id, name, created_by) VALUES (?, ?, ?, ?, ?)',
+        groupId,
+        section,
+        parentId,
+        name,
+        userId,
+      );
+  }
+  return parentId;
+}

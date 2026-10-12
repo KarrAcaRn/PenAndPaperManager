@@ -86,7 +86,8 @@ describe('api', () => {
     await api.renameFolder(1, 'notes', 'a', 'b');
     await api.sheet(1, 3);
     await api.createSheet(1, 3, {} as never);
-    await api.saveSheet(1, 3, {} as never);
+    await api.saveSheet(1, 3, {} as never, 1);
+    await api.saveSheetState(1, 3, {} as never, 1);
     await api.deleteSheet(1, 3);
     await api.skills(1);
     await api.saveSkills(1, []);
@@ -113,6 +114,7 @@ describe('api', () => {
       'GET /api/groups/1/articles/3/sheet',
       'POST /api/groups/1/articles/3/sheet',
       'PUT /api/groups/1/articles/3/sheet',
+      'PUT /api/groups/1/articles/3/sheet/state',
       'DELETE /api/groups/1/articles/3/sheet',
       'GET /api/groups/1/skills',
       'PUT /api/groups/1/skills',

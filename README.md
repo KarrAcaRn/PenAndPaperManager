@@ -35,8 +35,11 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 - Verliert ein Autor den Zugriff (aus der Gruppe entfernt, bzw. als Spielleiter degradiert für den Bereich
   Spielleiter), werden seine privaten Artikel dort zu "Privat & Spielleiter" – sonst könnte sie niemand mehr
   sehen oder löschen.
-- Artikel liegen per `path` (z.B. `bar/foo`) in Ordnern. Leere Ordner stehen in der Tabelle `folders`;
-  Ordner, die nur aus Artikelpfaden entstehen, sieht nur, wer darin einen Artikel sehen kann.
+- Ordner bilden je Gruppe und Bereich einen Baum (Tabelle `folders`, Artikel hängen per `folder_id` daran); in der
+  API werden sie als Pfad (z.B. `bar/foo`) angesprochen. Alle, die einen Bereich sehen, sehen alle Ordner darin –
+  ein- und ausgeblendet werden nur Artikel über ihre Sichtbarkeit. Wird ein Artikel in einen noch nicht vorhandenen
+  Ordner gespeichert, wird der Ordner angelegt. Umbenennen/Verschieben/Löschen (nur leer, auch ohne unsichtbare
+  Artikel): Ersteller oder Spielleiter.
 
 ## FATE-Bogen und Fertigkeiten
 
@@ -44,11 +47,17 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   `docs/charakterbogen-vorlage.html`, druckbar auf A4). Sichtbarkeit und Bearbeitungsrechte sind die des
   Artikels. Hinzugefügt, bearbeitet und entfernt wird der Bogen im
   Bearbeiten-Modus des Artikels (über dem Text, wie in der Ansicht) und erst mit „Speichern“ übernommen. In der
-  Ansicht lässt sich nur der Zustand (Stress, Konsequenzen) ändern; das wird sofort gespeichert, damit er im Spiel
-  schnell angepasst werden kann. Jeder Bogen trägt eine Version: Bearbeiten zwei
-  Leute gleichzeitig, bekommt der zweite einen Konflikt gemeldet, statt den ersten zu überschreiben.
+  Ansicht lässt sich nur der Zustand (Stress, Konsequenztexte) ändern; das wird sofort gespeichert, damit er im Spiel
+  schnell angepasst werden kann. Im Bearbeiten-Modus ist der Zustand nur zu sehen.
+- Bogen (`data`) und Zustand (`state`) werden getrennt gespeichert und tragen je eine eigene Version: Bearbeiten zwei
+  Leute gleichzeitig dasselbe, bekommt der zweite einen Konflikt gemeldet, statt den ersten zu überschreiben. Wer im
+  Spiel Stress ankreuzt, stört dagegen niemanden, der gerade den Bogen bearbeitet.
 - Wie viele Stresskästchen je Leiste (körperlich/geistig) nutzbar sind, stellt man im Bearbeiten-Modus mit
   −/+ ein (1–6, Vorgabe 4); die übrigen sind ausgegraut.
+- Konsequenzen: Vorgabe sind je eine leichte (2), mittlere (4) und schwere (6). Im Bearbeiten-Modus fügt +
+  eine Zeile hinzu und − entfernt die letzte (höchstens 6); die Stufe jeder Zeile ist frei wählbar. Jede Zeile hat
+  einen festen Schlüssel, an dem ihr Text im Zustand hängt. Ändert sich der Aufbau von Bogen oder Zustand, steht das
+  in `character_sheets.format` und der Server wandelt ältere Formate beim Lesen um.
 - Die Fertigkeiten auf dem Bogen legt der Spielleiter pro Gruppe fest (Bereich Spielleiter → Fertigkeiten).
   Umbenannte Fertigkeiten behalten ihre Werte, IDs gelöschter werden nie wiederverwendet.
 - Ausgangspunkt sind Varianten (z.B. Fate Core, Turbo-Fate, Fate of Cthulhu), die beim ersten Start aus

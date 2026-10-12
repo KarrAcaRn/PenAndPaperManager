@@ -6,28 +6,29 @@ import {
   canAccessSection,
   canHaveSheet,
   type ArticleInput,
+  type ArticleUpdate,
   type ArticleSummary,
   type Section,
 } from '@pnp/shared';
-import { allRows, insertRow, run, type Db } from '../db.ts';
+import { allRows, getRow, insertRow, run, transaction, type Db } from '../db.ts';
 import { assertSection, getRole, requireMember, type MemberContext } from '../auth.ts';
 import { VISIBLE_ARTICLE_SQL, visibilityParams } from '../access.ts';
-import { SUMMARY_COLUMNS, loadVisibleArticle, toSummary } from '../articles.ts';
-import { IN_SECTION_SQL, parsePath, sectionParams } from '../folders.ts';
+import { ARTICLES_FROM, ARTICLE_PATH_SQL, SUMMARY_COLUMNS, loadVisibleArticle, toSummary } from '../articles.ts';
+import { IN_SECTION_SQL, ensureFolderPath, parsePath, sectionParams } from '../folders.ts';
 import { badRequest, forbidden } from '../errors.ts';
 import { gidParams, idParams, nonBlank, objectOf, sectionProp } from '../schemas.ts';
 
 const articleParams = idParams('id');
-const articleBody = objectOf(
-  {
-    section: sectionProp,
-    path: { type: 'string', default: '' },
-    title: nonBlank(MAX_TITLE_LENGTH),
-    bodyMd: { type: 'string', maxLength: MAX_BODY_LENGTH, default: '' },
-    visibility: { enum: VISIBILITIES },
-  },
-  ['section', 'title', 'visibility'],
-);
+const articleFields = {
+  section: sectionProp,
+  title: nonBlank(MAX_TITLE_LENGTH),
+  bodyMd: { type: 'string', maxLength: MAX_BODY_LENGTH, default: '' },
+  visibility: { enum: VISIBILITIES },
+};
+const required = ['section', 'title', 'visibility'];
+const articleBody = objectOf({ ...articleFields, path: { type: 'string', default: '' } }, required);
+// Beim Ändern ohne Vorgabe: fehlt path, bleibt der Artikel in seinem Ordner (siehe ArticleUpdate)
+const articleUpdateBody = objectOf({ ...articleFields, path: { type: 'string' } }, required);
 
 export function articleRoutes(app: FastifyInstance, db: Db): void {
   const loadVisible = (ctx: MemberContext, id: number) => loadVisibleArticle(db, ctx, id);
@@ -47,8 +48,8 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       if (path !== undefined) params.path = parsePath(path);
       const rows = allRows<ArticleSummary>(
         db,
-        `SELECT ${SUMMARY_COLUMNS} FROM articles a JOIN users u ON u.id = a.author_id
-         WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : 'AND a.path = :path'}
+        `SELECT ${SUMMARY_COLUMNS} FROM ${ARTICLES_FROM}
+         WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : `AND ${ARTICLE_PATH_SQL} = :path`}
            AND ${VISIBLE_ARTICLE_SQL}
          ORDER BY a.title COLLATE NOCASE`,
         params,
@@ -61,19 +62,21 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
     const ctx = requireMember(db, req);
     const input = req.body as ArticleInput;
     assertSection(ctx, input.section);
-    // Bewusst kein Eintrag in folders: Ordner, die nur aus Artikelpfaden entstehen, sieht nur,
-    // wer auch einen Artikel darin sehen kann. So verraten private Artikel keine Ordnernamen.
-    const id = insertRow(
-      db,
-      `INSERT INTO articles (group_id, section, path, title, body_md, visibility, author_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ctx.groupId,
-      input.section,
-      parsePath(input.path),
-      input.title.trim(),
-      input.bodyMd,
-      input.visibility,
-      ctx.user.id,
+    const path = parsePath(input.path);
+    // Ein neu eingetippter Ordner wird angelegt (sichtbar für alle im Bereich, wie jeder Ordner)
+    const id = transaction(db, () =>
+      insertRow(
+        db,
+        `INSERT INTO articles (group_id, section, folder_id, title, body_md, visibility, author_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ctx.groupId,
+        input.section,
+        ensureFolderPath(db, ctx.groupId, input.section, path, ctx.user.id),
+        input.title.trim(),
+        input.bodyMd,
+        input.visibility,
+        ctx.user.id,
+      ),
     );
     reply.code(201);
     return loadVisible(ctx, id);
@@ -84,10 +87,10 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
     return loadVisible(ctx, (req.params as { id: number }).id);
   });
 
-  app.put('/api/groups/:gid/articles/:id', { schema: { params: articleParams, body: articleBody } }, (req) => {
+  app.put('/api/groups/:gid/articles/:id', { schema: { params: articleParams, body: articleUpdateBody } }, (req) => {
     const ctx = requireMember(db, req);
     const { id } = req.params as { id: number };
-    const input = req.body as ArticleInput;
+    const input = req.body as ArticleUpdate;
     const existing = loadVisible(ctx, id);
     if (!existing.canEdit) throw forbidden('Du darfst diesen Artikel nicht bearbeiten');
     assertSection(ctx, input.section);
@@ -104,16 +107,24 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
     if (existing.hasSheet && !canHaveSheet(input.section)) {
       throw badRequest('Artikel mit FATE-Bogen können nur in Charaktere oder Notizen liegen - entferne erst den Bogen');
     }
-    run(
-      db,
-      `UPDATE articles SET section = ?, path = ?, title = ?, body_md = ?, visibility = ?, updated_at = datetime('now')
-       WHERE id = ?`,
-      input.section,
-      parsePath(input.path),
-      input.title.trim(),
-      input.bodyMd,
-      input.visibility,
-      id,
+    if (input.path === undefined && input.section !== existing.section) {
+      throw badRequest('Beim Verschieben in einen anderen Bereich fehlt der Ordner');
+    }
+    const path = input.path === undefined ? undefined : parsePath(input.path);
+    transaction(db, () =>
+      run(
+        db,
+        `UPDATE articles SET section = ?, folder_id = ?, title = ?, body_md = ?, visibility = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+        input.section,
+        path === undefined
+          ? getRow<{ folderId: number | null }>(db, 'SELECT folder_id AS folderId FROM articles WHERE id = ?', id)!.folderId
+          : ensureFolderPath(db, ctx.groupId, input.section, path, ctx.user.id),
+        input.title.trim(),
+        input.bodyMd,
+        input.visibility,
+        id,
+      ),
     );
     return loadVisible(ctx, id);
   });

@@ -665,7 +665,21 @@ describe('ArticleEdit', () => {
     await user.clear(title);
     await user.type(title, 'Wirtin');
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(api.updateArticle).toHaveBeenCalledWith(7, 1, expect.objectContaining({ title: 'Wirtin', path: 'bar' })));
+    await waitFor(() => expect(api.updateArticle).toHaveBeenCalledWith(7, 1, expect.objectContaining({ title: 'Wirtin' })));
+    // Ordner unverändert: nicht mitschicken, sonst holte das Formular einen inzwischen umbenannten Ordner zurück
+    expect('path' in api.updateArticle.mock.calls[0][2]).toBe(false);
+  });
+
+  it('schickt den Ordner mit, wenn er geändert wurde', async () => {
+    signIn(PLAYER, [playerGroup]);
+    api.article.mockResolvedValue(fullArticle({ path: 'bar' }));
+    api.updateArticle.mockResolvedValue(fullArticle({ path: 'baz' }));
+    render(ArticleEdit, { group: playerGroup, section: 'notes', id: 1 });
+    const folderInput = (await screen.findByLabelText('Ordner')) as HTMLInputElement;
+    await user.clear(folderInput);
+    await user.type(folderInput, 'baz');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(api.updateArticle).toHaveBeenCalledWith(7, 1, expect.objectContaining({ path: 'baz' })));
   });
 
   it('sperrt bei fremden Artikeln "Privat" und den Bereich Spielleiter', async () => {

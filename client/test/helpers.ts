@@ -2,13 +2,16 @@ import { vi } from 'vitest';
 import {
   DEFAULT_PRESET_NAME,
   emptySheet,
+  emptySheetState,
   type Article,
   type ArticleSummary,
   type Folder,
   type Group,
   type Member,
   type SessionUser,
+  type Sheet,
   type SheetData,
+  type SheetState,
   type SkillPreset,
 } from '@pnp/shared';
 import { api } from '../src/lib/api.ts';
@@ -47,10 +50,26 @@ export const fullArticle = (over: Partial<Article> = {}): Article => ({
   ...over,
 });
 
-export const folder = (path: string, canManage = true): Folder => ({ path, explicit: true, canManage });
+export const folder = (path: string, canManage = true): Folder => ({ path, canManage });
 export const member = (user: { id: number; email: string }, role: Member['role']): Member => ({ userId: user.id, email: user.email, role });
 
-export const sheetData = (over: Partial<SheetData> = {}): SheetData => ({ ...emptySheet(), ...over });
+/** Bogen mit festen Schlüsseln für die Standard-Konsequenzen: l (leicht), m (mittel), s (schwer) */
+export const sheetData = (over: Partial<SheetData> = {}): SheetData => ({
+  ...emptySheet(),
+  consequences: [
+    { key: 'l', value: 2 },
+    { key: 'm', value: 4 },
+    { key: 's', value: 6 },
+  ],
+  ...over,
+});
+export const sheetState = (over: Partial<SheetState> = {}): SheetState => ({ ...emptySheetState(), ...over });
+export const sheetOf = (data: Partial<SheetData> = {}, version = 1, state: Partial<SheetState> = {}, stateVersion = 1): Sheet => ({
+  data: sheetData(data),
+  version,
+  state: sheetState(state),
+  stateVersion,
+});
 export const presetFixture = (over: Partial<SkillPreset> = {}): SkillPreset => ({
   id: 1,
   name: DEFAULT_PRESET_NAME,

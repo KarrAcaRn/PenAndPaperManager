@@ -25,17 +25,31 @@ describe('Ordner', () => {
     expect(await titles('&path=bar/foo')).toEqual(['Tief']);
   });
 
-  it('verrät über private Artikel keine Ordnernamen', async () => {
+  it('zeigt allen im Bereich alle Ordner; ausgeblendet werden nur die Artikel darin', async () => {
     const { base, gm, alice, bob } = await setupGroup(makeApp());
     const mk = (path: string, visibility: Visibility) => alice.post(`${base}/articles`, article(visibility, { section: 'characters', path }));
     await mk('geheim/x', 'private');
     await mk('halb/y', 'private_gm');
-    expect(paths(await alice.get(`${base}/folders?section=characters`))).toEqual(['geheim', 'geheim/x', 'halb', 'halb/y']);
-    expect(paths(await gm.get(`${base}/folders?section=characters`))).toEqual(['halb', 'halb/y']);
-    expect(paths(await bob.get(`${base}/folders?section=characters`))).toEqual([]);
-    // Auch Löschversuche verraten nichts
-    expect((await gm.del(`${base}/folders?section=characters&path=geheim`)).status).toBe(404);
-    expect((await gm.del(`${base}/folders?section=characters&path=halb`)).status).toBe(409);
+    for (const user of [alice, gm, bob]) {
+      expect(paths(await user.get(`${base}/folders?section=characters`))).toEqual(['geheim', 'geheim/x', 'halb', 'halb/y']);
+    }
+    expect((await bob.get(`${base}/articles?section=characters&path=geheim/x`)).body).toEqual([]);
+    // Ordner mit (auch unsichtbaren) Artikeln lassen sich nicht löschen
+    expect((await gm.del(`${base}/folders?section=characters&path=geheim/x`)).status).toBe(409);
+  });
+
+  it('legt beim Speichern eines Artikels fehlende Ordner an und verschiebt Artikel zwischen Bereichen', async () => {
+    const { base, gm, bob } = await setupGroup(makeApp());
+    const created = await gm.post(`${base}/articles`, article('public', { section: 'characters', path: ' neu / tief ' }));
+    expect(created.body.path).toBe('neu/tief');
+    expect(paths(await bob.get(`${base}/folders?section=characters`))).toEqual(['neu', 'neu/tief']);
+    const moved = await gm.put(`${base}/articles/${created.body.id}`, article('public', { section: 'notes', path: 'NPCs/Wirte' }));
+    expect(moved.body).toMatchObject({ section: 'notes', path: 'NPCs/Wirte' });
+    expect(paths(await bob.get(`${base}/folders?section=notes`))).toEqual(['NPCs', 'NPCs/Wirte', 'Orte', 'Sessions']);
+    // der alte Ordner bleibt (leer) bestehen
+    expect(paths(await bob.get(`${base}/folders?section=characters`))).toEqual(['neu', 'neu/tief']);
+    const root = await gm.put(`${base}/articles/${created.body.id}`, article('public', { section: 'notes', path: '' }));
+    expect(root.body.path).toBe('');
   });
 
   it('löscht nur leere Ordner und nur durch Ersteller oder Spielleiter', async () => {
@@ -70,8 +84,8 @@ describe('Ordner', () => {
     expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'A', newPath: 'B' })).status).toBe(200);
     const folders = (await bob.get(`${base}/folders?section=characters`)).body;
     expect(folders).toEqual([
-      { path: 'B', explicit: true, canManage: false },
-      { path: 'B/bobs', explicit: true, canManage: true },
+      { path: 'B', canManage: false },
+      { path: 'B/bobs', canManage: true },
     ]);
     expect((await alice.del(`${base}/folders?section=characters&path=B/bobs`)).status).toBe(403);
   });
@@ -127,30 +141,45 @@ describe('Ordner', () => {
     expect((await gm.get(`${base}/articles/${id}`)).body.path).toBe(deep);
   });
 
-  it('macht implizite Ordner beim Umbenennen nicht für alle sichtbar', async () => {
-    const { base, gm, bob } = await setupGroup(makeApp());
-    await gm.post(`${base}/articles`, article('private_gm', { section: 'characters', path: 'Verrat' }));
-    const res = await gm.patch(`${base}/folders`, { section: 'characters', path: 'Verrat', newPath: 'Verrat von Bob' });
-    expect(res.body).toEqual({ path: 'Verrat von Bob', explicit: false, canManage: true });
-    expect(paths(await bob.get(`${base}/folders?section=characters`))).toEqual([]);
-    expect(paths(await gm.get(`${base}/folders?section=characters`))).toEqual(['Verrat von Bob']);
+  it('lässt Artikel beim Speichern ohne Ordnerangabe im (inzwischen umbenannten) Ordner', async () => {
+    const { base, gm, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('public', { section: 'characters', path: 'alt' }))).body.id;
+    await gm.patch(`${base}/folders`, { section: 'characters', path: 'alt', newPath: 'neu' });
+    const { path: _, ...withoutPath } = article('public', { section: 'characters', title: 'Geändert' });
+    expect((await alice.put(`${base}/articles/${id}`, withoutPath)).body).toMatchObject({ path: 'neu', title: 'Geändert' });
+    expect(paths(await alice.get(`${base}/folders?section=characters`))).toEqual(['neu']);
+    // ohne Ordner in einen anderen Bereich: unklar, wohin
+    expect((await alice.put(`${base}/articles/${id}`, { ...withoutPath, section: 'notes' })).status).toBe(400);
   });
 
-  it('meldet Kollisionen mit sichtbaren Ordnern, verrät aber keine unsichtbaren', async () => {
+  it('meldet beim Anlegen eines vorhandenen fremden Ordners, dass man ihn nicht verwalten darf', async () => {
     const { base, alice, bob } = await setupGroup(makeApp());
-    await bob.post(`${base}/articles`, article('public', { section: 'characters', path: 'pub' }));
+    expect((await alice.post(`${base}/folders`, { section: 'characters', path: 'A' })).body).toEqual({ path: 'A', canManage: true });
+    expect((await bob.post(`${base}/folders`, { section: 'characters', path: 'A' })).body).toEqual({ path: 'A', canManage: false });
+  });
+
+  it('meldet Kollisionen beim Umbenennen und Verschieben', async () => {
+    const { base, alice, bob } = await setupGroup(makeApp());
     await bob.post(`${base}/articles`, article('private', { section: 'characters', path: 'geheim' }));
     await alice.post(`${base}/folders`, { section: 'characters', path: 'meins' });
-    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'meins', newPath: 'pub' })).status).toBe(409);
-    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'meins', newPath: 'geheim' })).status).toBe(200);
+    // auch Ordner mit nur unsichtbaren Artikeln sind sichtbar, eine Kollision verrät also nichts
+    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'meins', newPath: 'geheim' })).status).toBe(409);
+    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'meins', newPath: 'geheim/meins' })).status).toBe(200);
+    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'fehlt', newPath: 'x' })).status).toBe(404);
+    // fremder Elternordner, eigener Unterordner: verschieben darf der Ersteller des Unterordners
+    expect(paths(await bob.get(`${base}/folders?section=characters`))).toEqual(['geheim', 'geheim/meins']);
+    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'geheim', newPath: 'x' })).status).toBe(403);
   });
 
-  it('behandelt für den Anfragenden unsichtbare bzw. fremde implizite Ordner als 404 bzw. 403', async () => {
-    const { base, gm, alice, bob } = await setupGroup(makeApp());
-    await bob.post(`${base}/articles`, article('private', { section: 'characters', path: 'geheim' }));
-    await bob.post(`${base}/articles`, article('public', { section: 'characters', path: 'pub' }));
-    expect((await gm.patch(`${base}/folders`, { section: 'characters', path: 'geheim', newPath: 'x' })).status).toBe(404);
-    expect((await alice.patch(`${base}/folders`, { section: 'characters', path: 'pub', newPath: 'x' })).status).toBe(403);
-    expect((await alice.del(`${base}/folders?section=characters&path=pub`)).status).toBe(403);
+  it('trennt Ordner nach Gruppe und Bereich', async () => {
+    const app = makeApp();
+    const { base, gm } = await setupGroup(app);
+    const other = (await gm.post('/api/groups', { name: 'Andere' })).body.id;
+    await gm.post(`${base}/folders`, { section: 'characters', path: 'Gleich' });
+    expect((await gm.post(`/api/groups/${other}/folders`, { section: 'characters', path: 'Gleich' })).status).toBe(201);
+    expect((await gm.post(`${base}/folders`, { section: 'gm', path: 'Gleich' })).status).toBe(201);
+    await gm.del(`/api/groups/${other}/folders?section=characters&path=Gleich`);
+    expect(paths(await gm.get(`${base}/folders?section=characters`))).toEqual(['Gleich']);
+    expect(paths(await gm.get(`${base}/folders?section=gm`))).toContain('Gleich');
   });
 });

@@ -26,7 +26,7 @@ describe('Login und Gruppen', () => {
     const { base, gm, alice } = await setupGroup(makeApp());
     for (const section of ['notes', 'gm']) {
       const folders = (await gm.get(`${base}/folders?section=${section}`)).body;
-      expect(folders).toEqual(['NPCs', 'Orte', 'Sessions'].map((path) => ({ path, explicit: true, canManage: true })));
+      expect(folders).toEqual(['NPCs', 'Orte', 'Sessions'].map((path) => ({ path, canManage: true })));
     }
     expect((await gm.get(`${base}/folders?section=characters`)).body).toEqual([]);
     // Spieler sehen die Ordner, dürfen sie aber nicht umbauen

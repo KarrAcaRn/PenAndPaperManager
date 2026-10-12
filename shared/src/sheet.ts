@@ -30,15 +30,36 @@ export type AspectKey = keyof typeof ASPECT_LABELS;
 export const STRESS_LABELS = { physical: 'Körperlich', mental: 'Geistig' } as const;
 export type StressKey = keyof typeof STRESS_LABELS;
 
-/** Reihenfolge wie auf dem Bogen; die zweite leichte Konsequenz ist optional (ausgegraut) */
-export const CONSEQUENCES = [
-  { key: 'mild', label: 'Leicht', value: 2, optional: false },
-  { key: 'moderate', label: 'Mittlere', value: 4, optional: false },
-  { key: 'severe', label: 'Schwere', value: 6, optional: false },
-  { key: 'mild2', label: 'Leicht', value: 2, optional: true },
-] as const;
-export type ConsequenceKey = (typeof CONSEQUENCES)[number]['key'];
+/** Stufen einer Konsequenz: so viel Stress fängt sie ab */
+export const CONSEQUENCE_VALUES = [2, 4, 6] as const;
+export type ConsequenceValue = (typeof CONSEQUENCE_VALUES)[number];
+export const CONSEQUENCE_LABELS: Record<ConsequenceValue, string> = { 2: 'Leicht', 4: 'Mittlere', 6: 'Schwere' };
+/** Konsequenzen eines neuen Bogens; im Bearbeiten-Modus lassen sich Zeilen frei hinzufügen und entfernen */
+export const DEFAULT_CONSEQUENCES: readonly ConsequenceValue[] = [2, 4, 6];
+/** Mehr passen nicht auf die A4-Seite */
+export const MAX_CONSEQUENCES = 6;
+export const MAX_CONSEQUENCE_KEY_LENGTH = 20;
 
+/** Konsequenzzeile des Bogens. Der Text dazu gehört zum Zustand (SheetState) und hängt am Schlüssel. */
+export interface ConsequenceSlot {
+  key: string;
+  value: ConsequenceValue;
+}
+
+export const isConsequenceValue = (value: unknown): value is ConsequenceValue =>
+  CONSEQUENCE_VALUES.includes(value as ConsequenceValue);
+
+/**
+ * Zufälliger Schlüssel für eine neue Konsequenzzeile (nie wiederverwendet, damit kein alter Text auftaucht).
+ * getRandomValues statt randomUUID: das gibt es auch, wenn die Seite über unverschlüsseltes HTTP läuft.
+ */
+export const newConsequenceKey = (): string =>
+  Array.from(crypto.getRandomValues(new Uint8Array(6)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+/**
+ * Der Bogen selbst - wird im Bearbeiten-Modus gepflegt und erst mit "Speichern" übernommen.
+ * Was sich im Spiel ändert (Stress, Konsequenzen), steht getrennt in SheetState.
+ */
 export interface SheetData {
   name: string;
   age: string;
@@ -46,18 +67,31 @@ export interface SheetData {
   aspects: Record<AspectKey, string>;
   stunts: string;
   refresh: string;
-  stress: Record<StressKey, boolean[]>;
   /** Anzahl nutzbarer Kästchen je Stressleiste (MIN_STRESS_BOXES bis STRESS_BOXES); die übrigen sind ausgegraut */
   stressBoxes: Record<StressKey, number>;
-  consequences: Record<ConsequenceKey, string>;
+  /** Konsequenzzeilen in der Reihenfolge auf dem Bogen */
+  consequences: ConsequenceSlot[];
   /** Wert je Fertigkeit, Schlüssel ist die ID der Gruppen-Fertigkeit */
   skills: Record<string, number>;
 }
 
-/** Gespeicherter Bogen. Die Version zählt bei jedem Speichern hoch und verhindert, dass zwei Bearbeiter sich überschreiben. */
+/** Zustand im Spiel: wird auch in der Artikelansicht geändert und sofort gespeichert */
+export interface SheetState {
+  /** angekreuzte Kästchen, immer STRESS_BOXES je Leiste */
+  stress: Record<StressKey, boolean[]>;
+  /** Text je Konsequenzzeile (Schlüssel aus SheetData.consequences) */
+  consequences: Record<string, string>;
+}
+
+/**
+ * Gespeicherter Bogen. Bogen und Zustand tragen je eine eigene Version: Wer im Spiel Stress ankreuzt,
+ * stört niemanden, der gerade den Bogen bearbeitet - und umgekehrt.
+ */
 export interface Sheet {
   data: SheetData;
   version: number;
+  state: SheetState;
+  stateVersion: number;
 }
 
 /** Leerer Bogen; der Name wird üblicherweise mit dem Artikeltitel vorbelegt */
@@ -69,44 +103,40 @@ export function emptySheet(name = ''): SheetData {
     aspects: { concept: '', trouble: '', relationship: '', free1: '', free2: '' },
     stunts: '',
     refresh: '3',
-    stress: { physical: Array(STRESS_BOXES).fill(false), mental: Array(STRESS_BOXES).fill(false) },
     stressBoxes: { physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES },
-    consequences: { mild: '', moderate: '', severe: '', mild2: '' },
+    consequences: DEFAULT_CONSEQUENCES.map((value) => ({ key: newConsequenceKey(), value })),
     skills: {},
   };
+}
+
+export function emptySheetState(): SheetState {
+  return { stress: { physical: Array(STRESS_BOXES).fill(false), mental: Array(STRESS_BOXES).fill(false) }, consequences: {} };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const line = (value: unknown, fallback: string) => (typeof value === 'string' ? replaceControlChars(value) : fallback);
+const text = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback);
+
 /**
  * Macht aus beliebigen gespeicherten Daten einen vollständigen Bogen: Fehlendes oder Unpassendes
- * (älterer Stand, Eingriff von Hand in die Datenbank) wird durch die Vorgabe ersetzt, einzeilige Felder
- * werden von Steuerzeichen befreit. Fertigkeitswerte prüft der Server gegen die Liste der Gruppe.
+ * (Eingriff von Hand in die Datenbank, Schutz vor kaputten Clients) wird durch die Vorgabe ersetzt,
+ * einzeilige Felder werden von Steuerzeichen befreit. Fertigkeitswerte prüft der Server gegen die Liste der Gruppe.
  */
 export function normalizeSheet(raw: unknown): SheetData {
   const sheet = emptySheet();
+  // Feste Schlüssel: sonst bekämen kaputte Daten bei jedem Lesen neue und eingetragene Texte gingen verloren
+  sheet.consequences = DEFAULT_CONSEQUENCES.map((value, index) => ({ key: `d${index}`, value }));
   if (!isRecord(raw)) return sheet;
-
-  const line = (value: unknown, fallback: string) => (typeof value === 'string' ? replaceControlChars(value) : fallback);
-  const text = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback);
-  const group = <K extends string>(target: Record<K, string>, source: unknown, read: typeof line) => {
-    if (!isRecord(source)) return;
-    for (const key of Object.keys(target) as K[]) target[key] = read(source[key], target[key]);
-  };
 
   sheet.name = line(raw.name, sheet.name);
   sheet.age = line(raw.age, sheet.age);
   sheet.pronouns = line(raw.pronouns, sheet.pronouns);
   sheet.refresh = line(raw.refresh, sheet.refresh);
   sheet.stunts = text(raw.stunts, sheet.stunts);
-  group(sheet.aspects, raw.aspects, text);
-  group(sheet.consequences, raw.consequences, line);
-  if (isRecord(raw.stress)) {
-    for (const key of Object.keys(sheet.stress) as StressKey[]) {
-      const boxes = raw.stress[key];
-      if (Array.isArray(boxes)) sheet.stress[key] = sheet.stress[key].map((_, i) => boxes[i] === true);
-    }
+  if (isRecord(raw.aspects)) {
+    for (const key of Object.keys(sheet.aspects) as AspectKey[]) sheet.aspects[key] = text(raw.aspects[key], sheet.aspects[key]);
   }
   if (isRecord(raw.stressBoxes)) {
     for (const key of Object.keys(sheet.stressBoxes) as StressKey[]) {
@@ -116,12 +146,47 @@ export function normalizeSheet(raw: unknown): SheetData {
       }
     }
   }
+  if (Array.isArray(raw.consequences)) {
+    const seen = new Set<string>();
+    sheet.consequences = raw.consequences
+      .filter((c): c is ConsequenceSlot => {
+        if (!isRecord(c) || !isConsequenceValue(c.value) || typeof c.key !== 'string') return false;
+        if (c.key === '' || c.key.length > MAX_CONSEQUENCE_KEY_LENGTH || seen.has(c.key)) return false;
+        seen.add(c.key);
+        return true;
+      })
+      .slice(0, MAX_CONSEQUENCES)
+      .map(({ key, value }) => ({ key, value }));
+  }
   if (isRecord(raw.skills)) {
     for (const [id, value] of Object.entries(raw.skills)) {
       if (Number.isInteger(value)) sheet.skills[id] = value as number;
     }
   }
   return sheet;
+}
+
+/**
+ * Wie normalizeSheet für den Zustand. Mit data werden Texte zu Konsequenzzeilen verworfen,
+ * die es auf dem Bogen nicht (mehr) gibt.
+ */
+export function normalizeSheetState(raw: unknown, data?: SheetData): SheetState {
+  const state = emptySheetState();
+  if (!isRecord(raw)) return state;
+  if (isRecord(raw.stress)) {
+    for (const key of Object.keys(state.stress) as StressKey[]) {
+      const boxes = raw.stress[key];
+      if (Array.isArray(boxes)) state.stress[key] = state.stress[key].map((_, i) => boxes[i] === true);
+    }
+  }
+  if (isRecord(raw.consequences)) {
+    const keep = data && new Set(data.consequences.map((c) => c.key));
+    for (const [key, value] of Object.entries(raw.consequences)) {
+      if (typeof value !== 'string' || value === '' || key.length > MAX_CONSEQUENCE_KEY_LENGTH) continue;
+      if (!keep || keep.has(key)) state.consequences[key] = line(value, '');
+    }
+  }
+  return state;
 }
 
 /** Fertigkeit einer Gruppe */

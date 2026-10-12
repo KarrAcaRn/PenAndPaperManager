@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { normalizeSheet, type Article, type Group, type SheetData, type Skill } from '@pnp/shared';
+  import { normalizeSheet, normalizeSheetState, type Article, type Group, type SheetData, type SheetState, type Skill } from '@pnp/shared';
   import { ApiFailure, api } from './api.ts';
   import { createTask } from './task.svelte.ts';
   import { showNotice } from './notice.svelte.ts';
@@ -8,7 +8,8 @@
   import { sheetSavesSettled, trackSheetSave } from './sheetSaves.ts';
 
   // FATE-Bogen in der Artikelansicht: Mit Bearbeitungsrecht lässt sich hier nur der Zustand (Stress,
-  // Konsequenzen) ändern - das wird sofort gespeichert. Alles andere bearbeitet ArticleEdit mit dem Artikel.
+  // Konsequenztexte) ändern - das wird sofort gespeichert. Den Bogen selbst bearbeitet ArticleEdit mit dem Artikel;
+  // beides hat eine eigene Version und kommt sich daher nicht in die Quere.
   let { group, article }: { group: Group; article: Article } = $props();
 
   const SAVE_DELAY_MS = 400;
@@ -18,15 +19,16 @@
   const { gid, articleId, title } = untrack(() => ({ gid: group.id, articleId: article.id, title: article.title }));
 
   let data = $state<SheetData | null>(null);
+  let sheetState = $state<SheetState | null>(null);
   let skills = $state<Skill[]>([]);
   let savedAt = $state('');
-  /** Jemand anderes hat den Bogen geändert - weiterspeichern würde dessen Stand überschreiben */
+  /** Jemand anderes hat den Zustand geändert - weiterspeichern würde dessen Stand überschreiben */
   let conflict = $state(false);
   const loading = createTask();
   const saving = createTask();
 
-  // Version des zuletzt geladenen/gespeicherten Stands, siehe Sheet in shared
-  let version = 0;
+  // Version des zuletzt geladenen/gespeicherten Zustands, siehe Sheet in shared
+  let stateVersion = 0;
   /** Es gibt Eingaben, die der Server noch nicht hat (auch nach einem fehlgeschlagenen Speichern) */
   let dirty = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +41,8 @@
       await sheetSavesSettled(articleId);
       const [sheet, groupSkills] = await Promise.all([api.sheet(gid, articleId), api.skills(gid)]);
       data = normalizeSheet(sheet.data);
-      version = sheet.version;
+      sheetState = normalizeSheetState(sheet.state, data);
+      stateVersion = sheet.stateVersion;
       skills = groupSkills;
       conflict = false;
       dirty = false;
@@ -61,7 +64,7 @@
     dirty = false;
     const ok = await saving.run(async () => {
       try {
-        version = (await api.saveSheet(gid, articleId, { data: $state.snapshot(data!), version })).version;
+        stateVersion = (await api.saveSheetState(gid, articleId, $state.snapshot(sheetState!), stateVersion)).stateVersion;
         savedAt = new Date().toLocaleTimeString('de-DE');
       } catch (err) {
         conflict = err instanceof ApiFailure && err.status === 409;
@@ -84,7 +87,7 @@
   // Versuch. Läuft gerade ein Speichern, reicht es den Rest danach selbst nach.
   $effect(() => () => {
     destroyed = true;
-    if (dirty && conflict) showNotice(`FATE-Bogen „${title}“: letzte Eingaben nicht gespeichert, er wurde inzwischen von jemand anderem geändert`);
+    if (dirty && conflict) showNotice(`FATE-Bogen „${title}“: letzte Eingaben nicht gespeichert, Stress oder Konsequenzen wurden inzwischen von jemand anderem geändert`);
     else if (dirty) save();
   });
 
@@ -101,13 +104,13 @@
 
 {#if loading.error}<p class="error">{loading.error}</p>{/if}
 
-{#if data}
+{#if data && sheetState}
   <div class="row toolbar no-print">
     <button onclick={() => window.print()}>Drucken / als PDF speichern</button>
     {#if article.canEdit}
       <span class="muted" role="status">
         {#if conflict}
-          <span class="error">Der Bogen wurde inzwischen von jemand anderem geändert. Deine letzten Eingaben sind nicht gespeichert.</span>
+          <span class="error">Stress oder Konsequenzen wurden inzwischen von jemand anderem geändert. Deine letzten Eingaben sind nicht gespeichert.</span>
           <button disabled={loading.busy} onclick={load}>Neu laden</button>
         {:else if saving.error}<span class="error">Nicht gespeichert: {saving.error}</span>
         {:else if saving.busy}Speichere …
@@ -118,6 +121,7 @@
   </div>
   <CharacterSheet
     bind:data
+    bind:state={sheetState}
     {skills}
     editable={!article.canEdit || conflict ? 'none' : 'condition'}
     onchange={scheduleSave}

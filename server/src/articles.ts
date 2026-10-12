@@ -4,8 +4,14 @@ import type { MemberContext } from './auth.ts';
 import { canEditArticle, canSeeArticle } from './access.ts';
 import { notFound } from './errors.ts';
 
-/** Spalten eines ArticleSummary für Abfragen mit "articles a JOIN users u" */
-export const SUMMARY_COLUMNS = `a.id, a.section, a.path, a.title, a.visibility, a.author_id AS authorId,
+/** Tabellen für Artikelabfragen: Artikel "a", Autor "u", Ordnerpfad "fp" (NULL = oberste Ebene) */
+export const ARTICLES_FROM = `articles a JOIN users u ON u.id = a.author_id LEFT JOIN folder_paths fp ON fp.id = a.folder_id`;
+
+/** Pfad des Artikels wie in der API ('' = oberste Ebene) */
+export const ARTICLE_PATH_SQL = `COALESCE(fp.path, '')`;
+
+/** Spalten eines ArticleSummary für Abfragen über ARTICLES_FROM */
+export const SUMMARY_COLUMNS = `a.id, a.section, ${ARTICLE_PATH_SQL} AS path, a.title, a.visibility, a.author_id AS authorId,
   u.email AS authorEmail, a.updated_at AS updatedAt,
   EXISTS (SELECT 1 FROM character_sheets s WHERE s.article_id = a.id) AS hasSheet`;
 
@@ -19,7 +25,7 @@ export function loadVisibleArticle(db: Db, ctx: MemberContext, id: number): Arti
   const row = getRow<Omit<Article, 'canEdit'>>(
     db,
     `SELECT ${SUMMARY_COLUMNS}, a.body_md AS bodyMd, a.created_at AS createdAt
-     FROM articles a JOIN users u ON u.id = a.author_id WHERE a.id = ? AND a.group_id = ?`,
+     FROM ${ARTICLES_FROM} WHERE a.id = ? AND a.group_id = ?`,
     id,
     ctx.groupId,
   );

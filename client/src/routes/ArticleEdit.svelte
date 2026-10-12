@@ -9,12 +9,15 @@
     accessibleSections,
     canHaveSheet,
     emptySheet,
+    emptySheetState,
     normalizeSheet,
+    normalizeSheetState,
     type Article,
     type Folder,
     type Group,
     type Section,
     type SheetData,
+    type SheetState,
     type Skill,
     type Visibility,
   } from '@pnp/shared';
@@ -30,9 +33,13 @@
 
   let { group, section, path = '', id }: { group: Group; section: Section; path?: string; id?: number } = $props();
 
-  /** FATE-Bogen im Formular; gespeichert wird er erst mit "Speichern". version null: noch nicht auf dem Server. */
+  /**
+   * FATE-Bogen im Formular; gespeichert wird er erst mit "Speichern". version null: noch nicht auf dem Server.
+   * Der Zustand (Stress, Konsequenztexte) wird nur angezeigt - geändert wird er in der Artikelansicht.
+   */
   interface SheetDraft {
     data: SheetData;
+    state: SheetState;
     version: number | null;
   }
 
@@ -48,12 +55,14 @@
   let skills = $state<Skill[]>([]);
   /** Vorhandener Bogen, den "Speichern" löschen soll ("Doch behalten" stellt ihn wieder her) */
   let removedSheet = $state<SheetDraft | null>(null);
-  /** Jemand hat den Bogen inzwischen geändert (z.B. Stress in der Ansicht) - Speichern würde das überschreiben */
+  /** Jemand anderes hat den Bogen inzwischen bearbeitet - Speichern würde das überschreiben */
   let sheetConflict = $state(false);
   /** Vorhandener Bogen ließ sich nicht laden - Speichern bleibt gesperrt, sonst ginge er verloren */
   let sheetLoadFailed = $state(false);
   /** Bereich, in dem der Artikel gespeichert ist (für Abbrechen) */
   let savedSection = $state<Section>(untrack(() => section));
+  /** Ordner beim Laden bzw. Speichern - unverändert schicken wir ihn nicht mit (siehe ArticleUpdate) */
+  let savedPath = '';
   // Stand beim Laden bzw. Speichern - weicht das Formular davon ab, warnt das Schließen des Tabs.
   // Getrennt, weil "Bogen neu laden" nur den Bogen zurücksetzt, nicht den Text.
   let formBaseline = $state('');
@@ -70,7 +79,8 @@
     // Speichert die Ansicht diesen Bogen gerade noch (Stress angeklickt, dann "Bearbeiten"), erst danach laden
     await sheetSavesSettled(articleId);
     const [loaded, groupSkills] = await Promise.all([api.sheet(group.id, articleId), api.skills(group.id)]);
-    sheet = { data: normalizeSheet(loaded.data), version: loaded.version };
+    const data = normalizeSheet(loaded.data);
+    sheet = { data, state: normalizeSheetState(loaded.state, data), version: loaded.version };
     skills = groupSkills;
     sheetConflict = false;
   }
@@ -96,6 +106,7 @@
       isAuthor = a.authorId === session.user?.id;
       article = a;
       savedSection = a.section;
+      savedPath = a.path;
       if (a.hasSheet) reloadSheet(a.id);
     }
     formBaseline = formSnapshot();
@@ -145,7 +156,7 @@
     }
     sheetTask.run(async () => {
       skills = await api.skills(group.id);
-      sheet = { data: emptySheet(form.title), version: null };
+      sheet = { data: emptySheet(form.title), state: emptySheetState(), version: null };
     });
   }
 
@@ -166,8 +177,8 @@
     try {
       const saved =
         draft.version === null
-          ? await api.createSheet(group.id, articleId, data)
-          : await api.saveSheet(group.id, articleId, { data, version: draft.version });
+          ? await api.createSheet(group.id, articleId, data, $state.snapshot(draft.state) as SheetState)
+          : await api.saveSheet(group.id, articleId, data, draft.version);
       draft.version = saved.version;
     } catch (err) {
       const status = err instanceof ApiFailure ? err.status : 0;
@@ -199,7 +210,12 @@
       if (deleteFirst) await deleteSheet();
       let saved: Article;
       try {
-        saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
+        if (id === undefined) saved = await api.createArticle(group.id, form);
+        else {
+          const { path: formPath, ...rest } = form;
+          const moved = form.section !== savedSection || formPath !== savedPath;
+          saved = await api.updateArticle(group.id, id, moved ? form : rest);
+        }
       } catch (err) {
         if (deleteFirst && article) {
           throw new Error(`${(err as Error).message} (Der FATE-Bogen ist bereits entfernt.)`, { cause: err });
@@ -207,6 +223,7 @@
         throw err;
       }
       savedSection = saved.section;
+      savedPath = saved.path;
       formBaseline = formSnapshot(); // Text ist gespeichert, auch wenn danach der Bogen scheitert
       notifyContentChanged();
       if (!deleteFirst) {
@@ -291,11 +308,12 @@
       {#if sheetConflict && article}
         {@const a = article}
         <p class="error">
-          Der Bogen wurde inzwischen geändert (z.B. Stress in der Ansicht). Neu laden verwirft deine Änderungen am Bogen.
+          Der Bogen wurde inzwischen von jemand anderem bearbeitet. Neu laden verwirft deine Änderungen am Bogen.
           <button type="button" disabled={sheetTask.busy} onclick={() => reloadSheet(a.id)}>Bogen neu laden</button>
         </p>
       {/if}
-      <CharacterSheet bind:data={sheet.data} {skills} editable="all" />
+      <p class="muted">Stress und Konsequenzen trägst du in der Artikelansicht ein, sie werden dort sofort gespeichert.</p>
+      <CharacterSheet bind:data={sheet.data} bind:state={sheet.state} {skills} editable="data" />
     {:else if article?.hasSheet && !removedSheet && (sheetTask.busy || sheetLoadFailed)}
       {@const a = article}
       {#if sheetLoadFailed}

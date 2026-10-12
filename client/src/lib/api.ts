@@ -2,6 +2,7 @@ import type {
   ApiError,
   Article,
   ArticleInput,
+  ArticleUpdate,
   ArticleSummary,
   Folder,
   Group,
@@ -13,6 +14,7 @@ import type {
   SessionUser,
   Sheet,
   SheetData,
+  SheetState,
   Skill,
   SkillInput,
   SkillPreset,
@@ -71,7 +73,7 @@ export const api = {
     request<ArticleSummary[]>('GET', `/groups/${gid}/articles?${qs({ section, path })}`),
   article: (gid: number, id: number) => request<Article>('GET', `/groups/${gid}/articles/${id}`),
   createArticle: (gid: number, input: ArticleInput) => request<Article>('POST', `/groups/${gid}/articles`, input),
-  updateArticle: (gid: number, id: number, input: ArticleInput) =>
+  updateArticle: (gid: number, id: number, input: ArticleUpdate) =>
     request<Article>('PUT', `/groups/${gid}/articles/${id}`, input),
   deleteArticle: (gid: number, id: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${id}`),
 
@@ -84,10 +86,14 @@ export const api = {
     request<unknown>('DELETE', `/groups/${gid}/folders?${qs({ section, path })}`),
 
   sheet: (gid: number, articleId: number) => request<Sheet>('GET', `/groups/${gid}/articles/${articleId}/sheet`),
-  createSheet: (gid: number, articleId: number, data: SheetData) =>
-    request<Sheet>('POST', `/groups/${gid}/articles/${articleId}/sheet`, data),
-  saveSheet: (gid: number, articleId: number, sheet: Sheet) =>
-    request<Sheet>('PUT', `/groups/${gid}/articles/${articleId}/sheet`, sheet),
+  createSheet: (gid: number, articleId: number, data: SheetData, state?: SheetState) =>
+    request<Sheet>('POST', `/groups/${gid}/articles/${articleId}/sheet`, { data, state }),
+  /** Bogen (Bearbeiten-Modus); der Zustand bleibt unberührt */
+  saveSheet: (gid: number, articleId: number, data: SheetData, version: number) =>
+    request<Pick<Sheet, 'data' | 'version'>>('PUT', `/groups/${gid}/articles/${articleId}/sheet`, { data, version }),
+  /** Zustand im Spiel (Stress, Konsequenztexte) */
+  saveSheetState: (gid: number, articleId: number, state: SheetState, stateVersion: number) =>
+    request<Pick<Sheet, 'state' | 'stateVersion'>>('PUT', `/groups/${gid}/articles/${articleId}/sheet/state`, { state, stateVersion }),
   deleteSheet: (gid: number, articleId: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${articleId}/sheet`),
 
   skills: (gid: number) => request<Skill[]>('GET', `/groups/${gid}/skills`),

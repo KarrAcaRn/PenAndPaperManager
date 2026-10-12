@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { Article, Sheet, SheetData, Skill } from '@pnp/shared';
+import type { Article, Sheet, SheetData, SheetState, Skill } from '@pnp/shared';
 import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
 import { session } from '../src/lib/session.svelte.ts';
@@ -28,13 +28,14 @@ import {
   playerGroup,
   presetFixture,
   sheetData,
+  sheetOf,
+  sheetState,
   signIn,
   summary,
 } from './helpers.ts';
 
 let api: ReturnType<typeof mockApi>;
 const user = userEvent.setup();
-const sheetOf = (over: Partial<SheetData> = {}, version = 1): Sheet => ({ data: sheetData(over), version });
 const SKILLS: Skill[] = [
   { id: 11, name: 'Athletik' },
   { id: 12, name: 'Wille' },
@@ -51,7 +52,7 @@ beforeEach(() => {
 
 describe('CharacterSheet', () => {
   it('zeigt die Fertigkeiten der Gruppe mit ihren Werten', () => {
-    render(CharacterSheet, { data: sheetData({ name: 'Zoë', skills: { 11: 3 } }), skills: SKILLS });
+    render(CharacterSheet, { data: sheetData({ name: 'Zoë', skills: { 11: 3 } }), state: sheetState(), skills: SKILLS });
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Zoë');
     expect((screen.getByLabelText(/Athletik/) as HTMLInputElement).value).toBe('3');
     expect((screen.getByLabelText(/Wille/) as HTMLInputElement).value).toBe('');
@@ -59,13 +60,15 @@ describe('CharacterSheet', () => {
     expect(screen.getByLabelText('Dilemma')).toBeTruthy();
   });
 
-  it('meldet Änderungen und begrenzt Fertigkeitswerte', async () => {
+  it('lässt im Bearbeiten-Modus nur den Bogen ändern, nicht den Zustand', async () => {
     const data = sheetData();
     const onchange = vi.fn();
-    render(CharacterSheet, { data, skills: SKILLS, editable: 'all', onchange });
+    render(CharacterSheet, { data, state: sheetState({ consequences: { m: 'Prellung' } }), skills: SKILLS, editable: 'data', onchange });
     await user.type(screen.getByLabelText('Konzept'), 'Schmugglerin');
-    await user.click(screen.getByLabelText('Körperlicher Stress 2'));
     expect(onchange).toHaveBeenCalled();
+    expect((screen.getByLabelText('Körperlicher Stress 2') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/Mittlere/) as HTMLInputElement).readOnly).toBe(true);
+    expect((screen.getByLabelText(/Mittlere/) as HTMLInputElement).value).toBe('Prellung');
 
     const athletik = screen.getByLabelText(/Athletik/);
     await user.type(athletik, '99');
@@ -77,7 +80,7 @@ describe('CharacterSheet', () => {
   const field = (label: string | RegExp) => screen.getByLabelText(label) as HTMLInputElement;
 
   it('ist ohne Bearbeitungsrecht schreibgeschützt', () => {
-    render(CharacterSheet, { data: sheetData(), skills: SKILLS, editable: 'none' });
+    render(CharacterSheet, { data: sheetData(), state: sheetState(), skills: SKILLS, editable: 'none' });
     expect(field('Name').readOnly).toBe(true);
     expect(field('Stunts').readOnly).toBe(true);
     expect(field('Geistiger Stress 1').disabled).toBe(true);
@@ -87,7 +90,8 @@ describe('CharacterSheet', () => {
   it('lässt außerhalb des Bearbeiten-Modus nur den Zustand ändern', async () => {
     const onchange = vi.fn();
     const data = sheetData();
-    render(CharacterSheet, { data, skills: SKILLS, editable: 'condition', onchange });
+    const state = sheetState();
+    render(CharacterSheet, { data, state, skills: SKILLS, editable: 'condition', onchange });
     await user.type(field('Name'), 'X');
     await user.type(field(/Athletik/), '3');
     expect(onchange).not.toHaveBeenCalled();
@@ -102,21 +106,26 @@ describe('CharacterSheet', () => {
     await user.type(field(/Mittlere/), 'Prellung');
     expect(field('Körperlicher Stress 1').checked).toBe(true);
     expect(onchange).toHaveBeenCalled();
+    expect(state.stress.physical[0]).toBe(true);
+    expect(state.consequences).toEqual({ m: 'Prellung' });
   });
 
   it('zeigt die Knöpfe für die Kästchenzahl nur im Bearbeiten-Modus', () => {
-    const { container } = render(CharacterSheet, { data: sheetData({ stressBoxes: { physical: 2, mental: 6 } }), skills: SKILLS, editable: 'condition' });
+    const { container } = render(CharacterSheet, { data: sheetData({ stressBoxes: { physical: 2, mental: 6 } }), state: sheetState(), skills: SKILLS, editable: 'condition' });
     expect(screen.queryByRole('button', { name: /Stresskästchen/ })).toBeNull();
+    // ... und auch keine Knöpfe oder Stufenwahl für Konsequenzen
+    expect(screen.queryByRole('button', { name: /Konsequenz/ })).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
     expect(container.querySelectorAll('.track')[0].querySelectorAll('label.off')).toHaveLength(4);
     expect(container.querySelectorAll('.track')[1].querySelectorAll('label.off')).toHaveLength(0);
   });
 
   it('setzt viele Fertigkeiten zweispaltig und weist auf eine fehlende Liste hin', () => {
     const many = Array.from({ length: 18 }, (_, i) => ({ id: i + 1, name: `Fertigkeit ${i + 1}` }));
-    const dense = render(CharacterSheet, { data: sheetData(), skills: many });
+    const dense = render(CharacterSheet, { data: sheetData(), state: sheetState(), skills: many });
     expect(dense.container.querySelector('.skills.dense')).toBeTruthy();
     dense.unmount();
-    const empty = render(CharacterSheet, { data: sheetData(), skills: [] });
+    const empty = render(CharacterSheet, { data: sheetData(), state: sheetState(), skills: [] });
     expect(empty.container.querySelector('.skills.dense')).toBeNull();
     expect(screen.getByText(/noch keine Fertigkeiten festgelegt/)).toBeTruthy();
   });
@@ -131,7 +140,7 @@ describe('FATE-Bogen in der Ansicht', () => {
     return render(ArticleView, { group: gmGroup, id: 1 });
   }
   const savesOk = () =>
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    api.saveSheetState.mockImplementation(async (_g: number, _a: number, state: SheetState, v: number) => ({ state, stateVersion: v + 1 }));
   const consequence = async () => (await screen.findByLabelText(/Mittlere/)) as HTMLInputElement;
 
   it('lässt nur den Zustand ändern und speichert ihn automatisch', async () => {
@@ -146,28 +155,28 @@ describe('FATE-Bogen in der Ansicht', () => {
 
     await user.click(screen.getByLabelText('Geistiger Stress 2'));
     await user.type(await consequence(), 'Angst');
-    await waitFor(() => expect((api.saveSheet.mock.calls.at(-1)![2].data as SheetData).consequences.moderate).toBe('Angst'));
-    const last = api.saveSheet.mock.calls.at(-1)!;
+    await waitFor(() => expect((api.saveSheetState.mock.calls.at(-1)![2] as SheetState).consequences).toEqual({ m: 'Angst' }));
+    const last = api.saveSheetState.mock.calls.at(-1)!;
     expect(last.slice(0, 2)).toEqual([7, 1]);
-    expect((last[2].data as SheetData).stress.mental[1]).toBe(true);
-    expect((last[2].data as SheetData).name).toBe('Zoë');
+    expect((last[2] as SheetState).stress.mental[1]).toBe(true);
+    expect(api.saveSheet).not.toHaveBeenCalled();
     expect(await screen.findByText(/^Gespeichert/)).toBeTruthy();
   });
 
   it('holt ein fehlgeschlagenes Speichern beim Verlassen nach, auch ohne weitere Eingabe', async () => {
-    api.saveSheet.mockRejectedValueOnce(new Error('Failed to fetch'));
+    api.saveSheetState.mockRejectedValueOnce(new Error('Failed to fetch'));
     const view = renderView();
     await user.type(await consequence(), 'A');
     await screen.findByText(/Nicht gespeichert: Failed to fetch/);
 
     savesOk();
     view.unmount();
-    expect(api.saveSheet).toHaveBeenCalledTimes(2);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 1, data: { consequences: { moderate: 'A' } } });
+    expect(api.saveSheetState).toHaveBeenCalledTimes(2);
+    expect(api.saveSheetState.mock.calls[1].slice(2)).toEqual([expect.objectContaining({ consequences: { m: 'A' } }), 1]);
   });
 
   it('meldet einen Fehler beim Nachspeichern nach dem Verlassen als Hinweis', async () => {
-    api.saveSheet.mockRejectedValue(new Error('Failed to fetch'));
+    api.saveSheetState.mockRejectedValue(new Error('Failed to fetch'));
     const view = renderView({ title: 'Zoë' });
     await user.type(await consequence(), 'A');
     await screen.findByText(/Nicht gespeichert/);
@@ -187,7 +196,7 @@ describe('FATE-Bogen in der Ansicht', () => {
     expect(unload()).toBe(false); // nichts offen
     await user.type(field, 'A'); // Speichern erst nach Verzögerung geplant
     expect(unload()).toBe(true);
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
   });
 
   it('speichert nach einem Gruppenwechsel per Link noch in die alte Gruppe', async () => {
@@ -198,20 +207,20 @@ describe('FATE-Bogen in der Ansicht', () => {
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
-    let finishFirst!: (sheet: Sheet) => void;
-    api.saveSheet
+    let finishFirst!: (saved: Pick<Sheet, 'state' | 'stateVersion'>) => void;
+    api.saveSheetState
       .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
-      .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+      .mockImplementation(async (_g: number, _a: number, state: SheetState, v: number) => ({ state, stateVersion: v + 1 }));
     const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
     const field = await consequence();
     await user.type(field, 'A');
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1)); // läuft noch
+    await waitFor(() => expect(api.saveSheetState).toHaveBeenCalledTimes(1)); // läuft noch
     await user.type(field, 'B');
     await view.rerender({ route: parseHash('#/g/8/notes') as never });
-    finishFirst(sheetOf({ name: 'A' }));
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(2));
-    expect(api.saveSheet.mock.calls[1].slice(0, 2)).toEqual([7, 1]);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ data: { consequences: { moderate: 'AB' } } });
+    finishFirst({ state: sheetState(), stateVersion: 2 });
+    await waitFor(() => expect(api.saveSheetState).toHaveBeenCalledTimes(2));
+    expect(api.saveSheetState.mock.calls[1].slice(0, 2)).toEqual([7, 1]);
+    expect(api.saveSheetState.mock.calls[1].slice(2)).toEqual([expect.objectContaining({ consequences: { m: 'AB' } }), 2]);
   });
 
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
@@ -220,11 +229,11 @@ describe('FATE-Bogen in der Ansicht', () => {
     await user.type(await consequence(), 'A');
     await screen.findByText(/^Gespeichert/);
     view.unmount();
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
   });
 
   it('zeigt Speicherfehler und speichert ausstehende Änderungen beim Verlassen', async () => {
-    api.saveSheet.mockRejectedValueOnce(new ApiFailure(403, 'Du darfst diesen Bogen nicht bearbeiten'));
+    api.saveSheetState.mockRejectedValueOnce(new ApiFailure(403, 'Du darfst diesen Bogen nicht bearbeiten'));
     const view = renderView();
     const field = await consequence();
     await user.type(field, 'A');
@@ -233,32 +242,33 @@ describe('FATE-Bogen in der Ansicht', () => {
     savesOk();
     fireEvent.input(field, { target: { value: 'AB' } });
     view.unmount();
-    expect(api.saveSheet).toHaveBeenCalledTimes(2);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(2);
   });
 
   it('speichert nie zweimal gleichzeitig und reicht die neue Version weiter', async () => {
     let finishFirst!: () => void;
-    api.saveSheet
-      .mockImplementationOnce((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishFirst = () => resolve({ ...sheet, version: 6 }))))
-      .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    renderView({}, sheetOf({}, 5));
+    api.saveSheetState
+      .mockImplementationOnce((_g: number, _a: number, state: SheetState) => new Promise((resolve) => (finishFirst = () => resolve({ state, stateVersion: 6 }))))
+      .mockImplementation(async (_g: number, _a: number, state: SheetState, v: number) => ({ state, stateVersion: v + 1 }));
+    // Bogen- und Zustandsversion unabhängig: gespeichert wird nur mit der Zustandsversion
+    renderView({}, sheetOf({}, 9, {}, 5));
     const field = await consequence();
     await user.type(field, 'A');
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.saveSheetState).toHaveBeenCalledTimes(1));
     await user.type(field, 'B');
     await new Promise((r) => setTimeout(r, 500));
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
 
     finishFirst();
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(2));
-    expect(api.saveSheet.mock.calls[0][2].version).toBe(5);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 6, data: { consequences: { moderate: 'AB' } } });
+    await waitFor(() => expect(api.saveSheetState).toHaveBeenCalledTimes(2));
+    expect(api.saveSheetState.mock.calls[0][3]).toBe(5);
+    expect(api.saveSheetState.mock.calls[1].slice(2)).toEqual([expect.objectContaining({ consequences: { m: 'AB' } }), 6]);
   });
 
   it('stoppt bei einem Konflikt, sperrt den Zustand und lädt auf Wunsch neu', async () => {
-    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
+    api.saveSheetState.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
     const view = renderView({}, sheetOf({ name: 'alt' }));
-    api.sheet.mockResolvedValue(sheetOf({ consequences: { mild: '', moderate: 'vom Spieler', severe: '', mild2: '' } }, 3));
+    api.sheet.mockResolvedValue(sheetOf({}, 1, { consequences: { m: 'vom Spieler' } }, 3));
     const field = await consequence();
     await user.type(field, 'x');
     const reload = await screen.findByRole('button', { name: 'Neu laden' });
@@ -266,31 +276,31 @@ describe('FATE-Bogen in der Ansicht', () => {
     expect((screen.getByLabelText('Körperlicher Stress 1') as HTMLInputElement).disabled).toBe(true);
     fireEvent.input(field, { target: { value: 'trotzdem' } });
     await new Promise((r) => setTimeout(r, 500));
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
 
     await user.click(reload);
     await waitFor(() => expect(field.value).toBe('vom Spieler'));
     expect(field.readOnly).toBe(false);
     expect(screen.queryByRole('button', { name: 'Neu laden' })).toBeNull();
     view.unmount();
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
   });
 
   it('meldet beim Verlassen Eingaben, die wegen eines Konflikts nicht gespeichert wurden', async () => {
-    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Konflikt'));
+    api.saveSheetState.mockRejectedValue(new ApiFailure(409, 'Konflikt'));
     const view = renderView({ title: 'Zoë' });
     await user.type(await consequence(), 'A');
     await screen.findByRole('button', { name: 'Neu laden' });
     view.unmount();
-    expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert, er wurde inzwischen/);
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert, Stress oder Konsequenzen wurden inzwischen/);
+    expect(api.saveSheetState).toHaveBeenCalledTimes(1);
   });
 
   it('ist für Leser schreibgeschützt und ohne Bearbeiten-Aktionen', async () => {
     signIn(PLAYER, [playerGroup]);
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, canEdit: false }));
     // auch ein unvollständig gespeicherter Bogen wird vollständig dargestellt
-    api.sheet.mockResolvedValue({ version: 1, data: { name: 'Zoë' } as never });
+    api.sheet.mockResolvedValue({ version: 1, data: { name: 'Zoë' } as never, state: { kaputt: true } as never, stateVersion: 1 });
     api.skills.mockResolvedValue(SKILLS);
     render(ArticleView, { group: playerGroup, id: 1 });
     expect(((await screen.findByLabelText('Name')) as HTMLInputElement).readOnly).toBe(true);
@@ -344,7 +354,7 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
   }
   const saveButton = () => screen.getByRole('button', { name: 'Speichern' });
   const savesOk = () =>
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    api.saveSheet.mockImplementation(async (_g: number, _a: number, data: SheetData, v: number) => ({ data, version: v + 1 }));
 
   it('steht vor dem Text und speichert erst mit „Speichern“', async () => {
     savesOk();
@@ -369,16 +379,15 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     expect(api.saveSheet.mock.calls[0]).toEqual([
       7,
       1,
-      {
-        version: 4,
-        data: expect.objectContaining({
-          name: 'Zoë',
-          skills: { 11: 3 },
-          aspects: expect.objectContaining({ concept: 'Schmugglerin' }),
-          stressBoxes: { physical: 4, mental: 5 },
-        }),
-      },
+      expect.objectContaining({
+        name: 'Zoë',
+        skills: { 11: 3 },
+        aspects: expect.objectContaining({ concept: 'Schmugglerin' }),
+        stressBoxes: { physical: 4, mental: 5 },
+      }),
+      4,
     ]);
+    expect(api.saveSheetState).not.toHaveBeenCalled();
   });
 
   it('ändert die Zahl der nutzbaren Stresskästchen je Leiste', async () => {
@@ -397,6 +406,41 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     expect(fewer().disabled).toBe(true);
     // gespeichert wird erst mit dem Artikel
     expect(api.saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('fügt Konsequenzzeilen mit frei wählbarer Stufe hinzu und entfernt sie', async () => {
+    savesOk();
+    renderEditing({}, sheetOf({}, 1, { consequences: { m: 'Gebrochener Arm' } }));
+    await screen.findByLabelText('Name');
+    const add = () => screen.getByRole('button', { name: 'Konsequenz hinzufügen' }) as HTMLButtonElement;
+    const remove = () => screen.getByRole('button', { name: 'Letzte Konsequenz entfernen' }) as HTMLButtonElement;
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    // die Standardzeilen lassen sich entfernen; ausgefüllte erst nach Rückfrage
+    await user.click(remove());
+    await user.click(remove());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('combobox', { name: /Stufe der Konsequenz/ })).toHaveLength(2);
+    confirm.mockReturnValue(true);
+    await user.click(remove());
+    await user.click(remove());
+    expect(screen.queryAllByRole('combobox', { name: /Stufe der Konsequenz/ })).toHaveLength(0);
+    expect(remove().disabled).toBe(true);
+
+    for (let i = 0; i < 6; i++) await user.click(add());
+    expect(add().disabled).toBe(true);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Stufe der Konsequenz 2' }), '6');
+    expect(screen.getAllByText('Schwere')).toHaveLength(1);
+    // die Texte trägt man in der Ansicht ein
+    expect((screen.getByLabelText('Konsequenz 2: Schwere') as HTMLInputElement).readOnly).toBe(true);
+
+    await user.click(saveButton());
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+    const saved = api.saveSheet.mock.calls[0][2] as SheetData;
+    expect(saved.consequences).toHaveLength(6);
+    expect(saved.consequences[1].value).toBe(6);
+    expect(new Set(saved.consequences.map((c) => c.key)).size).toBe(6);
+    expect(saved.consequences.some((c) => c.key === 'm')).toBe(false);
   });
 
   it('verwirft Änderungen am Bogen beim Abbrechen', async () => {
@@ -421,27 +465,29 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     expect(screen.queryByRole('button', { name: 'Bogen neu laden' })).toBeNull();
     savesOk();
     await user.click(saveButton());
-    await waitFor(() => expect(api.saveSheet).toHaveBeenLastCalledWith(7, 1, expect.objectContaining({ version: 3 })));
+    await waitFor(() => expect(api.saveSheet).toHaveBeenLastCalledWith(7, 1, expect.objectContaining({ name: 'vom Spieler' }), 3));
   });
 
   it('lädt erst, wenn die Ansicht den Zustand fertig gespeichert hat', async () => {
     api.folders.mockResolvedValue([]);
     api.articles.mockResolvedValue([]);
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
-    api.sheet.mockResolvedValueOnce(sheetOf({}, 1)).mockResolvedValue(sheetOf({ name: 'neu' }, 2));
+    api.sheet.mockResolvedValueOnce(sheetOf()).mockResolvedValue(sheetOf({}, 1, { consequences: { m: 'A' } }, 2));
     api.skills.mockResolvedValue(SKILLS);
     let finishSave!: () => void;
-    api.saveSheet.mockImplementation((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishSave = () => resolve({ ...sheet, version: 2 }))));
+    api.saveSheetState.mockImplementation(
+      (_g: number, _a: number, state: SheetState) => new Promise((resolve) => (finishSave = () => resolve({ state, stateVersion: 2 }))),
+    );
     const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
     await user.type(await screen.findByLabelText(/Mittlere/), 'A');
     // sofort "Bearbeiten": das Speichern läuft erst beim Abbau der Ansicht los
     await view.rerender({ route: parseHash('#/g/7/characters/a/1/edit') as never });
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.saveSheetState).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 50));
     expect(api.sheet).toHaveBeenCalledTimes(1);
     finishSave();
     await waitFor(() => expect(api.sheet).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('neu'));
+    await waitFor(() => expect((screen.getByLabelText(/Mittlere/) as HTMLInputElement).value).toBe('A'));
   });
 
   it('fügt einen Bogen hinzu, der erst mit dem Artikel angelegt wird', async () => {
@@ -456,7 +502,12 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     const before = contentChanges.version;
     await user.click(saveButton());
     await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/1'));
-    expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', aspects: expect.objectContaining({ concept: 'Wirt mit Geheimnis' }) }));
+    expect(api.createSheet).toHaveBeenCalledWith(
+      7,
+      1,
+      expect.objectContaining({ name: 'Wirt', aspects: expect.objectContaining({ concept: 'Wirt mit Geheimnis' }) }),
+      sheetState(),
+    );
     expect(contentChanges.version).toBeGreaterThan(before); // Ordnerbaum zeigt das Bogen-Symbol
   });
 
@@ -525,12 +576,15 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
   it('legt einen anderswo gelöschten Bogen beim erneuten Speichern neu an', async () => {
     api.saveSheet.mockRejectedValue(new ApiFailure(404, 'Kein FATE-Bogen'));
     api.createSheet.mockResolvedValue(sheetOf());
-    renderEditing();
+    renderEditing({}, sheetOf({}, 1, { consequences: { m: 'Prellung' } }));
     await user.type(await screen.findByLabelText('Name'), 'A');
     await user.click(saveButton());
     expect(await screen.findByText(/Der Bogen wurde inzwischen gelöscht\. Erneutes Speichern legt ihn/)).toBeTruthy();
     await user.click(saveButton());
-    await waitFor(() => expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'A' })));
+    // auch der Zustand geht nicht verloren
+    await waitFor(() =>
+      expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'A' }), expect.objectContaining({ consequences: { m: 'Prellung' } })),
+    );
   });
 
   it('bietet Neuladen an, wenn inzwischen jemand anderes einen Bogen angelegt hat', async () => {
@@ -543,7 +597,7 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     await waitFor(() => expect(api.sheet).toHaveBeenCalled());
     savesOk();
     await user.click(saveButton());
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ version: 1 })));
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledWith(7, 1, expect.anything(), 1));
   });
 
   it('speichert nicht bei Enter in einem Bogenfeld und sperrt den Bogen während des Speicherns', async () => {
@@ -623,7 +677,7 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     await user.click(saveButton());
     await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
     // Name leer gelassen: der Titel wird übernommen
-    expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë', skills: { 11: 2 } }));
+    expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë', skills: { 11: 2 } }), sheetState());
   });
 
   it('landet auch dann beim neuen Artikel, wenn nur das Anlegen des Bogens scheitert', async () => {

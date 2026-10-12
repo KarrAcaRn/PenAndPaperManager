@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   ASPECT_LABELS,
-  CONSEQUENCES,
   MAX_SKILLS,
   STRESS_BOXES,
   DEFAULT_STRESS_BOXES,
+  MAX_CONSEQUENCES,
   SkillListError,
   canHaveSheet,
   emptySheet,
+  emptySheetState,
   hasControlChars,
   hasVisibleText,
   normalizeSheet,
+  normalizeSheetState,
   normalizeSkillNames,
   replaceControlChars,
 } from '../src/index.ts';
@@ -36,59 +38,88 @@ describe('normalizeSkillNames', () => {
 });
 
 describe('emptySheet', () => {
-  it('liefert jedes Mal einen unabhängigen, vollständigen Bogen', () => {
+  it('liefert jedes Mal einen unabhängigen, vollständigen Bogen mit leichter, mittlerer und schwerer Konsequenz', () => {
     const a = emptySheet();
     const b = emptySheet();
-    a.stress.physical[0] = true;
     a.skills[1] = 2;
-    expect(b.stress.physical).toEqual(Array(STRESS_BOXES).fill(false));
-    expect(b.stress.mental).not.toBe(b.stress.physical);
     expect(b.skills).toEqual({});
     expect(Object.keys(b.aspects)).toEqual(Object.keys(ASPECT_LABELS));
-    expect(Object.keys(b.consequences)).toEqual(CONSEQUENCES.map((c) => c.key));
     expect(b.refresh).toBe('3');
     expect(b.stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
+    expect(b.consequences.map((c) => c.value)).toEqual([2, 4, 6]);
+    // eindeutige Schlüssel, auch über Bögen hinweg
+    const keys = [...a.consequences, ...b.consequences].map((c) => c.key);
+    expect(new Set(keys).size).toBe(6);
+  });
+
+  it('liefert einen leeren, unabhängigen Zustand', () => {
+    const a = emptySheetState();
+    const b = emptySheetState();
+    a.stress.physical[0] = true;
+    expect(b.stress.physical).toEqual(Array(STRESS_BOXES).fill(false));
+    expect(b.stress.mental).not.toBe(b.stress.physical);
+    expect(b.consequences).toEqual({});
   });
 });
 
 describe('normalizeSheet', () => {
   it('lässt vollständige Bögen unverändert', () => {
     const sheet = emptySheet('Zoë');
-    sheet.stress.mental[2] = true;
     sheet.skills[7] = -1;
     sheet.stunts = 'a\nb';
     sheet.aspects.concept = 'mehr\nzeilig';
+    sheet.stressBoxes.mental = 6;
     expect(normalizeSheet(sheet)).toEqual(sheet);
     expect(normalizeSheet(sheet)).not.toBe(sheet);
   });
 
   it('ersetzt alles Unbrauchbare durch die Vorgabe', () => {
-    for (const raw of [null, undefined, 'text', 5, [], [1]]) expect(normalizeSheet(raw)).toEqual(emptySheet());
+    const plain = (s: ReturnType<typeof emptySheet>) => ({ ...s, consequences: s.consequences.map((c) => c.value) });
+    for (const raw of [null, undefined, 'text', 5, [], [1]]) expect(plain(normalizeSheet(raw))).toEqual(plain(emptySheet()));
+    // gleichbleibende Schlüssel, damit Texte zu ersetzten Zeilen beim nächsten Lesen noch passen
+    expect(normalizeSheet({ consequences: 'kaputt' }).consequences).toEqual(normalizeSheet(null).consequences);
+    expect(normalizeSheet(null).consequences.map((c) => c.key)).toEqual(['d0', 'd1', 'd2']);
+    const sheet = normalizeSheet({
+      name: 'x\ty',
+      age: 31,
+      junk: true,
+      aspects: { concept: 'K', more: 'weg' },
+      stressBoxes: { physical: 0, mental: 2.5 },
+      skills: { 1: 2, 2: 'viel', 3: 1.5 },
+    });
+    expect(sheet).toMatchObject({ name: 'x y', age: '', aspects: { ...emptySheet().aspects, concept: 'K' }, skills: { 1: 2 } });
+    expect(sheet.stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
+    expect('junk' in sheet).toBe(false);
+  });
+
+  it('übernimmt gültige Konsequenzzeilen und verwirft ungültige oder doppelte', () => {
+    expect(normalizeSheet({ consequences: [] }).consequences).toEqual([]);
     expect(
       normalizeSheet({
-        name: 'x\ty',
-        age: 31,
-        junk: true,
-        aspects: { concept: 'K', more: 'weg' },
-        stress: { physical: [true, 'ja', 1], mental: 'kaputt' },
-        consequences: null,
-        skills: { 1: 2, 2: 'viel', 3: 1.5 },
-      }),
-    ).toEqual({
-      ...emptySheet('x y'),
-      aspects: { ...emptySheet().aspects, concept: 'K' },
-      stress: { physical: [true, false, false, false, false, false], mental: Array(STRESS_BOXES).fill(false) },
-      skills: { 1: 2 },
-    });
+        consequences: [{ key: 'a', value: 6, text: 'weg' }, { key: 'b', value: 3 }, 'kaputt', { value: 2 }, { key: 'a', value: 2 }, { key: 'c', value: 2 }],
+      }).consequences,
+    ).toEqual([
+      { key: 'a', value: 6 },
+      { key: 'c', value: 2 },
+    ]);
+    const many = Array.from({ length: 9 }, (_, i) => ({ key: `k${i}`, value: 4 }));
+    expect(normalizeSheet({ consequences: many }).consequences).toHaveLength(MAX_CONSEQUENCES);
+    expect(normalizeSheet({ consequences: [{ key: 'x'.repeat(21), value: 2 }] }).consequences).toEqual([]);
   });
 });
 
-describe('normalizeSheet: Stresskästchen', () => {
-  it('übernimmt gültige Anzahlen und ersetzt ungültige durch die Vorgabe', () => {
-    expect(normalizeSheet({ stressBoxes: { physical: 6, mental: 1 } }).stressBoxes).toEqual({ physical: 6, mental: 1 });
-    expect(normalizeSheet({ stressBoxes: { physical: 0, mental: 7 } }).stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
-    expect(normalizeSheet({ stressBoxes: { physical: 2.5, mental: '3' } }).stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
-    expect(normalizeSheet({ stressBoxes: 'kaputt' }).stressBoxes).toEqual(emptySheet().stressBoxes);
+describe('normalizeSheetState', () => {
+  it('ergänzt Fehlendes und verwirft Texte zu unbekannten Zeilen', () => {
+    for (const raw of [null, 'text', []]) expect(normalizeSheetState(raw)).toEqual(emptySheetState());
+    const data = { ...emptySheet(), consequences: [{ key: 'a', value: 2 as const }] };
+    expect(
+      normalizeSheetState({ stress: { physical: [true, 'ja', 1], mental: 'kaputt' }, consequences: { a: 'x\ty', b: 'weg', c: 5, d: '' } }, data),
+    ).toEqual({
+      stress: { physical: [true, false, false, false, false, false], mental: Array(STRESS_BOXES).fill(false) },
+      consequences: { a: 'x y' },
+    });
+    // ohne Bogen bleiben alle Texte
+    expect(normalizeSheetState({ consequences: { a: '1', b: '2' } }).consequences).toEqual({ a: '1', b: '2' });
   });
 });
 
