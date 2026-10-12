@@ -9,21 +9,32 @@
     accessibleSections,
     canHaveSheet,
     emptySheet,
+    normalizeSheet,
     type Article,
     type Folder,
     type Group,
     type Section,
+    type SheetData,
+    type Skill,
     type Visibility,
   } from '@pnp/shared';
-  import { api } from '../lib/api.ts';
+  import { untrack } from 'svelte';
+  import { ApiFailure, api } from '../lib/api.ts';
   import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import { showNotice } from '../lib/notice.svelte.ts';
-  import SheetPanel from '../lib/SheetPanel.svelte';
+  import { sheetSavesSettled } from '../lib/sheetSaves.ts';
+  import CharacterSheet from '../lib/CharacterSheet.svelte';
 
   let { group, section, path = '', id }: { group: Group; section: Section; path?: string; id?: number } = $props();
+
+  /** FATE-Bogen im Formular; gespeichert wird er erst mit "Speichern". version null: noch nicht auf dem Server. */
+  interface SheetDraft {
+    data: SheetData;
+    version: number | null;
+  }
 
   // Die Komponente wird pro Artikel neu erzeugt ({#key} in GroupLayout), Props dienen nur als Startwerte
   const initialForm = () => ({ section, path, title: '', bodyMd: '', visibility: 'private_gm' as Visibility });
@@ -31,12 +42,51 @@
   let isAuthor = $state(true);
   let ready = $state(false);
   let folders = $state<Folder[]>([]);
-  let withSheet = $state(false);
-  /** Gespeicherter Stand des Artikels (nur beim Bearbeiten) - für den FATE-Bogen */
+  /** Gespeicherter Stand des Artikels (nur beim Bearbeiten) */
   let article = $state<Article | null>(null);
+  let sheet = $state<SheetDraft | null>(null);
+  let skills = $state<Skill[]>([]);
+  /** Vorhandener Bogen, den "Speichern" löschen soll ("Doch behalten" stellt ihn wieder her) */
+  let removedSheet = $state<SheetDraft | null>(null);
+  /** Jemand hat den Bogen inzwischen geändert (z.B. Stress in der Ansicht) - Speichern würde das überschreiben */
+  let sheetConflict = $state(false);
+  /** Vorhandener Bogen ließ sich nicht laden - Speichern bleibt gesperrt, sonst ginge er verloren */
+  let sheetLoadFailed = $state(false);
+  /** Bereich, in dem der Artikel gespeichert ist (für Abbrechen) */
+  let savedSection = $state<Section>(untrack(() => section));
+  // Stand beim Laden bzw. Speichern - weicht das Formular davon ab, warnt das Schließen des Tabs.
+  // Getrennt, weil "Bogen neu laden" nur den Bogen zurücksetzt, nicht den Text.
+  let formBaseline = $state('');
+  let sheetBaseline = $state('');
   const loading = createTask();
   const saving = createTask();
   const sheetTask = createTask();
+
+  const formSnapshot = () => JSON.stringify(form);
+  const sheetSnapshot = () => JSON.stringify({ sheet: sheet?.data ?? null, removed: removedSheet !== null });
+  const dirty = $derived(ready && (formSnapshot() !== formBaseline || sheetSnapshot() !== sheetBaseline));
+
+  async function loadSheet(articleId: number) {
+    // Speichert die Ansicht diesen Bogen gerade noch (Stress angeklickt, dann "Bearbeiten"), erst danach laden
+    await sheetSavesSettled(articleId);
+    const [loaded, groupSkills] = await Promise.all([api.sheet(group.id, articleId), api.skills(group.id)]);
+    sheet = { data: normalizeSheet(loaded.data), version: loaded.version };
+    skills = groupSkills;
+    sheetConflict = false;
+  }
+
+  /** Lädt den vorhandenen Bogen; scheitert das, bleibt der Artikel bearbeitbar, nur Speichern ist gesperrt */
+  const reloadSheet = (articleId: number) =>
+    sheetTask.run(async () => {
+      try {
+        await loadSheet(articleId);
+        sheetLoadFailed = false;
+      } catch (err) {
+        sheetLoadFailed = sheet === null && removedSheet === null;
+        throw err;
+      }
+      sheetBaseline = sheetSnapshot();
+    });
 
   loading.run(async () => {
     if (id !== undefined) {
@@ -45,7 +95,11 @@
       form = { section: a.section, path: a.path, title: a.title, bodyMd: a.bodyMd, visibility: a.visibility };
       isAuthor = a.authorId === session.user?.id;
       article = a;
+      savedSection = a.section;
+      if (a.hasSheet) reloadSheet(a.id);
     }
+    formBaseline = formSnapshot();
+    sheetBaseline = sheetSnapshot();
     ready = true;
   });
 
@@ -69,38 +123,118 @@
   // Der Editor (TipTap/ProseMirror) ist groß und wird nur beim Bearbeiten gebraucht, daher eigenes Bundle
   const editorModule = import('../lib/MarkdownEditor.svelte');
 
-  const cancelHref = $derived(id === undefined ? href.folder(group.id, section, path) : href.article(group.id, section, id));
+  const cancelHref = $derived(id === undefined ? href.folder(group.id, section, path) : href.article(group.id, savedSection, id));
 
-  function addSheet(a: Article) {
+  /** Ungespeicherte Eingaben (Text oder Bogen) beim Schließen/Neuladen des Tabs nicht still verwerfen */
+  function beforeUnload(event: BeforeUnloadEvent) {
+    // Auch während des Speicherns: Artikel ggf. schon gespeichert, der Bogen noch nicht
+    if (dirty || saving.busy) event.preventDefault();
+  }
+
+  /** Enter in einzeiligen Feldern des Bogens soll nicht gleich den ganzen Artikel speichern */
+  function blockEnter(event: KeyboardEvent) {
+    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
+  }
+
+  function addSheet() {
+    if (removedSheet) {
+      // Den vorhandenen Bogen zurückholen statt einen zweiten anzulegen
+      sheet = removedSheet;
+      removedSheet = null;
+      return;
+    }
     sheetTask.run(async () => {
-      await api.createSheet(group.id, a.id, emptySheet(a.title));
-      a.hasSheet = true;
-      notifyContentChanged(); // Symbol im Ordnerbaum
+      skills = await api.skills(group.id);
+      sheet = { data: emptySheet(form.title), version: null };
     });
+  }
+
+  function removeSheet() {
+    if (!sheet) return;
+    if (sheet.version === null) {
+      sheet = null;
+      return;
+    }
+    if (!confirm('Den FATE-Bogen beim Speichern löschen? Alle Eintragungen gehen verloren.')) return;
+    removedSheet = sheet;
+    sheet = null;
+  }
+
+  async function saveSheet(articleId: number, draft: SheetDraft) {
+    const data = $state.snapshot(draft.data) as SheetData;
+    if (!data.name.trim()) data.name = form.title.trim();
+    try {
+      const saved =
+        draft.version === null
+          ? await api.createSheet(group.id, articleId, data)
+          : await api.saveSheet(group.id, articleId, { data, version: draft.version });
+      draft.version = saved.version;
+    } catch (err) {
+      const status = err instanceof ApiFailure ? err.status : 0;
+      // 409: geändert (PUT) bzw. inzwischen von jemandem angelegt (POST) - neu laden zeigt den aktuellen Stand
+      sheetConflict = status === 409;
+      if (status === 404 && draft.version !== null) {
+        draft.version = null; // anderswo gelöscht: erneutes Speichern legt ihn neu an
+        throw new Error('Der Bogen wurde inzwischen gelöscht. Erneutes Speichern legt ihn mit deinen Eingaben neu an.');
+      }
+      throw err;
+    }
   }
 
   function save(event: SubmitEvent) {
     event.preventDefault();
     saving.run(async () => {
-      const saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
-      let sheetCreated = false;
-      if (id === undefined && withSheet && canHaveSheet(saved.section)) {
+      if (sheet && !canHaveSheet(form.section)) {
+        throw new Error(`Im Bereich ${SECTION_LABELS[form.section]} gibt es keine FATE-Bögen – Bogen entfernen oder anderen Bereich wählen.`);
+      }
+      if (sheetLoadFailed) throw new Error('Der FATE-Bogen ist nicht geladen – bitte erst „Bogen neu laden“.');
+      const deleteSheet = async () => {
+        if (!removedSheet || !article) return;
+        await api.deleteSheet(group.id, article.id);
+        removedSheet = null;
+      };
+      // Ein Artikel mit Bogen darf nicht in einen Bereich ohne Bögen: dann muss der Bogen vorher weg. Sonst erst
+      // den Artikel speichern - scheitert das, ist der Bogen noch da.
+      const deleteFirst = !canHaveSheet(form.section);
+      if (deleteFirst) await deleteSheet();
+      let saved: Article;
+      try {
+        saved = id === undefined ? await api.createArticle(group.id, form) : await api.updateArticle(group.id, id, form);
+      } catch (err) {
+        if (deleteFirst && article) {
+          throw new Error(`${(err as Error).message} (Der FATE-Bogen ist bereits entfernt.)`, { cause: err });
+        }
+        throw err;
+      }
+      savedSection = saved.section;
+      formBaseline = formSnapshot(); // Text ist gespeichert, auch wenn danach der Bogen scheitert
+      notifyContentChanged();
+      if (!deleteFirst) {
+        await deleteSheet().catch((err: Error) => {
+          throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht entfernt: ${err.message}`, { cause: err });
+        });
+      }
+      if (sheet && id === undefined) {
         // Scheitert nur der Bogen, ist der Artikel trotzdem angelegt: nicht im Formular bleiben (ein zweites
         // Speichern legte ihn doppelt an) - in der Artikelansicht lässt sich der Bogen nachholen.
-        sheetCreated = await api
-          .createSheet(group.id, saved.id, emptySheet(saved.title))
-          .then(() => true)
-          .catch((err: Error) => {
-            showNotice(`Artikel angelegt, der FATE-Bogen aber nicht (${err.message}). Er lässt sich hier nachholen.`);
-            return false;
-          });
+        await saveSheet(saved.id, sheet).catch((err: Error) =>
+          showNotice(`Artikel angelegt, der FATE-Bogen aber nicht (${err.message}). Er lässt sich unter „Bearbeiten“ nachholen.`),
+        );
+      } else if (sheet) {
+        // Bleibt bei einem Fehler im Formular - der Artikel selbst ist schon gespeichert
+        await saveSheet(saved.id, sheet).catch((err: Error) => {
+          throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht: ${err.message}`, { cause: err });
+        });
       }
       notifyContentChanged();
-      // Ein neuer Bogen ist leer: gleich im Bearbeiten-Modus weitermachen, damit er ausgefüllt werden kann
-      navigate(sheetCreated ? href.edit(group.id, saved.section, saved.id) : href.article(group.id, saved.section, saved.id));
+      formBaseline = formSnapshot();
+      sheetBaseline = sheetSnapshot();
+      navigate(href.article(group.id, saved.section, saved.id));
     });
   }
 </script>
+
+<svelte:window onbeforeunload={beforeUnload} />
 
 <h1>{id === undefined ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
 
@@ -142,9 +276,46 @@
       </label>
     </div>
 
-    {#if id === undefined && canHaveSheet(form.section)}
-      <label class="check"><input type="checkbox" bind:checked={withSheet} /> Mit FATE-Bogen (Aspekte, Stunts, Fertigkeiten …)</label>
+    <!-- Bogen vor dem Text, wie in der Artikelansicht. Er wird mit dem Artikel gespeichert;
+         während des Speicherns gesperrt, damit nichts nach dem Absenden Eingegebene verloren geht. -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions (fängt nur Enter ab, keine eigene Bedienung) -->
+    <fieldset class="sheet-area" disabled={saving.busy} onkeydown={blockEnter}>
+    {#if sheet}
+      <div class="row sheet-bar">
+        <h2>FATE-Bogen</h2>
+        <button type="button" class="danger" disabled={saving.busy} onclick={removeSheet}>Bogen entfernen</button>
+      </div>
+      {#if !canHaveSheet(form.section)}
+        <p class="error">Im Bereich {SECTION_LABELS[form.section]} gibt es keine FATE-Bögen – zum Verschieben erst den Bogen entfernen.</p>
+      {/if}
+      {#if sheetConflict && article}
+        {@const a = article}
+        <p class="error">
+          Der Bogen wurde inzwischen geändert (z.B. Stress in der Ansicht). Neu laden verwirft deine Änderungen am Bogen.
+          <button type="button" disabled={sheetTask.busy} onclick={() => reloadSheet(a.id)}>Bogen neu laden</button>
+        </p>
+      {/if}
+      <CharacterSheet bind:data={sheet.data} {skills} editable="all" />
+    {:else if article?.hasSheet && !removedSheet && (sheetTask.busy || sheetLoadFailed)}
+      {@const a = article}
+      {#if sheetLoadFailed}
+        <p class="error">
+          Der FATE-Bogen konnte nicht geladen werden{sheetTask.error ? `: ${sheetTask.error}` : ''}.
+          <button type="button" disabled={sheetTask.busy} onclick={() => reloadSheet(a.id)}>Bogen neu laden</button>
+        </p>
+      {:else}
+        <p class="muted">Lade FATE-Bogen …</p>
+      {/if}
+    {:else if removedSheet}
+      <p class="row muted">
+        Der FATE-Bogen wird beim Speichern entfernt.
+        <button type="button" onclick={addSheet}>Doch behalten</button>
+      </p>
+    {:else if canHaveSheet(form.section)}
+      <p><button type="button" disabled={sheetTask.busy} onclick={addSheet}>FATE-Bogen hinzufügen</button></p>
     {/if}
+    {#if sheetTask.error && !sheetLoadFailed}<p class="error">{sheetTask.error}</p>{/if}
+    </fieldset>
 
     {#await editorModule}
       <p class="muted">Lade Editor …</p>
@@ -156,33 +327,16 @@
 
     {#if saving.error}<p class="error">{saving.error}</p>{/if}
     <div class="row actions">
-      <button class="primary" disabled={saving.busy}>Speichern</button>
+      <button class="primary" disabled={saving.busy || sheetTask.busy}>Speichern</button>
       <a class="button" href={cancelHref}>Abbrechen</a>
     </div>
   </form>
-
-  <!-- Außerhalb des Formulars: der Bogen speichert selbst, seine Knöpfe dürfen das Formular nicht absenden -->
-  {#if article?.hasSheet}
-    {@const a = article}
-    <h2 class="sheet-title">FATE-Bogen</h2>
-    {#if !canHaveSheet(form.section)}
-      <p class="error">Im Bereich {SECTION_LABELS[form.section]} gibt es keine FATE-Bögen – zum Verschieben erst den Bogen entfernen.</p>
-    {/if}
-    <SheetPanel {group} article={a} editing onremoved={() => {
-        a.hasSheet = false;
-        notifyContentChanged();
-      }} />
-  {:else if article && canHaveSheet(article.section) && canHaveSheet(form.section)}
-    {@const a = article}
-    {#if sheetTask.error}<p class="error">{sheetTask.error}</p>{/if}
-    <p><button disabled={sheetTask.busy} onclick={() => addSheet(a)}>FATE-Bogen hinzufügen</button></p>
-  {/if}
 {/if}
 
 <style>
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 1rem; }
   .actions { margin-top: 1rem; }
-  .sheet-title { margin-top: 2rem; }
-  .check { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
-  .check input { width: auto; margin: 0; }
+  .sheet-area { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .sheet-bar { margin: 0.5rem 0 1rem; }
+  .sheet-bar h2 { margin: 0; font-size: 1.1rem; }
 </style>

@@ -115,65 +115,70 @@ describe('CharacterSheet', () => {
   });
 });
 
-describe('FATE-Bogen am Artikel', () => {
-  /** Artikel mit Bogen im Bearbeiten-Modus, wo alle Felder des Bogens bearbeitbar sind */
-  function renderEditing(over: Partial<Article> = {}) {
+describe('FATE-Bogen in der Ansicht', () => {
+  /** Artikel mit Bogen in der Ansicht: nur Stress und Konsequenzen sind änderbar und werden sofort gespeichert */
+  function renderView(over: Partial<Article> = {}, sheet = sheetOf()) {
     api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, ...over }));
-    api.folders.mockResolvedValue([]);
-    return render(ArticleEdit, { group: gmGroup, section: 'characters', id: 1 });
-  }
-  it('lädt den Bogen und speichert Änderungen automatisch', async () => {
-    api.sheet.mockResolvedValue(sheetOf({ name: 'Zoë' }));
+    api.sheet.mockResolvedValue(sheet);
     api.skills.mockResolvedValue(SKILLS);
+    return render(ArticleView, { group: gmGroup, id: 1 });
+  }
+  const savesOk = () =>
     api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    renderEditing();
+  const consequence = async () => (await screen.findByLabelText(/Mittlere/)) as HTMLInputElement;
 
-    const athletik = await screen.findByLabelText(/Athletik/);
-    expect(screen.getByText('Änderungen am Bogen werden automatisch gespeichert.')).toBeTruthy();
-    await user.type(athletik, '3');
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
-    expect(api.saveSheet.mock.calls[0]).toEqual([7, 1, { version: 1, data: expect.objectContaining({ name: 'Zoë', skills: { 11: 3 } }) }]);
+  it('lässt nur den Zustand ändern und speichert ihn automatisch', async () => {
+    savesOk();
+    renderView({}, sheetOf({ name: 'Zoë' }));
+    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    expect(name.readOnly).toBe(true);
+    expect((screen.getByLabelText('Konzept') as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByLabelText(/Athletik/) as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.getByText(/Stress und Konsequenzen werden automatisch gespeichert/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Bogen entfernen' })).toBeNull();
+
+    await user.click(screen.getByLabelText('Geistiger Stress 2'));
+    await user.type(await consequence(), 'Angst');
+    await waitFor(() => expect((api.saveSheet.mock.calls.at(-1)![2].data as SheetData).consequences.moderate).toBe('Angst'));
+    const last = api.saveSheet.mock.calls.at(-1)!;
+    expect(last.slice(0, 2)).toEqual([7, 1]);
+    expect((last[2].data as SheetData).stress.mental[1]).toBe(true);
+    expect((last[2].data as SheetData).name).toBe('Zoë');
     expect(await screen.findByText(/^Gespeichert/)).toBeTruthy();
   });
 
   it('holt ein fehlgeschlagenes Speichern beim Verlassen nach, auch ohne weitere Eingabe', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValueOnce(new Error('Failed to fetch'));
-    const view = renderEditing();
-    await user.type(await screen.findByLabelText('Name'), 'A');
+    const view = renderView();
+    await user.type(await consequence(), 'A');
     await screen.findByText(/Nicht gespeichert: Failed to fetch/);
 
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    savesOk();
     view.unmount();
     expect(api.saveSheet).toHaveBeenCalledTimes(2);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 1, data: { name: 'A' } });
+    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 1, data: { consequences: { moderate: 'A' } } });
   });
 
   it('meldet einen Fehler beim Nachspeichern nach dem Verlassen als Hinweis', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValue(new Error('Failed to fetch'));
-    const view = renderEditing({ title: 'Zoë' });
-    await user.type(await screen.findByLabelText('Name'), 'A');
+    const view = renderView({ title: 'Zoë' });
+    await user.type(await consequence(), 'A');
     await screen.findByText(/Nicht gespeichert/);
     view.unmount();
     await waitFor(() => expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert/));
   });
 
   it('speichert beim Schließen des Tabs sofort und fragt nach', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    renderEditing();
-    const name = await screen.findByLabelText('Name');
+    savesOk();
+    renderView();
+    const field = await consequence();
     const unload = () => {
       const event = new Event('beforeunload', { cancelable: true });
       window.dispatchEvent(event);
       return event.defaultPrevented;
     };
     expect(unload()).toBe(false); // nichts offen
-    await user.type(name, 'A'); // Speichern erst nach Verzögerung geplant
+    await user.type(field, 'A'); // Speichern erst nach Verzögerung geplant
     expect(unload()).toBe(true);
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
@@ -190,112 +195,88 @@ describe('FATE-Bogen am Artikel', () => {
     api.saveSheet
       .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
       .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1/edit') as never });
-    const name = await screen.findByLabelText('Name');
-    await user.type(name, 'A');
+    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
+    const field = await consequence();
+    await user.type(field, 'A');
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1)); // läuft noch
-    await user.type(name, 'B');
+    await user.type(field, 'B');
     await view.rerender({ route: parseHash('#/g/8/notes') as never });
     finishFirst(sheetOf({ name: 'A' }));
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(2));
     expect(api.saveSheet.mock.calls[1].slice(0, 2)).toEqual([7, 1]);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ data: { name: 'AB' } });
+    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ data: { consequences: { moderate: 'AB' } } });
   });
 
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    const view = renderEditing();
-    await user.type(await screen.findByLabelText('Name'), 'A');
+    savesOk();
+    const view = renderView();
+    await user.type(await consequence(), 'A');
     await screen.findByText(/^Gespeichert/);
     view.unmount();
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
 
   it('zeigt Speicherfehler und speichert ausstehende Änderungen beim Verlassen', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValueOnce(new ApiFailure(403, 'Du darfst diesen Bogen nicht bearbeiten'));
-    const view = renderEditing();
-    await user.type(await screen.findByLabelText('Name'), 'A');
+    const view = renderView();
+    const field = await consequence();
+    await user.type(field, 'A');
     expect(await screen.findByText(/Nicht gespeichert: Du darfst/)).toBeTruthy();
 
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'AB' } });
+    savesOk();
+    fireEvent.input(field, { target: { value: 'AB' } });
     view.unmount();
     expect(api.saveSheet).toHaveBeenCalledTimes(2);
   });
 
   it('speichert nie zweimal gleichzeitig und reicht die neue Version weiter', async () => {
-    api.sheet.mockResolvedValue(sheetOf({}, 5));
-    api.skills.mockResolvedValue(SKILLS);
     let finishFirst!: () => void;
     api.saveSheet
       .mockImplementationOnce((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishFirst = () => resolve({ ...sheet, version: 6 }))))
       .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    renderEditing();
-    const name = await screen.findByLabelText('Name');
-    await user.type(name, 'A');
+    renderView({}, sheetOf({}, 5));
+    const field = await consequence();
+    await user.type(field, 'A');
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
-    await user.type(name, 'B');
+    await user.type(field, 'B');
     await new Promise((r) => setTimeout(r, 500));
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
 
     finishFirst();
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(2));
     expect(api.saveSheet.mock.calls[0][2].version).toBe(5);
-    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 6, data: { name: 'AB' } });
+    expect(api.saveSheet.mock.calls[1][2]).toMatchObject({ version: 6, data: { consequences: { moderate: 'AB' } } });
   });
 
-  it('stoppt bei einem Konflikt und lädt auf Wunsch neu', async () => {
-    api.sheet.mockResolvedValueOnce(sheetOf({ name: 'alt' })).mockResolvedValue(sheetOf({ name: 'vom Spieler' }, 3));
-    api.skills.mockResolvedValue(SKILLS);
+  it('stoppt bei einem Konflikt, sperrt den Zustand und lädt auf Wunsch neu', async () => {
     api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
-    const view = renderEditing();
-    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
-    await user.type(name, 'x');
+    const view = renderView({}, sheetOf({ name: 'alt' }));
+    api.sheet.mockResolvedValue(sheetOf({ consequences: { mild: '', moderate: 'vom Spieler', severe: '', mild2: '' } }, 3));
+    const field = await consequence();
+    await user.type(field, 'x');
     const reload = await screen.findByRole('button', { name: 'Neu laden' });
-    expect(name.readOnly).toBe(true);
-    fireEvent.input(name, { target: { value: 'trotzdem' } });
+    expect(field.readOnly).toBe(true);
+    expect((screen.getByLabelText('Körperlicher Stress 1') as HTMLInputElement).disabled).toBe(true);
+    fireEvent.input(field, { target: { value: 'trotzdem' } });
     await new Promise((r) => setTimeout(r, 500));
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
 
     await user.click(reload);
-    await waitFor(() => expect(name.value).toBe('vom Spieler'));
-    expect(name.readOnly).toBe(false);
+    await waitFor(() => expect(field.value).toBe('vom Spieler'));
+    expect(field.readOnly).toBe(false);
     expect(screen.queryByRole('button', { name: 'Neu laden' })).toBeNull();
     view.unmount();
     expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
 
-  it('speichert nichts mehr, während oder nachdem der Bogen entfernt wird', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    let finishDelete!: () => void;
-    api.deleteSheet.mockImplementation(() => new Promise((resolve) => (finishDelete = () => resolve({}))));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderEditing();
-    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
-    await user.type(name, 'A');
-    await user.click(screen.getByRole('button', { name: 'Bogen entfernen' }));
-    expect(name.readOnly).toBe(true);
-    fireEvent.input(name, { target: { value: 'zu spät' } });
-    finishDelete();
-    await waitFor(() => expect(screen.queryByLabelText('Name')).toBeNull());
-    await new Promise((r) => setTimeout(r, 500));
-    expect(api.saveSheet).not.toHaveBeenCalled();
-  });
-
-  it('gibt den Bogen wieder frei, wenn das Entfernen scheitert', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.deleteSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderEditing();
-    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
-    expect(await screen.findByText(/Nicht gespeichert: Interner Fehler/)).toBeTruthy();
-    expect((screen.getByLabelText('Name') as HTMLInputElement).readOnly).toBe(false);
+  it('meldet beim Verlassen Eingaben, die wegen eines Konflikts nicht gespeichert wurden', async () => {
+    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Konflikt'));
+    const view = renderView({ title: 'Zoë' });
+    await user.type(await consequence(), 'A');
+    await screen.findByRole('button', { name: 'Neu laden' });
+    view.unmount();
+    expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert, er wurde inzwischen/);
+    expect(api.saveSheet).toHaveBeenCalledTimes(1);
   });
 
   it('ist für Leser schreibgeschützt und ohne Bearbeiten-Aktionen', async () => {
@@ -308,184 +289,19 @@ describe('FATE-Bogen am Artikel', () => {
     expect(((await screen.findByLabelText('Name')) as HTMLInputElement).readOnly).toBe(true);
     // auch den Zustand nicht
     expect((screen.getByLabelText('Körperlicher Stress 1') as HTMLInputElement).disabled).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Bogen entfernen' })).toBeNull();
+    expect(screen.queryByText(/automatisch gespeichert/)).toBeNull();
     expect(screen.getByRole('button', { name: /Drucken/ })).toBeTruthy();
   });
 
   it('druckt über den Browser', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue([]);
     const print = vi.spyOn(window, 'print').mockImplementation(() => {});
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderView();
     await user.click(await screen.findByRole('button', { name: /Drucken/ }));
     expect(print).toHaveBeenCalled();
   });
 
-  it('lässt in der Ansicht nur den Zustand ändern und speichert ihn automatisch', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    render(ArticleView, { group: gmGroup, id: 1 });
-    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
-    expect(name.readOnly).toBe(true);
-    expect((screen.getByLabelText('Konzept') as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((screen.getByLabelText(/Athletik/) as HTMLInputElement).readOnly).toBe(true);
-    expect(screen.getByText(/Stress und Konsequenzen werden automatisch gespeichert/)).toBeTruthy();
-    // Entfernen gibt es nur im Bearbeiten-Modus
-    expect(screen.queryByRole('button', { name: 'Bogen entfernen' })).toBeNull();
-
-    await user.click(screen.getByLabelText('Geistiger Stress 2'));
-    await user.type(screen.getByLabelText(/Mittlere/), 'Angst');
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalled());
-    const saved = api.saveSheet.mock.calls.at(-1)![2].data as SheetData;
-    expect(saved.stress.mental[1]).toBe(true);
-    await waitFor(() => expect((api.saveSheet.mock.calls.at(-1)![2].data as SheetData).consequences.moderate).toBe('Angst'));
-  });
-
-  it('sperrt in der Ansicht auch den Zustand, sobald ein Konflikt vorliegt', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
-    render(ArticleView, { group: gmGroup, id: 1 });
-    const box = (await screen.findByLabelText('Körperlicher Stress 1')) as HTMLInputElement;
-    await user.click(box);
-    await screen.findByRole('button', { name: 'Neu laden' });
-    expect(box.disabled).toBe(true);
-    expect((screen.getByLabelText(/Mittlere/) as HTMLInputElement).readOnly).toBe(true);
-  });
-
-  it('meldet beim Verlassen Eingaben, die wegen eines Konflikts nicht gespeichert wurden', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Konflikt'));
-    const view = renderEditing({ title: 'Zoë' });
-    await user.type(await screen.findByLabelText('Name'), 'A');
-    await screen.findByRole('button', { name: 'Neu laden' });
-    view.unmount();
-    expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert, er wurde inzwischen/);
-    expect(api.saveSheet).toHaveBeenCalledTimes(1);
-  });
-
-  it('lädt die Ansicht erst, wenn das Nachspeichern aus dem Bearbeiten-Modus fertig ist', async () => {
-    api.folders.mockResolvedValue([]);
-    api.articles.mockResolvedValue([]);
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
-    api.sheet.mockResolvedValueOnce(sheetOf({}, 1)).mockResolvedValue(sheetOf({ name: 'A' }, 2));
-    api.skills.mockResolvedValue(SKILLS);
-    let finishSave!: () => void;
-    api.saveSheet.mockImplementation((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishSave = () => resolve({ ...sheet, version: 2 }))));
-    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1/edit') as never });
-    await user.type(await screen.findByLabelText('Name'), 'A');
-    // sofort "Abbrechen": das Speichern läuft erst beim Abbau los
-    await view.rerender({ route: parseHash('#/g/7/characters/a/1') as never });
-    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(api.sheet).toHaveBeenCalledTimes(1);
-    finishSave();
-    await waitFor(() => expect(api.sheet).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('A'));
-  });
-
-  it('zeigt im Bearbeiten-Modus keinen Druckknopf, und die Bogen-Knöpfe speichern den Artikel nicht', async () => {
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    renderEditing();
-    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
-    expect(screen.queryByRole('button', { name: /Drucken/ })).toBeNull();
-    expect(api.updateArticle).not.toHaveBeenCalled();
-  });
-
-  it('bietet im Bearbeiten-Modus keinen Bogen für Bereiche ohne Bögen an und warnt beim Verschieben', async () => {
-    api.folders.mockResolvedValue([]);
-    api.article.mockResolvedValue(fullArticle({ section: 'gm' }));
-    const gm = render(ArticleEdit, { group: gmGroup, section: 'gm', id: 1 });
-    await screen.findByLabelText('Titel');
-    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
-    gm.unmount();
-
-    // eigener Artikel: nur dann darf er in den Bereich Spielleiter
-    api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: GM.id }));
-    const notes = render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
-    await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' });
-    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
-    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
-    notes.unmount();
-
-    api.sheet.mockResolvedValue(sheetOf());
-    api.skills.mockResolvedValue(SKILLS);
-    renderEditing({ authorId: GM.id });
-    await screen.findByLabelText('Name');
-    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
-    expect(screen.getByText(/Im Bereich Spielleiter gibt es keine FATE-Bögen/)).toBeTruthy();
-  });
-
-  it('bleibt in der Ansicht und zeigt den Fehler, wenn das Hinzufügen scheitert', async () => {
+  it('bietet das Hinzufügen nur im Bearbeiten-Modus an', async () => {
     api.article.mockResolvedValue(fullArticle({ section: 'notes' }));
-    api.createSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
-    location.hash = '#/g/7/notes/a/1';
-    render(ArticleView, { group: gmGroup, id: 1 });
-    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
-    expect(await screen.findByText('Interner Fehler')).toBeTruthy();
-    expect(location.hash).toBe('#/g/7/notes/a/1');
-  });
-
-  it('navigiert nicht mehr, wenn die Seite während des Hinzufügens verlassen wurde', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'notes' }));
-    let finish!: () => void;
-    api.createSheet.mockImplementation(() => new Promise((resolve) => (finish = () => resolve(sheetOf()))));
-    location.hash = '#/g/7/notes/a/1';
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
-    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
-    view.unmount();
-    location.hash = '#/g/7/notes';
-    finish();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(location.hash).toBe('#/g/7/notes');
-  });
-
-  it('wechselt nach dem Hinzufügen in der Ansicht in den Bearbeiten-Modus', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'notes', title: 'Wirt' }));
-    api.createSheet.mockResolvedValue(sheetOf());
-    render(ArticleView, { group: gmGroup, id: 1 });
-    const before = contentChanges.version;
-    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
-    expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', refresh: '3' }));
-    expect(contentChanges.version).toBe(before + 1); // Ordnerbaum zeigt das Bogen-Symbol
-    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/1/edit'));
-  });
-
-  it('lässt sich im Bearbeiten-Modus hinzufügen, gleich ausfüllen und nach Rückfrage entfernen', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'notes', title: 'Wirt' }));
-    api.folders.mockResolvedValue([]);
-    api.createSheet.mockResolvedValue(sheetOf());
-    api.sheet.mockResolvedValue(sheetOf({ name: 'Wirt' }));
-    api.skills.mockResolvedValue(SKILLS);
-    api.deleteSheet.mockResolvedValue({});
-    render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
-
-    const before = contentChanges.version;
-    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
-    expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', refresh: '3' }));
-    expect(contentChanges.version).toBe(before + 1); // Ordnerbaum zeigt das Bogen-Symbol
-    expect(((await screen.findByLabelText('Konzept')) as HTMLTextAreaElement).readOnly).toBe(false);
-    const removeButton = await screen.findByRole('button', { name: 'Bogen entfernen' });
-
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
-    await user.click(removeButton);
-    expect(api.deleteSheet).not.toHaveBeenCalled();
-    confirm.mockReturnValueOnce(true);
-    await user.click(removeButton);
-    await waitFor(() => expect(screen.queryByLabelText('Konzept')).toBeNull());
-    expect(screen.getByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeTruthy();
-    expect(contentChanges.version).toBe(before + 2);
-  });
-
-  it('wird außerhalb von Charaktere und Notizen nicht angeboten', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'gm' }));
     render(ArticleView, { group: gmGroup, id: 1 });
     await screen.findByRole('heading', { name: 'Wirt' });
     expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
@@ -499,44 +315,6 @@ describe('FATE-Bogen am Artikel', () => {
     expect(await screen.findByText('Interner Fehler')).toBeTruthy();
   });
 
-  it('kann beim Anlegen eines Charakters gleich mit angelegt werden', async () => {
-    api.folders.mockResolvedValue([]);
-    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', title: 'Zoë' }));
-    api.createSheet.mockResolvedValue(sheetOf());
-    render(ArticleEdit, { group: gmGroup, section: 'characters' });
-    await user.type(await screen.findByLabelText('Titel'), 'Zoë');
-    await user.click(screen.getByLabelText(/Mit FATE-Bogen/));
-    await user.click(screen.getByRole('button', { name: 'Speichern' }));
-    // Der leere Bogen soll gleich ausgefüllt werden: weiter im Bearbeiten-Modus
-    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5/edit'));
-    expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë' }));
-  });
-
-  it('landet auch dann beim neuen Artikel, wenn nur das Anlegen des Bogens scheitert', async () => {
-    api.folders.mockResolvedValue([]);
-    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', title: 'Zoë' }));
-    api.createSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
-    render(ArticleEdit, { group: gmGroup, section: 'characters' });
-    await user.type(await screen.findByLabelText('Titel'), 'Zoë');
-    await user.click(screen.getByLabelText(/Mit FATE-Bogen/));
-    await user.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
-    expect(api.createArticle).toHaveBeenCalledTimes(1);
-    expect(notice.text).toMatch(/^Artikel angelegt, der FATE-Bogen aber nicht \(Interner Fehler\)/);
-  });
-
-  it('wird im Editor nur für neue Artikel in passenden Bereichen angeboten', async () => {
-    api.folders.mockResolvedValue([]);
-    const orte = render(ArticleEdit, { group: gmGroup, section: 'gm' });
-    await screen.findByLabelText('Titel');
-    expect(screen.queryByLabelText(/Mit FATE-Bogen/)).toBeNull();
-    orte.unmount();
-    api.article.mockResolvedValue(fullArticle({ section: 'characters' }));
-    render(ArticleEdit, { group: gmGroup, section: 'characters', id: 1 });
-    await screen.findByLabelText('Titel');
-    expect(screen.queryByLabelText(/Mit FATE-Bogen/)).toBeNull();
-  });
-
   it('ist in der Ordneransicht am Symbol erkennbar', async () => {
     api.folders.mockResolvedValue([]);
     api.articles.mockResolvedValue([summary({ id: 1, title: 'Zoë', hasSheet: true }), summary({ id: 2, title: 'Notiz' })]);
@@ -544,6 +322,298 @@ describe('FATE-Bogen am Artikel', () => {
     await screen.findByRole('link', { name: 'Zoë' });
     expect(screen.getByTitle('mit FATE-Bogen').textContent).toBe('🎭');
     expect(screen.getAllByText('📄')).toHaveLength(1);
+  });
+});
+
+describe('FATE-Bogen im Bearbeiten-Modus', () => {
+  /** Bestehender Artikel im Bearbeiten-Modus; alle Felder des Bogens sind bearbeitbar */
+  function renderEditing(over: Partial<Article> = {}, sheet = sheetOf()) {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, ...over }));
+    api.folders.mockResolvedValue([]);
+    api.sheet.mockResolvedValue(sheet);
+    api.skills.mockResolvedValue(SKILLS);
+    api.updateArticle.mockImplementation(async (_g: number, id: number, input: object) => fullArticle({ id, ...input }));
+    return render(ArticleEdit, { group: gmGroup, section: 'characters', id: 1 });
+  }
+  const saveButton = () => screen.getByRole('button', { name: 'Speichern' });
+  const savesOk = () =>
+    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+
+  it('steht vor dem Text und speichert erst mit „Speichern“', async () => {
+    savesOk();
+    renderEditing({}, sheetOf({ name: 'Zoë' }, 4));
+    const athletik = (await screen.findByLabelText(/Athletik/)) as HTMLInputElement;
+    expect(athletik.readOnly).toBe(false);
+    // Reihenfolge wie in der Ansicht: Bogen, dann Text
+    const textEditor = await screen.findByRole('textbox', { name: 'Text' });
+    expect(athletik.compareDocumentPosition(textEditor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Drucken/ })).toBeNull();
+
+    await user.type(athletik, '3');
+    await user.type(screen.getByLabelText('Konzept'), 'Schmugglerin');
+    await new Promise((r) => setTimeout(r, 500));
+    expect(api.saveSheet).not.toHaveBeenCalled();
+
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/1'));
+    expect(api.updateArticle).toHaveBeenCalledTimes(1);
+    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+    expect(api.saveSheet.mock.calls[0]).toEqual([
+      7,
+      1,
+      { version: 4, data: expect.objectContaining({ name: 'Zoë', skills: { 11: 3 }, aspects: expect.objectContaining({ concept: 'Schmugglerin' }) }) },
+    ]);
+  });
+
+  it('verwirft Änderungen am Bogen beim Abbrechen', async () => {
+    renderEditing();
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    await user.click(screen.getByRole('link', { name: 'Abbrechen' }));
+    expect(api.saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('bleibt bei einem Konflikt im Formular und lädt den Bogen auf Wunsch neu', async () => {
+    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
+    location.hash = '#/g/7/characters/a/1/edit';
+    renderEditing({}, sheetOf({ name: 'alt' }));
+    await user.type(await screen.findByLabelText('Name'), 'x');
+    await user.click(saveButton());
+    expect(await screen.findByText(/^Artikel gespeichert, der FATE-Bogen aber nicht: Der Bogen wurde inzwischen/)).toBeTruthy();
+    expect(location.hash).toBe('#/g/7/characters/a/1/edit');
+
+    api.sheet.mockResolvedValue(sheetOf({ name: 'vom Spieler' }, 3));
+    await user.click(screen.getByRole('button', { name: 'Bogen neu laden' }));
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('vom Spieler'));
+    expect(screen.queryByRole('button', { name: 'Bogen neu laden' })).toBeNull();
+    savesOk();
+    await user.click(saveButton());
+    await waitFor(() => expect(api.saveSheet).toHaveBeenLastCalledWith(7, 1, expect.objectContaining({ version: 3 })));
+  });
+
+  it('lädt erst, wenn die Ansicht den Zustand fertig gespeichert hat', async () => {
+    api.folders.mockResolvedValue([]);
+    api.articles.mockResolvedValue([]);
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValueOnce(sheetOf({}, 1)).mockResolvedValue(sheetOf({ name: 'neu' }, 2));
+    api.skills.mockResolvedValue(SKILLS);
+    let finishSave!: () => void;
+    api.saveSheet.mockImplementation((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishSave = () => resolve({ ...sheet, version: 2 }))));
+    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
+    await user.type(await screen.findByLabelText(/Mittlere/), 'A');
+    // sofort "Bearbeiten": das Speichern läuft erst beim Abbau der Ansicht los
+    await view.rerender({ route: parseHash('#/g/7/characters/a/1/edit') as never });
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.sheet).toHaveBeenCalledTimes(1);
+    finishSave();
+    await waitFor(() => expect(api.sheet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('neu'));
+  });
+
+  it('fügt einen Bogen hinzu, der erst mit dem Artikel angelegt wird', async () => {
+    renderEditing({ section: 'notes', hasSheet: false, title: 'Wirt' });
+    api.createSheet.mockResolvedValue(sheetOf());
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    expect(name.value).toBe('Wirt');
+    await user.type(screen.getByLabelText('Konzept'), 'Wirt mit Geheimnis');
+    expect(api.createSheet).not.toHaveBeenCalled();
+
+    const before = contentChanges.version;
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/1'));
+    expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', aspects: expect.objectContaining({ concept: 'Wirt mit Geheimnis' }) }));
+    expect(contentChanges.version).toBeGreaterThan(before); // Ordnerbaum zeigt das Bogen-Symbol
+  });
+
+  it('verwirft einen noch nicht gespeicherten Bogen ohne Rückfrage', async () => {
+    renderEditing({ section: 'notes', hasSheet: false });
+    const confirm = vi.spyOn(window, 'confirm');
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Konzept')).toBeNull();
+    expect(screen.getByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeTruthy();
+  });
+
+  it('entfernt einen vorhandenen Bogen nach Rückfrage erst beim Speichern, „Doch behalten“ holt ihn zurück', async () => {
+    api.deleteSheet.mockResolvedValue({});
+    renderEditing({}, sheetOf({ name: 'Zoë' }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    const removeButton = await screen.findByRole('button', { name: 'Bogen entfernen' });
+    await user.click(removeButton);
+    expect(screen.getByLabelText('Name')).toBeTruthy();
+
+    confirm.mockReturnValue(true);
+    await user.click(removeButton);
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Doch behalten' }));
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Zoë');
+
+    await user.click(screen.getByRole('button', { name: 'Bogen entfernen' }));
+    expect(screen.getByText(/wird beim Speichern entfernt/)).toBeTruthy();
+    expect(api.deleteSheet).not.toHaveBeenCalled();
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/1'));
+    expect(api.deleteSheet).toHaveBeenCalledWith(7, 1);
+    // Bleibt der Bereich, erst den Artikel speichern: scheitert das, ist der Bogen noch da
+    expect(api.updateArticle.mock.invocationCallOrder[0]).toBeLessThan(api.deleteSheet.mock.invocationCallOrder[0]);
+    expect(api.saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('löscht den Bogen vor dem Verschieben in einen Bereich ohne Bögen und sagt es, wenn das Verschieben scheitert', async () => {
+    api.deleteSheet.mockResolvedValue({});
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderEditing({ authorId: GM.id });
+    api.updateArticle.mockRejectedValueOnce(new ApiFailure(400, 'Ungültiger Pfad'));
+    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
+    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
+    await user.click(saveButton());
+    expect(await screen.findByText('Ungültiger Pfad (Der FATE-Bogen ist bereits entfernt.)')).toBeTruthy();
+    expect(api.deleteSheet.mock.invocationCallOrder[0]).toBeLessThan(api.updateArticle.mock.invocationCallOrder[0]);
+    // Zustand bleibt stimmig: kein zweites Löschen, Speichern geht erneut
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/gm/a/1'));
+    expect(api.deleteSheet).toHaveBeenCalledTimes(1);
+  });
+
+  it('behält den Bogen, wenn das Speichern des Artikels scheitert', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderEditing();
+    api.updateArticle.mockRejectedValueOnce(new ApiFailure(400, 'Ungültiger Pfad'));
+    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
+    await user.click(saveButton());
+    expect(await screen.findByText('Ungültiger Pfad')).toBeTruthy();
+    expect(api.deleteSheet).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Doch behalten' })).toBeTruthy();
+  });
+
+  it('legt einen anderswo gelöschten Bogen beim erneuten Speichern neu an', async () => {
+    api.saveSheet.mockRejectedValue(new ApiFailure(404, 'Kein FATE-Bogen'));
+    api.createSheet.mockResolvedValue(sheetOf());
+    renderEditing();
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    await user.click(saveButton());
+    expect(await screen.findByText(/Der Bogen wurde inzwischen gelöscht\. Erneutes Speichern legt ihn/)).toBeTruthy();
+    await user.click(saveButton());
+    await waitFor(() => expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'A' })));
+  });
+
+  it('bietet Neuladen an, wenn inzwischen jemand anderes einen Bogen angelegt hat', async () => {
+    renderEditing({ hasSheet: false });
+    api.createSheet.mockRejectedValue(new ApiFailure(409, 'Dieser Artikel hat bereits einen FATE-Bogen'));
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    await screen.findByLabelText('Name');
+    await user.click(saveButton());
+    await user.click(await screen.findByRole('button', { name: 'Bogen neu laden' }));
+    await waitFor(() => expect(api.sheet).toHaveBeenCalled());
+    savesOk();
+    await user.click(saveButton());
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ version: 1 })));
+  });
+
+  it('speichert nicht bei Enter in einem Bogenfeld und sperrt den Bogen während des Speicherns', async () => {
+    let finish!: () => void;
+    savesOk();
+    renderEditing();
+    api.updateArticle.mockImplementation((_g: number, id: number, input: object) => new Promise((resolve) => (finish = () => resolve(fullArticle({ id, ...input })))));
+    await user.type(await screen.findByLabelText('Name'), 'A{Enter}');
+    expect(api.updateArticle).not.toHaveBeenCalled();
+    await user.click(saveButton());
+    // Bogen und seine Knöpfe stehen in einem gesperrten fieldset
+    expect(screen.getByLabelText('Name').closest('fieldset')!.disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Bogen entfernen' }).closest('fieldset')!.disabled).toBe(true);
+    finish();
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+  });
+
+  it('warnt beim Schließen des Tabs nur, wenn Text oder Bogen ungespeichert geändert sind', async () => {
+    renderEditing();
+    const name = await screen.findByLabelText('Name');
+    const unload = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(unload()).toBe(false);
+    await user.type(name, 'A');
+    expect(unload()).toBe(true);
+    await user.clear(name);
+    expect(unload()).toBe(false);
+    await user.type(screen.getByLabelText('Titel'), 'x');
+    expect(unload()).toBe(true);
+  });
+
+  it('bietet keinen Bogen für Bereiche ohne Bögen an und verhindert das Speichern dorthin', async () => {
+    api.folders.mockResolvedValue([]);
+    api.article.mockResolvedValue(fullArticle({ section: 'gm' }));
+    const gm = render(ArticleEdit, { group: gmGroup, section: 'gm', id: 1 });
+    await screen.findByLabelText('Titel');
+    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
+    gm.unmount();
+
+    // eigener Artikel: nur dann darf er in den Bereich Spielleiter
+    renderEditing({ authorId: GM.id });
+    await screen.findByLabelText('Name');
+    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
+    expect(screen.getByText(/zum Verschieben erst den Bogen entfernen/)).toBeTruthy();
+    await user.click(saveButton());
+    expect(await screen.findByText(/Bogen entfernen oder anderen Bereich wählen/)).toBeTruthy();
+    expect(api.updateArticle).not.toHaveBeenCalled();
+  });
+
+  it('zeigt Ladefehler des Bogens, lässt den Text bearbeiten und sperrt nur das Speichern', async () => {
+    renderEditing();
+    api.sheet.mockRejectedValueOnce(new ApiFailure(500, 'Interner Fehler'));
+    expect(await screen.findByText(/FATE-Bogen konnte nicht geladen werden: Interner Fehler/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
+    await user.type(screen.getByLabelText('Titel'), 'x');
+    await user.click(saveButton());
+    expect(await screen.findByText(/bitte erst „Bogen neu laden“/)).toBeTruthy();
+    expect(api.updateArticle).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Bogen neu laden' }));
+    expect(await screen.findByLabelText('Name')).toBeTruthy();
+    expect((screen.getByLabelText('Titel') as HTMLInputElement).value).toBe('Wirtx');
+  });
+
+  it('legt den Bogen beim Anlegen eines Charakters gleich mit an', async () => {
+    api.folders.mockResolvedValue([]);
+    api.skills.mockResolvedValue(SKILLS);
+    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', title: 'Zoë' }));
+    api.createSheet.mockResolvedValue(sheetOf());
+    render(ArticleEdit, { group: gmGroup, section: 'characters' });
+    await user.type(await screen.findByLabelText('Titel'), 'Zoë');
+    await user.click(screen.getByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    await user.type(await screen.findByLabelText(/Athletik/), '2');
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
+    // Name leer gelassen: der Titel wird übernommen
+    expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë', skills: { 11: 2 } }));
+  });
+
+  it('landet auch dann beim neuen Artikel, wenn nur das Anlegen des Bogens scheitert', async () => {
+    api.folders.mockResolvedValue([]);
+    api.skills.mockResolvedValue(SKILLS);
+    api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', title: 'Zoë' }));
+    api.createSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+    render(ArticleEdit, { group: gmGroup, section: 'characters' });
+    await user.type(await screen.findByLabelText('Titel'), 'Zoë');
+    await user.click(screen.getByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    await screen.findByLabelText('Name');
+    await user.click(saveButton());
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
+    expect(api.createArticle).toHaveBeenCalledTimes(1);
+    expect(notice.text).toMatch(/^Artikel angelegt, der FATE-Bogen aber nicht \(Interner Fehler\)/);
+  });
+
+  it('zeigt einen Fehler, wenn die Fertigkeiten zum neuen Bogen nicht laden', async () => {
+    api.folders.mockResolvedValue([]);
+    api.skills.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+    render(ArticleEdit, { group: gmGroup, section: 'notes' });
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    expect(await screen.findByText('Interner Fehler')).toBeTruthy();
+    expect(screen.queryByLabelText('Konzept')).toBeNull();
   });
 });
 

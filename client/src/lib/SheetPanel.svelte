@@ -7,14 +7,9 @@
   import CharacterSheet from './CharacterSheet.svelte';
   import { sheetSavesSettled, trackSheetSave } from './sheetSaves.ts';
 
-  // Lädt und speichert den FATE-Bogen eines Artikels; mit Bearbeitungsrecht wird automatisch gespeichert.
-  // Außerhalb des Bearbeiten-Modus (editing = false) lässt sich nur der Zustand (Stress, Konsequenzen) ändern.
-  let {
-    group,
-    article,
-    editing = false,
-    onremoved,
-  }: { group: Group; article: Article; editing?: boolean; onremoved: () => void } = $props();
+  // FATE-Bogen in der Artikelansicht: Mit Bearbeitungsrecht lässt sich hier nur der Zustand (Stress,
+  // Konsequenzen) ändern - das wird sofort gespeichert. Alles andere bearbeitet ArticleEdit mit dem Artikel.
+  let { group, article }: { group: Group; article: Article } = $props();
 
   const SAVE_DELAY_MS = 400;
 
@@ -27,8 +22,6 @@
   let savedAt = $state('');
   /** Jemand anderes hat den Bogen geändert - weiterspeichern würde dessen Stand überschreiben */
   let conflict = $state(false);
-  /** Solange bzw. nachdem der Bogen entfernt wird, darf nichts mehr gespeichert werden */
-  let removing = $state(false);
   const loading = createTask();
   const saving = createTask();
 
@@ -64,7 +57,7 @@
     cancelPendingSave();
     // Nie zwei Speichervorgänge gleichzeitig: der zweite trüge noch die alte Version und liefe in einen
     // Konflikt. Was währenddessen dazukommt, bleibt dirty und wird unten nachgereicht.
-    if (removing || conflict || saving.busy) return;
+    if (conflict || saving.busy) return;
     dirty = false;
     const ok = await saving.run(async () => {
       try {
@@ -81,7 +74,7 @@
   }
 
   function scheduleSave() {
-    if (removing || conflict) return;
+    if (conflict) return;
     dirty = true;
     cancelPendingSave();
     timer = setTimeout(save, SAVE_DELAY_MS);
@@ -102,20 +95,6 @@
     event.preventDefault();
   }
 
-  function remove() {
-    if (!confirm('Den FATE-Bogen dieses Artikels löschen? Alle Eintragungen gehen verloren.')) return;
-    cancelPendingSave();
-    removing = true;
-    saving.run(async () => {
-      try {
-        await api.deleteSheet(gid, articleId);
-      } catch (err) {
-        removing = false;
-        throw err;
-      }
-      onremoved();
-    });
-  }
 </script>
 
 <svelte:window onbeforeunload={beforeUnload} />
@@ -124,12 +103,8 @@
 
 {#if data}
   <div class="row toolbar no-print">
-    <!-- Im Bearbeiten-Modus stünde das Artikelformular mit auf dem Ausdruck -->
-    {#if !editing}<button onclick={() => window.print()}>Drucken / als PDF speichern</button>{/if}
+    <button onclick={() => window.print()}>Drucken / als PDF speichern</button>
     {#if article.canEdit}
-      {#if editing}
-        <button class="danger" disabled={saving.busy || removing} onclick={remove}>Bogen entfernen</button>
-      {/if}
       <span class="muted" role="status">
         {#if conflict}
           <span class="error">Der Bogen wurde inzwischen von jemand anderem geändert. Deine letzten Eingaben sind nicht gespeichert.</span>
@@ -137,7 +112,6 @@
         {:else if saving.error}<span class="error">Nicht gespeichert: {saving.error}</span>
         {:else if saving.busy}Speichere …
         {:else if savedAt}Gespeichert {savedAt}
-        {:else if editing}Änderungen am Bogen werden automatisch gespeichert.
         {:else}Stress und Konsequenzen werden automatisch gespeichert, alles andere unter „Bearbeiten“.{/if}
       </span>
     {/if}
@@ -145,7 +119,7 @@
   <CharacterSheet
     bind:data
     {skills}
-    editable={!article.canEdit || removing || conflict ? 'none' : editing ? 'all' : 'condition'}
+    editable={!article.canEdit || conflict ? 'none' : 'condition'}
     onchange={scheduleSave}
   />
 {/if}

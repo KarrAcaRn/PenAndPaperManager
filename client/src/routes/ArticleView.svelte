@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VISIBILITY_LABELS, canHaveSheet, emptySheet, type Article, type Group } from '@pnp/shared';
+  import { VISIBILITY_LABELS, type Article, type Group } from '@pnp/shared';
   import { api } from '../lib/api.ts';
   import { notifyContentChanged } from '../lib/content.svelte.ts';
   import { renderMarkdown } from '../lib/markdown.ts';
@@ -17,22 +17,6 @@
   task.run(async () => {
     article = await api.article(group.id, id);
   });
-
-  /** Seite verlassen - asynchron weiterlaufender Code darf dann nicht mehr navigieren */
-  let destroyed = false;
-  $effect(() => () => {
-    destroyed = true;
-  });
-
-  // Ein neuer Bogen ist leer - er wird gleich im Bearbeiten-Modus ausgefüllt
-  function addSheet(a: Article) {
-    const gid = group.id;
-    task.run(async () => {
-      await api.createSheet(gid, a.id, emptySheet(a.title));
-      notifyContentChanged(); // Symbol im Ordnerbaum
-      if (!destroyed) navigate(href.edit(gid, a.section, a.id));
-    });
-  }
 
   function remove(a: Article) {
     if (!confirm(`Artikel "${a.title}" wirklich löschen?`)) return;
@@ -52,9 +36,6 @@
     <Breadcrumb gid={group.id} section={a.section} path={a.path} />
     <span class="spacer"></span>
     {#if a.canEdit}
-      {#if !a.hasSheet && canHaveSheet(a.section)}
-        <button disabled={task.busy} onclick={() => addSheet(a)}>FATE-Bogen hinzufügen</button>
-      {/if}
       <a class="button primary" href={href.edit(group.id, a.section, a.id)}>Bearbeiten</a>
       <button class="danger" disabled={task.busy} onclick={() => remove(a)}>Löschen</button>
     {/if}
@@ -67,10 +48,7 @@
   <p class="muted no-print">von {a.authorEmail} · zuletzt geändert {new Date(a.updatedAt + 'Z').toLocaleString('de-DE')}</p>
 
   {#if a.hasSheet}
-    <SheetPanel {group} article={a} onremoved={() => {
-        a.hasSheet = false;
-        notifyContentChanged();
-      }} />
+    <SheetPanel {group} article={a} />
   {/if}
 
   {#if a.bodyMd.trim() || !a.hasSheet}
