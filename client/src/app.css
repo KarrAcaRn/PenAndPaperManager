@@ -1,6 +1,6 @@
 :root {
   /* Breite des Zweigrahmens (.vine-frame); er ragt zur Hälfte nach außen, daher braucht alles drumherum --vine-gap */
-  --vine-width: 44px;
+  --vine-width: 33px;
   --vine-gap: calc(var(--vine-width) / 2 + 0.5rem);
   --bg: #f6f1e7;
   --surface: #fffdf8;

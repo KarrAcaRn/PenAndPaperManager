@@ -7,14 +7,10 @@
   import GroupLayout from './routes/GroupLayout.svelte';
   import Admin from './routes/Admin.svelte';
   import NoticeBar from './lib/NoticeBar.svelte';
-  import FrameSizePicker from './lib/FrameSizePicker.svelte';
 
   const loading = createTask();
   loading.run(loadSession);
 </script>
-
-<!-- VORÜBERGEHEND: Auswahl der Rahmengröße zum Ausprobieren -->
-<FrameSizePicker />
 
 {#if loading.error}
   <main><p class="error">Server nicht erreichbar: {loading.error}</p></main>
