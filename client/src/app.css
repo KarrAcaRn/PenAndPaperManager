@@ -69,7 +69,7 @@ label > input, label > select, label > textarea { margin-top: 0.25rem; font-weig
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
 
 /*
- * Fantasy-Rahmen: dünne Ranken mit Blättern, die auf der Kante des Kastens entlanglaufen.
+ * Fantasy-Rahmen: braune Zweige mit grünen Blättern, die auf der Kante des Kastens entlanglaufen.
  * border-image (9-Slice) statt Pseudo-Element, weil scrollende Kästen (Ordnerbaum) Pseudo-Elemente abschneiden.
  * Die eigentliche Kastenlinie übernimmt der innere Schatten.
  */
