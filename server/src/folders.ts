@@ -1,5 +1,5 @@
 import { normalizePath, PathError, type Section } from '@pnp/shared';
-import { getRow, insertRow, type Db } from './db.ts';
+import { allRows, getRow, insertRow, type Db } from './db.ts';
 import { badRequest } from './errors.ts';
 
 /** normalizePath mit 400 statt PathError */
@@ -26,19 +26,77 @@ export function sectionParams(groupId: number, section: Section): { gid: number;
   return { gid: groupId, section };
 }
 
-/** Ordner samt vollständigem Pfad (View folder_paths): Aliase "f" (folders) und "fp" (fp.path) */
-export const FOLDERS_WITH_PATH = 'folders f JOIN folder_paths fp ON fp.id = f.id';
+export interface FolderWithPath {
+  id: number;
+  path: string;
+  createdBy: number;
+}
+
+/**
+ * Alle Ordner eines Bereichs mit vollständigem Pfad. Eine Abfrage über den Index (group_id, section), die Pfade
+ * setzt JS aus parent_id zusammen - ein rekursives SQL-View würde für jede Abfrage alle Gruppen durchlaufen.
+ */
+export function listFolders(db: Db, groupId: number, section: Section): FolderWithPath[] {
+  const rows = allRows<{ id: number; parentId: number | null; name: string; createdBy: number }>(
+    db,
+    'SELECT id, parent_id AS parentId, name, created_by AS createdBy FROM folders WHERE group_id = ? AND section = ?',
+    groupId,
+    section,
+  );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const paths = new Map<number, string>();
+  const pathOf = (id: number): string => {
+    const known = paths.get(id);
+    if (known !== undefined) return known;
+    const row = byId.get(id)!;
+    // Elternordner liegt immer im selben Bereich (sonst wäre er nicht in byId) - zur Sicherheit oberste Ebene
+    const parent = row.parentId !== null && byId.has(row.parentId) ? `${pathOf(row.parentId)}/` : '';
+    const path = parent + row.name;
+    paths.set(id, path);
+    return path;
+  };
+  return rows.map(({ id, createdBy }) => ({ id, path: pathOf(id), createdBy }));
+}
+
+/** Pfad je Ordner-ID eines Bereichs; für Artikel ohne Ordner (null) '' */
+export function folderPathLookup(db: Db, groupId: number, section: Section): (folderId: number | null) => string {
+  const paths = new Map(listFolders(db, groupId, section).map((f) => [f.id, f.path]));
+  return (folderId) => (folderId === null ? '' : (paths.get(folderId) ?? ''));
+}
+
+/** Pfad eines einzelnen Ordners (geht die Elternordner per Primärschlüssel hoch); null = oberste Ebene ('') */
+export function folderPath(db: Db, folderId: number | null): string {
+  const names: string[] = [];
+  for (let id = folderId; id !== null; ) {
+    const row = getRow<{ parentId: number | null; name: string }>(db, 'SELECT parent_id AS parentId, name FROM folders WHERE id = ?', id);
+    if (!row) break;
+    names.unshift(row.name);
+    id = row.parentId;
+  }
+  return names.join('/');
+}
+
+/** Unterordner mit diesem Namen; parentId null = oberste Ebene. Nutzt den Index folders_name (daher COALESCE). */
+function childFolderId(db: Db, groupId: number, section: Section, parentId: number | null, name: string): number | undefined {
+  return getRow<{ id: number }>(
+    db,
+    'SELECT id FROM folders WHERE group_id = ? AND section = ? AND COALESCE(parent_id, 0) = ? AND name = ?',
+    groupId,
+    section,
+    parentId ?? 0,
+    name,
+  )?.id;
+}
 
 /** ID des Ordners mit diesem (normalisierten) Pfad; '' ist die oberste Ebene (null), undefined = gibt es nicht */
 export function findFolderId(db: Db, groupId: number, section: Section, path: string): number | null | undefined {
-  if (path === '') return null;
-  return getRow<{ id: number }>(
-    db,
-    `SELECT f.id FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ? AND fp.path = ?`,
-    groupId,
-    section,
-    path,
-  )?.id;
+  let id: number | null = null;
+  for (const name of path === '' ? [] : path.split('/')) {
+    const child = childFolderId(db, groupId, section, id, name);
+    if (child === undefined) return undefined;
+    id = child;
+  }
+  return id;
 }
 
 /**
@@ -48,16 +106,8 @@ export function findFolderId(db: Db, groupId: number, section: Section, path: st
 export function ensureFolderPath(db: Db, groupId: number, section: Section, path: string, userId: number): number | null {
   let parentId: number | null = null;
   for (const name of path === '' ? [] : path.split('/')) {
-    const existing: { id: number } | undefined = getRow<{ id: number }>(
-      db,
-      'SELECT id FROM folders WHERE group_id = ? AND section = ? AND parent_id IS ? AND name = ?',
-      groupId,
-      section,
-      parentId,
-      name,
-    );
     parentId =
-      existing?.id ??
+      childFolderId(db, groupId, section, parentId, name) ??
       insertRow(
         db,
         'INSERT INTO folders (group_id, section, parent_id, name, created_by) VALUES (?, ?, ?, ?, ?)',

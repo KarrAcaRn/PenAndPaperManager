@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Visibility } from '@pnp/shared';
+import { openDb } from '../src/db.ts';
 import { article, makeApp, setupGroup } from './helpers.ts';
 
 const paths = (res: { body: { path: string }[] }) => res.body.map((f) => f.path);
@@ -181,5 +182,27 @@ describe('Ordner', () => {
     await gm.del(`/api/groups/${other}/folders?section=characters&path=Gleich`);
     expect(paths(await gm.get(`${base}/folders?section=characters`))).toEqual(['Gleich']);
     expect(paths(await gm.get(`${base}/folders?section=gm`))).toContain('Gleich');
+  });
+});
+
+describe('Ordnerabfragen', () => {
+  it('suchen Unterordner über den Index statt über alle Ordner', () => {
+    const db = openDb(':memory:');
+    const plan = db
+      .prepare('EXPLAIN QUERY PLAN SELECT id FROM folders WHERE group_id = 1 AND section = ? AND COALESCE(parent_id, 0) = 0 AND name = ?')
+      .all('notes', 'x')
+      .map((row) => String(row.detail))
+      .join(' ');
+    expect(plan).toContain('folders_name');
+  });
+
+  it('liefern Pfade auch in tiefen Ordnern und nach Verschieben richtig', async () => {
+    const { base, gm } = await setupGroup(makeApp());
+    const id = (await gm.post(`${base}/articles`, article('public', { section: 'characters', path: 'a/b/c/d' }))).body.id;
+    await gm.patch(`${base}/folders`, { section: 'characters', path: 'a/b', newPath: 'x/y' });
+    expect((await gm.get(`${base}/articles/${id}`)).body.path).toBe('x/y/c/d');
+    expect((await gm.get(`${base}/articles?section=characters`)).body.map((a: { path: string }) => a.path)).toEqual(['x/y/c/d']);
+    expect((await gm.get(`${base}/articles?section=characters&path=x/y/c/d`)).body).toHaveLength(1);
+    expect((await gm.get(`${base}/articles?section=characters&path=a/b/c/d`)).body).toEqual([]);
   });
 });

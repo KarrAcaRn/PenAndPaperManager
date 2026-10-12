@@ -7,14 +7,13 @@ import {
   canHaveSheet,
   type ArticleInput,
   type ArticleUpdate,
-  type ArticleSummary,
   type Section,
 } from '@pnp/shared';
 import { allRows, getRow, insertRow, run, transaction, type Db } from '../db.ts';
 import { assertSection, getRole, requireMember, type MemberContext } from '../auth.ts';
 import { VISIBLE_ARTICLE_SQL, visibilityParams } from '../access.ts';
-import { ARTICLES_FROM, ARTICLE_PATH_SQL, SUMMARY_COLUMNS, loadVisibleArticle, toSummary } from '../articles.ts';
-import { IN_SECTION_SQL, ensureFolderPath, parsePath, sectionParams } from '../folders.ts';
+import { ARTICLES_FROM, SUMMARY_COLUMNS, loadVisibleArticle, toSummary, type SummaryRow } from '../articles.ts';
+import { IN_SECTION_SQL, ensureFolderPath, findFolderId, folderPathLookup, parsePath, sectionParams } from '../folders.ts';
 import { badRequest, forbidden } from '../errors.ts';
 import { gidParams, idParams, nonBlank, objectOf, sectionProp } from '../schemas.ts';
 
@@ -40,21 +39,26 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
       const ctx = requireMember(db, req);
       const { section, path } = req.query as { section: Section; path?: string };
       assertSection(ctx, section);
-      const params: Record<string, string | number> = {
+      const params: Record<string, string | number | null> = {
         ...sectionParams(ctx.groupId, section),
         ...visibilityParams(ctx.user.id, ctx.role),
       };
-      // node:sqlite lehnt unbenutzte benannte Parameter ab, daher :path nur bei Bedarf
-      if (path !== undefined) params.path = parsePath(path);
-      const rows = allRows<ArticleSummary>(
+      // node:sqlite lehnt unbenutzte benannte Parameter ab, daher :folderId nur bei Bedarf
+      if (path !== undefined) {
+        const folderId = findFolderId(db, ctx.groupId, section, parsePath(path));
+        if (folderId === undefined) return [];
+        params.folderId = folderId;
+      }
+      const rows = allRows<SummaryRow>(
         db,
         `SELECT ${SUMMARY_COLUMNS} FROM ${ARTICLES_FROM}
-         WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : `AND ${ARTICLE_PATH_SQL} = :path`}
+         WHERE ${IN_SECTION_SQL} ${path === undefined ? '' : 'AND a.folder_id IS :folderId'}
            AND ${VISIBLE_ARTICLE_SQL}
          ORDER BY a.title COLLATE NOCASE`,
         params,
       );
-      return rows.map(toSummary);
+      const pathOf = folderPathLookup(db, ctx.groupId, section);
+      return rows.map((row) => toSummary(row, pathOf));
     },
   );
 

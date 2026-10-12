@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { MAX_PATH_LENGTH, baseName, isWithin, parentPath, type Folder, type Section } from '@pnp/shared';
-import { allRows, getRow, run, transaction, type Db } from '../db.ts';
+import { getRow, run, transaction, type Db } from '../db.ts';
 import { assertSection, requireMember, type MemberContext } from '../auth.ts';
 import { canManageFolder } from '../access.ts';
-import { FOLDERS_WITH_PATH, ensureFolderPath, findFolderId, parseFolderPath } from '../folders.ts';
+import { ensureFolderPath, findFolderId, listFolders, parseFolderPath } from '../folders.ts';
 import { badRequest, conflict, forbidden, notFound } from '../errors.ts';
 import { gidParams, objectOf, sectionProp } from '../schemas.ts';
 
@@ -14,13 +14,8 @@ const location = { section: sectionProp, path: { type: 'string', minLength: 1 } 
  * Ein- und ausgeblendet werden nur die Artikel darin.
  */
 export function folderRoutes(app: FastifyInstance, db: Db): void {
-  const listFolders = (ctx: MemberContext, section: Section): Folder[] =>
-    allRows<{ path: string; createdBy: number }>(
-      db,
-      `SELECT fp.path, f.created_by AS createdBy FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ?`,
-      ctx.groupId,
-      section,
-    )
+  const visibleFolders = (ctx: MemberContext, section: Section): Folder[] =>
+    listFolders(db, ctx.groupId, section)
       .map(({ path, createdBy }) => ({ path, canManage: canManageFolder(ctx.user.id, ctx.role, { createdBy }) }))
       .sort((a, b) => a.path.localeCompare(b.path, 'de'));
 
@@ -44,7 +39,7 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
       const ctx = requireMember(db, req);
       const { section } = req.query as { section: Section };
       assertSection(ctx, section);
-      return listFolders(ctx, section);
+      return visibleFolders(ctx, section);
     },
   );
 
@@ -77,12 +72,7 @@ export function folderRoutes(app: FastifyInstance, db: Db): void {
           throw conflict('Es gibt bereits einen Ordner mit diesem Namen');
         }
         // Längen in JS messen: SQLite zählt Codepoints, normalizePath aber UTF-16-Einheiten (Emoji!).
-        const inside = allRows<{ path: string }>(
-          db,
-          `SELECT fp.path FROM ${FOLDERS_WITH_PATH} WHERE f.group_id = ? AND f.section = ?`,
-          ctx.groupId,
-          body.section,
-        ).filter((f) => isWithin(f.path, path));
+        const inside = listFolders(db, ctx.groupId, body.section).filter((f) => isWithin(f.path, path));
         if (inside.some((f) => f.path.length - path.length + newPath.length > MAX_PATH_LENGTH)) {
           throw badRequest(`Pfade im Ordner würden zu lang (max. ${MAX_PATH_LENGTH} Zeichen)`);
         }
