@@ -104,6 +104,13 @@ describe('CharacterSheet', () => {
     expect(onchange).toHaveBeenCalled();
   });
 
+  it('zeigt die Knöpfe für die Kästchenzahl nur im Bearbeiten-Modus', () => {
+    const { container } = render(CharacterSheet, { data: sheetData({ stressBoxes: { physical: 2, mental: 6 } }), skills: SKILLS, editable: 'condition' });
+    expect(screen.queryByRole('button', { name: /Stresskästchen/ })).toBeNull();
+    expect(container.querySelectorAll('.track')[0].querySelectorAll('label.off')).toHaveLength(4);
+    expect(container.querySelectorAll('.track')[1].querySelectorAll('label.off')).toHaveLength(0);
+  });
+
   it('setzt viele Fertigkeiten zweispaltig und weist auf eine fehlende Liste hin', () => {
     const many = Array.from({ length: 18 }, (_, i) => ({ id: i + 1, name: `Fertigkeit ${i + 1}` }));
     const dense = render(CharacterSheet, { data: sheetData(), skills: many });
@@ -351,6 +358,7 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
 
     await user.type(athletik, '3');
     await user.type(screen.getByLabelText('Konzept'), 'Schmugglerin');
+    await user.click(screen.getByRole('button', { name: 'Mehr geistige Stresskästchen' }));
     await new Promise((r) => setTimeout(r, 500));
     expect(api.saveSheet).not.toHaveBeenCalled();
 
@@ -361,8 +369,34 @@ describe('FATE-Bogen im Bearbeiten-Modus', () => {
     expect(api.saveSheet.mock.calls[0]).toEqual([
       7,
       1,
-      { version: 4, data: expect.objectContaining({ name: 'Zoë', skills: { 11: 3 }, aspects: expect.objectContaining({ concept: 'Schmugglerin' }) }) },
+      {
+        version: 4,
+        data: expect.objectContaining({
+          name: 'Zoë',
+          skills: { 11: 3 },
+          aspects: expect.objectContaining({ concept: 'Schmugglerin' }),
+          stressBoxes: { physical: 4, mental: 5 },
+        }),
+      },
     ]);
+  });
+
+  it('ändert die Zahl der nutzbaren Stresskästchen je Leiste', async () => {
+    renderEditing();
+    await screen.findByLabelText('Name');
+    const offBoxes = (track: number) => document.querySelectorAll('.track')[track].querySelectorAll('label.off').length;
+    const more = () => screen.getByRole('button', { name: 'Mehr körperliche Stresskästchen' }) as HTMLButtonElement;
+    const fewer = () => screen.getByRole('button', { name: 'Weniger geistige Stresskästchen' }) as HTMLButtonElement;
+    expect(offBoxes(0)).toBe(2);
+    await user.click(more());
+    await user.click(more());
+    expect(offBoxes(0)).toBe(0);
+    expect(more().disabled).toBe(true);
+    for (let i = 0; i < 3; i++) await user.click(fewer());
+    expect(offBoxes(1)).toBe(5);
+    expect(fewer().disabled).toBe(true);
+    // gespeichert wird erst mit dem Artikel
+    expect(api.saveSheet).not.toHaveBeenCalled();
   });
 
   it('verwirft Änderungen am Bogen beim Abbrechen', async () => {

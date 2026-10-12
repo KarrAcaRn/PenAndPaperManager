@@ -47,6 +47,8 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Ansicht lässt sich nur der Zustand (Stress, Konsequenzen) ändern; das wird sofort gespeichert, damit er im Spiel
   schnell angepasst werden kann. Jeder Bogen trägt eine Version: Bearbeiten zwei
   Leute gleichzeitig, bekommt der zweite einen Konflikt gemeldet, statt den ersten zu überschreiben.
+- Wie viele Stresskästchen je Leiste (körperlich/geistig) nutzbar sind, stellt man im Bearbeiten-Modus mit
+  −/+ ein (1–6, Vorgabe 4); die übrigen sind ausgegraut.
 - Die Fertigkeiten auf dem Bogen legt der Spielleiter pro Gruppe fest (Bereich Spielleiter → Fertigkeiten).
   Umbenannte Fertigkeiten behalten ihre Werte, IDs gelöschter werden nie wiederverwendet.
 - Ausgangspunkt sind Varianten (z.B. Fate Core, Turbo-Fate, Fate of Cthulhu), die beim ersten Start aus

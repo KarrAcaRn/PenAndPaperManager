@@ -11,6 +11,8 @@
     MAX_SKILL_VALUE,
     MAX_STUNTS_LENGTH,
     MIN_SKILL_VALUE,
+    MIN_STRESS_BOXES,
+    STRESS_BOXES,
     STRESS_LABELS,
     type AspectKey,
     type SheetData,
@@ -29,8 +31,6 @@
   const readonly = $derived(editable !== 'all');
   const conditionReadonly = $derived(editable === 'none');
 
-  /** Frei nutzbare Kästchen; die übrigen sind wie auf dem Papierbogen ausgegraut (durch Fertigkeiten freigeschaltet) */
-  const BASE_STRESS_BOXES = 4;
   /** Höhe, die der Fertigkeiten-Block auf der A4-Seite hat */
   const SKILLS_HEIGHT_MM = 150;
   const MM_PER_PT = 0.3528;
@@ -42,6 +42,12 @@
 
   const aspectKeys = Object.keys(ASPECT_LABELS) as AspectKey[];
   const stressKeys = Object.keys(STRESS_LABELS) as StressKey[];
+
+  /** Nutzbare Kästchen einer Stressleiste; die übrigen sind ausgegraut (durch Fertigkeiten/Stunts freischaltbar) */
+  function changeStressBoxes(track: StressKey, delta: number) {
+    data.stressBoxes[track] = Math.min(STRESS_BOXES, Math.max(MIN_STRESS_BOXES, data.stressBoxes[track] + delta));
+    onchange();
+  }
 
   function setSkill(id: number, raw: string) {
     const value = Number.parseInt(raw, 10);
@@ -113,9 +119,26 @@
           {#each stressKeys as track}
             <div class="track">
               <span class="name">{STRESS_LABELS[track]}</span>
+              {#if editable === 'all'}
+                <!-- Zwischen Name und Kästchen, damit die Kästchen in Ansicht und Bearbeiten gleich stehen -->
+                <span class="box-count no-print">
+                  <button
+                    type="button"
+                    disabled={data.stressBoxes[track] <= MIN_STRESS_BOXES}
+                    aria-label="Weniger {STRESS_LABELS[track].toLowerCase()}e Stresskästchen"
+                    onclick={() => changeStressBoxes(track, -1)}>−</button
+                  >
+                  <button
+                    type="button"
+                    disabled={data.stressBoxes[track] >= STRESS_BOXES}
+                    aria-label="Mehr {STRESS_LABELS[track].toLowerCase()}e Stresskästchen"
+                    onclick={() => changeStressBoxes(track, 1)}>+</button
+                  >
+                </span>
+              {/if}
               <div class="boxes">
                 {#each data.stress[track] as _, index}
-                  <label class:off={index >= BASE_STRESS_BOXES}>
+                  <label class:off={index >= data.stressBoxes[track]}>
                     <input
                       type="checkbox"
                       bind:checked={data.stress[track][index]}
@@ -293,6 +316,14 @@
   .track { display: flex; align-items: center; gap: 2mm; margin-bottom: 1.6mm; }
   .track .name { flex: 1; text-align: right; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
   .boxes { display: flex; }
+  .box-count { display: flex; gap: 1mm; }
+  .box-count button {
+    width: 5.5mm; height: 5.5mm; padding: 0; border: 1pt solid var(--line); border-radius: 50%;
+    background: #fff; color: var(--ink); font: 700 9pt/1 Arial, sans-serif; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .box-count button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .box-count button:disabled { opacity: 0.35; cursor: default; }
   .boxes input { position: absolute; opacity: 0; pointer-events: none; width: auto; }
   .boxes label { display: block; margin-left: -1pt; }
   .boxes label > span { width: 6.2mm; height: 6.2mm; border: 1pt solid var(--ink); display: flex; align-items: center; justify-content: center; font-size: 9pt; font-weight: 700; cursor: pointer; }

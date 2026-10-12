@@ -6,6 +6,9 @@ const SHEET_SECTIONS: readonly Section[] = ['characters', 'notes'];
 export const canHaveSheet = (section: Section): boolean => SHEET_SECTIONS.includes(section);
 
 export const STRESS_BOXES = 6;
+/** Wie viele Stresskästchen je Leiste nutzbar sind (dunkel umrandet) - hängt von Fertigkeiten/Stunts ab */
+export const MIN_STRESS_BOXES = 1;
+export const DEFAULT_STRESS_BOXES = 4;
 export const MAX_SKILLS = 40;
 export const MAX_SKILL_NAME_LENGTH = 40;
 export const MIN_SKILL_VALUE = -2;
@@ -44,6 +47,8 @@ export interface SheetData {
   stunts: string;
   refresh: string;
   stress: Record<StressKey, boolean[]>;
+  /** Anzahl nutzbarer Kästchen je Stressleiste (MIN_STRESS_BOXES bis STRESS_BOXES); die übrigen sind ausgegraut */
+  stressBoxes: Record<StressKey, number>;
   consequences: Record<ConsequenceKey, string>;
   /** Wert je Fertigkeit, Schlüssel ist die ID der Gruppen-Fertigkeit */
   skills: Record<string, number>;
@@ -65,6 +70,7 @@ export function emptySheet(name = ''): SheetData {
     stunts: '',
     refresh: '3',
     stress: { physical: Array(STRESS_BOXES).fill(false), mental: Array(STRESS_BOXES).fill(false) },
+    stressBoxes: { physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES },
     consequences: { mild: '', moderate: '', severe: '', mild2: '' },
     skills: {},
   };
@@ -100,6 +106,14 @@ export function normalizeSheet(raw: unknown): SheetData {
     for (const key of Object.keys(sheet.stress) as StressKey[]) {
       const boxes = raw.stress[key];
       if (Array.isArray(boxes)) sheet.stress[key] = sheet.stress[key].map((_, i) => boxes[i] === true);
+    }
+  }
+  if (isRecord(raw.stressBoxes)) {
+    for (const key of Object.keys(sheet.stressBoxes) as StressKey[]) {
+      const count = raw.stressBoxes[key];
+      if (Number.isInteger(count) && (count as number) >= MIN_STRESS_BOXES && (count as number) <= STRESS_BOXES) {
+        sheet.stressBoxes[key] = count as number;
+      }
     }
   }
   if (isRecord(raw.skills)) {

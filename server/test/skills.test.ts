@@ -192,6 +192,19 @@ describe('FATE-Bogen', () => {
     expect((await alice.put(`${base}/articles/${id}/sheet`, stale)).body.data.skills).toEqual({ [kampf.id]: 3 });
   });
 
+  it('speichert die Zahl der nutzbaren Stresskästchen; ohne Angabe gilt die Vorgabe', async () => {
+    const { base, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
+    const url = `${base}/articles/${id}/sheet`;
+    expect((await alice.post(url, sheet())).body.data.stressBoxes).toEqual({ physical: 4, mental: 4 });
+    const saved = await alice.put(url, { data: sheet({ stressBoxes: { physical: 6, mental: 2 } }), version: 1 });
+    expect(saved.body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
+    expect((await alice.get(url)).body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
+    // eine noch offene ältere Seite schickt das Feld nicht mit: der gespeicherte Wert bleibt
+    const old = await alice.put(url, { data: sheet(), version: 2 });
+    expect(old.body.data.stressBoxes).toEqual({ physical: 6, mental: 2 });
+  });
+
   it('validiert den Bogen', async () => {
     const { base, alice } = await setupGroup(makeApp());
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
@@ -200,6 +213,9 @@ describe('FATE-Bogen', () => {
     const put = (data: object) => alice.put(url, { data, version: 1 });
     expect((await put(sheet({ stress: { physical: [true], mental: Array(6).fill(false) } }))).status).toBe(400);
     expect((await put(sheet({ skills: { 1: 99 } }))).status).toBe(400);
+    expect((await put(sheet({ stressBoxes: { physical: 0, mental: 3 } }))).status).toBe(400);
+    expect((await put(sheet({ stressBoxes: { physical: 7, mental: 3 } }))).status).toBe(400);
+    expect((await put(sheet({ stressBoxes: { physical: 3 } }))).status).toBe(400);
     expect((await put(sheet({ skills: { 1: 1.5 } }))).status).toBe(400);
     expect((await put(sheet({ name: 'x'.repeat(301) }))).status).toBe(400);
     expect((await put(sheet({ stunts: 'x'.repeat(5001) }))).status).toBe(400);

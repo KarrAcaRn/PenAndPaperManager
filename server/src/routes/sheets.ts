@@ -6,6 +6,7 @@ import {
   MAX_SKILL_VALUE,
   MAX_STUNTS_LENGTH,
   MIN_SKILL_VALUE,
+  MIN_STRESS_BOXES,
   STRESS_BOXES,
   STRESS_LABELS,
   canHaveSheet,
@@ -30,7 +31,9 @@ const line = text(MAX_SHEET_LINE_LENGTH);
 const fields = (keys: readonly string[], schema: object) => objectOf(Object.fromEntries(keys.map((key) => [key, schema])));
 const stressTrack = { type: 'array', minItems: STRESS_BOXES, maxItems: STRESS_BOXES, items: { type: 'boolean' } };
 
-const sheetData = objectOf({
+const stressBoxes = { type: 'integer', minimum: MIN_STRESS_BOXES, maximum: STRESS_BOXES };
+
+const sheetFields = {
   name: line,
   age: line,
   pronouns: line,
@@ -38,12 +41,15 @@ const sheetData = objectOf({
   stunts: text(MAX_STUNTS_LENGTH),
   refresh: line,
   stress: fields(Object.keys(STRESS_LABELS), stressTrack),
+  stressBoxes: fields(Object.keys(STRESS_LABELS), stressBoxes),
   consequences: fields(CONSEQUENCES.map((c) => c.key), line),
   skills: {
     type: 'object',
     additionalProperties: { type: 'integer', minimum: MIN_SKILL_VALUE, maximum: MAX_SKILL_VALUE },
   },
-});
+};
+// stressBoxes ist optional: ältere, noch offene Seiten kennen das Feld nicht (dann gilt die Vorgabe)
+const sheetData = objectOf(sheetFields, Object.keys(sheetFields).filter((key) => key !== 'stressBoxes'));
 
 export function sheetRoutes(app: FastifyInstance, db: Db): void {
   const loadEditable = (ctx: MemberContext, id: number): Article => {
@@ -105,7 +111,10 @@ export function sheetRoutes(app: FastifyInstance, db: Db): void {
     loadEditable(ctx, id);
 
     const body = req.body as Sheet;
-    const data = withKnownSkills(ctx.groupId, body.data);
+    // Seiten von vor der Einführung kennen stressBoxes nicht - dann den gespeicherten Wert behalten
+    const sent: Partial<SheetData> = body.data;
+    const input = sent.stressBoxes === undefined ? { ...body.data, stressBoxes: loadSheet(id)?.data.stressBoxes } : body.data;
+    const data = withKnownSkills(ctx.groupId, input as SheetData);
     const updated = run(
       db,
       `UPDATE character_sheets SET data = ?, version = version + 1, updated_at = datetime('now')

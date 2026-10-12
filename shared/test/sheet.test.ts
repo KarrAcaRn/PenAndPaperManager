@@ -4,6 +4,7 @@ import {
   CONSEQUENCES,
   MAX_SKILLS,
   STRESS_BOXES,
+  DEFAULT_STRESS_BOXES,
   SkillListError,
   canHaveSheet,
   emptySheet,
@@ -46,6 +47,7 @@ describe('emptySheet', () => {
     expect(Object.keys(b.aspects)).toEqual(Object.keys(ASPECT_LABELS));
     expect(Object.keys(b.consequences)).toEqual(CONSEQUENCES.map((c) => c.key));
     expect(b.refresh).toBe('3');
+    expect(b.stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
   });
 });
 
@@ -78,6 +80,15 @@ describe('normalizeSheet', () => {
       stress: { physical: [true, false, false, false, false, false], mental: Array(STRESS_BOXES).fill(false) },
       skills: { 1: 2 },
     });
+  });
+});
+
+describe('normalizeSheet: Stresskästchen', () => {
+  it('übernimmt gültige Anzahlen und ersetzt ungültige durch die Vorgabe', () => {
+    expect(normalizeSheet({ stressBoxes: { physical: 6, mental: 1 } }).stressBoxes).toEqual({ physical: 6, mental: 1 });
+    expect(normalizeSheet({ stressBoxes: { physical: 0, mental: 7 } }).stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
+    expect(normalizeSheet({ stressBoxes: { physical: 2.5, mental: '3' } }).stressBoxes).toEqual({ physical: DEFAULT_STRESS_BOXES, mental: DEFAULT_STRESS_BOXES });
+    expect(normalizeSheet({ stressBoxes: 'kaputt' }).stressBoxes).toEqual(emptySheet().stressBoxes);
   });
 });
 
