@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** all: alles bearbeitbar (Bearbeiten-Modus); condition: nur Zustand (Stress, Konsequenzen); none: nur lesen */
+  export type SheetEditable = 'all' | 'condition' | 'none';
+</script>
+
 <script lang="ts">
   import {
     ASPECT_LABELS,
@@ -17,9 +22,12 @@
   let {
     data = $bindable(),
     skills,
-    readonly = false,
+    editable = 'none',
     onchange = () => {},
-  }: { data: SheetData; skills: Skill[]; readonly?: boolean; onchange?: () => void } = $props();
+  }: { data: SheetData; skills: Skill[]; editable?: SheetEditable; onchange?: () => void } = $props();
+
+  const readonly = $derived(editable !== 'all');
+  const conditionReadonly = $derived(editable === 'none');
 
   /** Frei nutzbare Kästchen; die übrigen sind wie auf dem Papierbogen ausgegraut (durch Fertigkeiten freigeschaltet) */
   const BASE_STRESS_BOXES = 4;
@@ -111,7 +119,7 @@
                     <input
                       type="checkbox"
                       bind:checked={data.stress[track][index]}
-                      disabled={readonly}
+                      disabled={conditionReadonly}
                       aria-label="{STRESS_LABELS[track]}er Stress {index + 1}"
                     />
                     <span>1</span>
@@ -128,7 +136,7 @@
                 <span class="tag">{cons.value}</span>
                 <span class="rule">
                   <span class="label">{cons.label}</span>
-                  <input class="f" bind:value={data.consequences[cons.key]} {readonly} maxlength={MAX_SHEET_LINE_LENGTH} />
+                  <input class="f" bind:value={data.consequences[cons.key]} readonly={conditionReadonly} maxlength={MAX_SHEET_LINE_LENGTH} />
                 </span>
               </label>
             {/each}
@@ -218,6 +226,8 @@
   }
   .f:focus { background: var(--focus); }
   .f:read-only:focus { background: transparent; }
+  /* Schreibgeschützte Felder bleiben per Tastatur erreichbar - der Fokus muss sichtbar sein */
+  .f:read-only:focus-visible { outline: 1px dashed var(--line); outline-offset: 1px; }
 
   /* ---------- Kopfzeile ---------- */
   .head { display: grid; grid-template-columns: 1fr 30mm 44mm auto; align-items: flex-end; gap: 6mm; margin-bottom: 2mm; }

@@ -42,7 +42,9 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 
 - Artikel in Charaktere und Notizen (z.B. NPCs) können optional einen FATE-Bogen haben (Layout nach
   `docs/charakterbogen-vorlage.html`, druckbar auf A4). Sichtbarkeit und Bearbeitungsrechte sind die des
-  Artikels; Änderungen werden automatisch gespeichert. Jeder Bogen trägt eine Version: Bearbeiten zwei
+  Artikels; Änderungen werden automatisch gespeichert. Bearbeitet wird der Bogen im Bearbeiten-Modus des
+  Artikels (dort landet man auch direkt nach dem Hinzufügen); in der Ansicht lässt sich nur der Zustand
+  (Stress, Konsequenzen) ändern, damit er im Spiel schnell angepasst werden kann. Jeder Bogen trägt eine Version: Bearbeiten zwei
   Leute gleichzeitig, bekommt der zweite einen Konflikt gemeldet, statt den ersten zu überschreiben.
 - Die Fertigkeiten auf dem Bogen legt der Spielleiter pro Gruppe fest (Bereich Spielleiter → Fertigkeiten).
   Umbenannte Fertigkeiten behalten ihre Werte, IDs gelöschter werden nie wiederverwendet.

@@ -18,11 +18,19 @@
     article = await api.article(group.id, id);
   });
 
+  /** Seite verlassen - asynchron weiterlaufender Code darf dann nicht mehr navigieren */
+  let destroyed = false;
+  $effect(() => () => {
+    destroyed = true;
+  });
+
+  // Ein neuer Bogen ist leer - er wird gleich im Bearbeiten-Modus ausgefüllt
   function addSheet(a: Article) {
+    const gid = group.id;
     task.run(async () => {
-      await api.createSheet(group.id, a.id, emptySheet(a.title));
-      a.hasSheet = true;
+      await api.createSheet(gid, a.id, emptySheet(a.title));
       notifyContentChanged(); // Symbol im Ordnerbaum
+      if (!destroyed) navigate(href.edit(gid, a.section, a.id));
     });
   }
 

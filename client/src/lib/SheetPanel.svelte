@@ -5,9 +5,16 @@
   import { createTask } from './task.svelte.ts';
   import { showNotice } from './notice.svelte.ts';
   import CharacterSheet from './CharacterSheet.svelte';
+  import { sheetSavesSettled, trackSheetSave } from './sheetSaves.ts';
 
   // Lädt und speichert den FATE-Bogen eines Artikels; mit Bearbeitungsrecht wird automatisch gespeichert.
-  let { group, article, onremoved }: { group: Group; article: Article; onremoved: () => void } = $props();
+  // Außerhalb des Bearbeiten-Modus (editing = false) lässt sich nur der Zustand (Stress, Konsequenzen) ändern.
+  let {
+    group,
+    article,
+    editing = false,
+    onremoved,
+  }: { group: Group; article: Article; editing?: boolean; onremoved: () => void } = $props();
 
   const SAVE_DELAY_MS = 400;
 
@@ -35,6 +42,8 @@
 
   const load = () =>
     loading.run(async () => {
+      // Speichert die vorige Seite (z.B. Bearbeiten) diesen Bogen gerade nach, erst danach laden
+      await sheetSavesSettled(articleId);
       const [sheet, groupSkills] = await Promise.all([api.sheet(gid, articleId), api.skills(gid)]);
       data = normalizeSheet(sheet.data);
       version = sheet.version;
@@ -49,7 +58,9 @@
     timer = undefined;
   }
 
-  async function save() {
+  const save = (): Promise<void> => trackSheetSave(articleId, saveNow());
+
+  async function saveNow() {
     cancelPendingSave();
     // Nie zwei Speichervorgänge gleichzeitig: der zweite trüge noch die alte Version und liefe in einen
     // Konflikt. Was währenddessen dazukommt, bleibt dirty und wird unten nachgereicht.
@@ -80,7 +91,8 @@
   // Versuch. Läuft gerade ein Speichern, reicht es den Rest danach selbst nach.
   $effect(() => () => {
     destroyed = true;
-    if (dirty) save();
+    if (dirty && conflict) showNotice(`FATE-Bogen „${title}“: letzte Eingaben nicht gespeichert, er wurde inzwischen von jemand anderem geändert`);
+    else if (dirty) save();
   });
 
   /** Tab schließen/neu laden: sofort speichern und, solange noch etwas offen ist, nachfragen */
@@ -112,9 +124,12 @@
 
 {#if data}
   <div class="row toolbar no-print">
-    <button onclick={() => window.print()}>Drucken / als PDF speichern</button>
+    <!-- Im Bearbeiten-Modus stünde das Artikelformular mit auf dem Ausdruck -->
+    {#if !editing}<button onclick={() => window.print()}>Drucken / als PDF speichern</button>{/if}
     {#if article.canEdit}
-      <button class="danger" disabled={saving.busy || removing} onclick={remove}>Bogen entfernen</button>
+      {#if editing}
+        <button class="danger" disabled={saving.busy || removing} onclick={remove}>Bogen entfernen</button>
+      {/if}
       <span class="muted" role="status">
         {#if conflict}
           <span class="error">Der Bogen wurde inzwischen von jemand anderem geändert. Deine letzten Eingaben sind nicht gespeichert.</span>
@@ -122,11 +137,17 @@
         {:else if saving.error}<span class="error">Nicht gespeichert: {saving.error}</span>
         {:else if saving.busy}Speichere …
         {:else if savedAt}Gespeichert {savedAt}
-        {:else}Änderungen werden automatisch gespeichert.{/if}
+        {:else if editing}Änderungen am Bogen werden automatisch gespeichert.
+        {:else}Stress und Konsequenzen werden automatisch gespeichert, alles andere unter „Bearbeiten“.{/if}
       </span>
     {/if}
   </div>
-  <CharacterSheet bind:data {skills} readonly={!article.canEdit || removing || conflict} onchange={scheduleSave} />
+  <CharacterSheet
+    bind:data
+    {skills}
+    editable={!article.canEdit || removing || conflict ? 'none' : editing ? 'all' : 'condition'}
+    onchange={scheduleSave}
+  />
 {/if}
 
 <style>

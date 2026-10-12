@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { Sheet, SheetData, Skill } from '@pnp/shared';
+import type { Article, Sheet, SheetData, Skill } from '@pnp/shared';
 import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
 import { session } from '../src/lib/session.svelte.ts';
@@ -62,7 +62,7 @@ describe('CharacterSheet', () => {
   it('meldet Änderungen und begrenzt Fertigkeitswerte', async () => {
     const data = sheetData();
     const onchange = vi.fn();
-    render(CharacterSheet, { data, skills: SKILLS, onchange });
+    render(CharacterSheet, { data, skills: SKILLS, editable: 'all', onchange });
     await user.type(screen.getByLabelText('Konzept'), 'Schmugglerin');
     await user.click(screen.getByLabelText('Körperlicher Stress 2'));
     expect(onchange).toHaveBeenCalled();
@@ -74,11 +74,34 @@ describe('CharacterSheet', () => {
     await user.type(athletik, 'x');
   });
 
+  const field = (label: string | RegExp) => screen.getByLabelText(label) as HTMLInputElement;
+
   it('ist ohne Bearbeitungsrecht schreibgeschützt', () => {
-    render(CharacterSheet, { data: sheetData(), skills: SKILLS, readonly: true });
-    expect((screen.getByLabelText('Name') as HTMLInputElement).readOnly).toBe(true);
-    expect((screen.getByLabelText('Stunts') as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((screen.getByLabelText('Geistiger Stress 1') as HTMLInputElement).disabled).toBe(true);
+    render(CharacterSheet, { data: sheetData(), skills: SKILLS, editable: 'none' });
+    expect(field('Name').readOnly).toBe(true);
+    expect(field('Stunts').readOnly).toBe(true);
+    expect(field('Geistiger Stress 1').disabled).toBe(true);
+    expect(field(/Mittlere/).readOnly).toBe(true);
+  });
+
+  it('lässt außerhalb des Bearbeiten-Modus nur den Zustand ändern', async () => {
+    const onchange = vi.fn();
+    const data = sheetData();
+    render(CharacterSheet, { data, skills: SKILLS, editable: 'condition', onchange });
+    await user.type(field('Name'), 'X');
+    await user.type(field(/Athletik/), '3');
+    expect(onchange).not.toHaveBeenCalled();
+    expect(field('Name').value).toBe('');
+    expect(field(/Athletik/).value).toBe('');
+    for (const label of ['Name', 'Alter', 'Pronomen', 'Konzept', 'Stunts', 'Erholungsrate', /Athletik/]) {
+      expect(field(label).readOnly, String(label)).toBe(true);
+    }
+    expect(field('Körperlicher Stress 1').disabled).toBe(false);
+    expect(field(/Mittlere/).readOnly).toBe(false);
+    await user.click(field('Körperlicher Stress 1'));
+    await user.type(field(/Mittlere/), 'Prellung');
+    expect(field('Körperlicher Stress 1').checked).toBe(true);
+    expect(onchange).toHaveBeenCalled();
   });
 
   it('setzt viele Fertigkeiten zweispaltig und weist auf eine fehlende Liste hin', () => {
@@ -93,15 +116,20 @@ describe('CharacterSheet', () => {
 });
 
 describe('FATE-Bogen am Artikel', () => {
+  /** Artikel mit Bogen im Bearbeiten-Modus, wo alle Felder des Bogens bearbeitbar sind */
+  function renderEditing(over: Partial<Article> = {}) {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, ...over }));
+    api.folders.mockResolvedValue([]);
+    return render(ArticleEdit, { group: gmGroup, section: 'characters', id: 1 });
+  }
   it('lädt den Bogen und speichert Änderungen automatisch', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf({ name: 'Zoë' }));
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderEditing();
 
     const athletik = await screen.findByLabelText(/Athletik/);
-    expect(screen.getByText('Änderungen werden automatisch gespeichert.')).toBeTruthy();
+    expect(screen.getByText('Änderungen am Bogen werden automatisch gespeichert.')).toBeTruthy();
     await user.type(athletik, '3');
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
     expect(api.saveSheet.mock.calls[0]).toEqual([7, 1, { version: 1, data: expect.objectContaining({ name: 'Zoë', skills: { 11: 3 } }) }]);
@@ -109,11 +137,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('holt ein fehlgeschlagenes Speichern beim Verlassen nach, auch ohne weitere Eingabe', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValueOnce(new Error('Failed to fetch'));
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    const view = renderEditing();
     await user.type(await screen.findByLabelText('Name'), 'A');
     await screen.findByText(/Nicht gespeichert: Failed to fetch/);
 
@@ -124,11 +151,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('meldet einen Fehler beim Nachspeichern nach dem Verlassen als Hinweis', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true, title: 'Zoë' }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValue(new Error('Failed to fetch'));
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    const view = renderEditing({ title: 'Zoë' });
     await user.type(await screen.findByLabelText('Name'), 'A');
     await screen.findByText(/Nicht gespeichert/);
     view.unmount();
@@ -136,11 +162,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('speichert beim Schließen des Tabs sofort und fragt nach', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderEditing();
     const name = await screen.findByLabelText('Name');
     const unload = () => {
       const event = new Event('beforeunload', { cancelable: true });
@@ -165,7 +190,7 @@ describe('FATE-Bogen am Artikel', () => {
     api.saveSheet
       .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
       .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1') as never });
+    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1/edit') as never });
     const name = await screen.findByLabelText('Name');
     await user.type(name, 'A');
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1)); // läuft noch
@@ -178,11 +203,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('speichert beim Verlassen nicht erneut, wenn nichts aussteht', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    const view = renderEditing();
     await user.type(await screen.findByLabelText('Name'), 'A');
     await screen.findByText(/^Gespeichert/);
     view.unmount();
@@ -190,11 +214,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('zeigt Speicherfehler und speichert ausstehende Änderungen beim Verlassen', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValueOnce(new ApiFailure(403, 'Du darfst diesen Bogen nicht bearbeiten'));
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    const view = renderEditing();
     await user.type(await screen.findByLabelText('Name'), 'A');
     expect(await screen.findByText(/Nicht gespeichert: Du darfst/)).toBeTruthy();
 
@@ -205,14 +228,13 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('speichert nie zweimal gleichzeitig und reicht die neue Version weiter', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf({}, 5));
     api.skills.mockResolvedValue(SKILLS);
     let finishFirst!: () => void;
     api.saveSheet
       .mockImplementationOnce((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishFirst = () => resolve({ ...sheet, version: 6 }))))
       .mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderEditing();
     const name = await screen.findByLabelText('Name');
     await user.type(name, 'A');
     await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
@@ -227,11 +249,10 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('stoppt bei einem Konflikt und lädt auf Wunsch neu', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValueOnce(sheetOf({ name: 'alt' })).mockResolvedValue(sheetOf({ name: 'vom Spieler' }, 3));
     api.skills.mockResolvedValue(SKILLS);
     api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
-    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    const view = renderEditing();
     const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
     await user.type(name, 'x');
     const reload = await screen.findByRole('button', { name: 'Neu laden' });
@@ -249,13 +270,12 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('speichert nichts mehr, während oder nachdem der Bogen entfernt wird', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     let finishDelete!: () => void;
     api.deleteSheet.mockImplementation(() => new Promise((resolve) => (finishDelete = () => resolve({}))));
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderEditing();
     const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
     await user.type(name, 'A');
     await user.click(screen.getByRole('button', { name: 'Bogen entfernen' }));
@@ -268,12 +288,11 @@ describe('FATE-Bogen am Artikel', () => {
   });
 
   it('gibt den Bogen wieder frei, wenn das Entfernen scheitert', async () => {
-    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
     api.sheet.mockResolvedValue(sheetOf());
     api.skills.mockResolvedValue(SKILLS);
     api.deleteSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(ArticleView, { group: gmGroup, id: 1 });
+    renderEditing();
     await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
     expect(await screen.findByText(/Nicht gespeichert: Interner Fehler/)).toBeTruthy();
     expect((screen.getByLabelText('Name') as HTMLInputElement).readOnly).toBe(false);
@@ -287,6 +306,8 @@ describe('FATE-Bogen am Artikel', () => {
     api.skills.mockResolvedValue(SKILLS);
     render(ArticleView, { group: playerGroup, id: 1 });
     expect(((await screen.findByLabelText('Name')) as HTMLInputElement).readOnly).toBe(true);
+    // auch den Zustand nicht
+    expect((screen.getByLabelText('Körperlicher Stress 1') as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Bogen entfernen' })).toBeNull();
     expect(screen.getByRole('button', { name: /Drucken/ })).toBeTruthy();
   });
@@ -301,18 +322,156 @@ describe('FATE-Bogen am Artikel', () => {
     expect(print).toHaveBeenCalled();
   });
 
-  it('lässt sich hinzufügen und nach Rückfrage entfernen', async () => {
+  it('lässt in der Ansicht nur den Zustand ändern und speichert ihn automatisch', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockImplementation(async (_g: number, _a: number, sheet: Sheet) => ({ ...sheet, version: sheet.version + 1 }));
+    render(ArticleView, { group: gmGroup, id: 1 });
+    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    expect(name.readOnly).toBe(true);
+    expect((screen.getByLabelText('Konzept') as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByLabelText(/Athletik/) as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.getByText(/Stress und Konsequenzen werden automatisch gespeichert/)).toBeTruthy();
+    // Entfernen gibt es nur im Bearbeiten-Modus
+    expect(screen.queryByRole('button', { name: 'Bogen entfernen' })).toBeNull();
+
+    await user.click(screen.getByLabelText('Geistiger Stress 2'));
+    await user.type(screen.getByLabelText(/Mittlere/), 'Angst');
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalled());
+    const saved = api.saveSheet.mock.calls.at(-1)![2].data as SheetData;
+    expect(saved.stress.mental[1]).toBe(true);
+    await waitFor(() => expect((api.saveSheet.mock.calls.at(-1)![2].data as SheetData).consequences.moderate).toBe('Angst'));
+  });
+
+  it('sperrt in der Ansicht auch den Zustand, sobald ein Konflikt vorliegt', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Der Bogen wurde inzwischen von jemand anderem geändert'));
+    render(ArticleView, { group: gmGroup, id: 1 });
+    const box = (await screen.findByLabelText('Körperlicher Stress 1')) as HTMLInputElement;
+    await user.click(box);
+    await screen.findByRole('button', { name: 'Neu laden' });
+    expect(box.disabled).toBe(true);
+    expect((screen.getByLabelText(/Mittlere/) as HTMLInputElement).readOnly).toBe(true);
+  });
+
+  it('meldet beim Verlassen Eingaben, die wegen eines Konflikts nicht gespeichert wurden', async () => {
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    api.saveSheet.mockRejectedValue(new ApiFailure(409, 'Konflikt'));
+    const view = renderEditing({ title: 'Zoë' });
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    await screen.findByRole('button', { name: 'Neu laden' });
+    view.unmount();
+    expect(notice.text).toMatch(/^FATE-Bogen „Zoë“: letzte Eingaben nicht gespeichert, er wurde inzwischen/);
+    expect(api.saveSheet).toHaveBeenCalledTimes(1);
+  });
+
+  it('lädt die Ansicht erst, wenn das Nachspeichern aus dem Bearbeiten-Modus fertig ist', async () => {
+    api.folders.mockResolvedValue([]);
+    api.articles.mockResolvedValue([]);
+    api.article.mockResolvedValue(fullArticle({ section: 'characters', hasSheet: true }));
+    api.sheet.mockResolvedValueOnce(sheetOf({}, 1)).mockResolvedValue(sheetOf({ name: 'A' }, 2));
+    api.skills.mockResolvedValue(SKILLS);
+    let finishSave!: () => void;
+    api.saveSheet.mockImplementation((_g: number, _a: number, sheet: Sheet) => new Promise((resolve) => (finishSave = () => resolve({ ...sheet, version: 2 }))));
+    const view = render(GroupLayout, { route: parseHash('#/g/7/characters/a/1/edit') as never });
+    await user.type(await screen.findByLabelText('Name'), 'A');
+    // sofort "Abbrechen": das Speichern läuft erst beim Abbau los
+    await view.rerender({ route: parseHash('#/g/7/characters/a/1') as never });
+    await waitFor(() => expect(api.saveSheet).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.sheet).toHaveBeenCalledTimes(1);
+    finishSave();
+    await waitFor(() => expect(api.sheet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('A'));
+  });
+
+  it('zeigt im Bearbeiten-Modus keinen Druckknopf, und die Bogen-Knöpfe speichern den Artikel nicht', async () => {
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderEditing();
+    await user.click(await screen.findByRole('button', { name: 'Bogen entfernen' }));
+    expect(screen.queryByRole('button', { name: /Drucken/ })).toBeNull();
+    expect(api.updateArticle).not.toHaveBeenCalled();
+  });
+
+  it('bietet im Bearbeiten-Modus keinen Bogen für Bereiche ohne Bögen an und warnt beim Verschieben', async () => {
+    api.folders.mockResolvedValue([]);
+    api.article.mockResolvedValue(fullArticle({ section: 'gm' }));
+    const gm = render(ArticleEdit, { group: gmGroup, section: 'gm', id: 1 });
+    await screen.findByLabelText('Titel');
+    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
+    gm.unmount();
+
+    // eigener Artikel: nur dann darf er in den Bereich Spielleiter
+    api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: GM.id }));
+    const notes = render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+    await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' });
+    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
+    expect(screen.queryByRole('button', { name: 'FATE-Bogen hinzufügen' })).toBeNull();
+    notes.unmount();
+
+    api.sheet.mockResolvedValue(sheetOf());
+    api.skills.mockResolvedValue(SKILLS);
+    renderEditing({ authorId: GM.id });
+    await screen.findByLabelText('Name');
+    await user.selectOptions(screen.getByLabelText('Bereich'), 'gm');
+    expect(screen.getByText(/Im Bereich Spielleiter gibt es keine FATE-Bögen/)).toBeTruthy();
+  });
+
+  it('bleibt in der Ansicht und zeigt den Fehler, wenn das Hinzufügen scheitert', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'notes' }));
+    api.createSheet.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+    location.hash = '#/g/7/notes/a/1';
+    render(ArticleView, { group: gmGroup, id: 1 });
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    expect(await screen.findByText('Interner Fehler')).toBeTruthy();
+    expect(location.hash).toBe('#/g/7/notes/a/1');
+  });
+
+  it('navigiert nicht mehr, wenn die Seite während des Hinzufügens verlassen wurde', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'notes' }));
+    let finish!: () => void;
+    api.createSheet.mockImplementation(() => new Promise((resolve) => (finish = () => resolve(sheetOf()))));
+    location.hash = '#/g/7/notes/a/1';
+    const view = render(ArticleView, { group: gmGroup, id: 1 });
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    view.unmount();
+    location.hash = '#/g/7/notes';
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(location.hash).toBe('#/g/7/notes');
+  });
+
+  it('wechselt nach dem Hinzufügen in der Ansicht in den Bearbeiten-Modus', async () => {
     api.article.mockResolvedValue(fullArticle({ section: 'notes', title: 'Wirt' }));
+    api.createSheet.mockResolvedValue(sheetOf());
+    render(ArticleView, { group: gmGroup, id: 1 });
+    const before = contentChanges.version;
+    await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
+    expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', refresh: '3' }));
+    expect(contentChanges.version).toBe(before + 1); // Ordnerbaum zeigt das Bogen-Symbol
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/a/1/edit'));
+  });
+
+  it('lässt sich im Bearbeiten-Modus hinzufügen, gleich ausfüllen und nach Rückfrage entfernen', async () => {
+    api.article.mockResolvedValue(fullArticle({ section: 'notes', title: 'Wirt' }));
+    api.folders.mockResolvedValue([]);
     api.createSheet.mockResolvedValue(sheetOf());
     api.sheet.mockResolvedValue(sheetOf({ name: 'Wirt' }));
     api.skills.mockResolvedValue(SKILLS);
     api.deleteSheet.mockResolvedValue({});
-    render(ArticleView, { group: gmGroup, id: 1 });
+    render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
 
     const before = contentChanges.version;
     await user.click(await screen.findByRole('button', { name: 'FATE-Bogen hinzufügen' }));
     expect(api.createSheet).toHaveBeenCalledWith(7, 1, expect.objectContaining({ name: 'Wirt', refresh: '3' }));
     expect(contentChanges.version).toBe(before + 1); // Ordnerbaum zeigt das Bogen-Symbol
+    expect(((await screen.findByLabelText('Konzept')) as HTMLTextAreaElement).readOnly).toBe(false);
     const removeButton = await screen.findByRole('button', { name: 'Bogen entfernen' });
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
@@ -348,7 +507,8 @@ describe('FATE-Bogen am Artikel', () => {
     await user.type(await screen.findByLabelText('Titel'), 'Zoë');
     await user.click(screen.getByLabelText(/Mit FATE-Bogen/));
     await user.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
+    // Der leere Bogen soll gleich ausgefüllt werden: weiter im Bearbeiten-Modus
+    await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5/edit'));
     expect(api.createSheet).toHaveBeenCalledWith(7, 5, expect.objectContaining({ name: 'Zoë' }));
   });
 
