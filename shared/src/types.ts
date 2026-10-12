@@ -90,6 +90,38 @@ export const MAX_TITLE_LENGTH = 200;
 export const MAX_BODY_LENGTH = 200_000;
 export const MAX_GROUP_NAME_LENGTH = 100;
 export const MAX_EMAIL_LENGTH = 254;
+export const MAX_RULE_QUERY_LENGTH = 200;
+/** Höchstzahl der Suchtreffer, die der Server liefert */
+export const MAX_RULE_HITS = 50;
+
+/** Eintrag im Inhaltsverzeichnis eines Regelwerks */
+export interface RulebookChapter {
+  title: string;
+  /** Seite im PDF, 1-basiert */
+  page: number;
+  /** Seitenzahl, wie sie im Buch gedruckt ist */
+  label: string;
+  /** Gliederungsebene, 0 = Kapitel */
+  level: number;
+}
+
+export interface Rulebook {
+  id: number;
+  title: string;
+  pageCount: number;
+  chapters: RulebookChapter[];
+  importedAt: string;
+}
+
+/** Treffer der Volltextsuche: eine Seite des Regelwerks mit Textausschnitt */
+export interface RuleHit {
+  rulebookId: number;
+  page: number;
+  label: string;
+  chapter: string;
+  /** Ausschnitt, die gefundenen Wörter sind als mark: true markiert */
+  snippet: { text: string; mark: boolean }[];
+}
 
 /** Bereich, in dem man nach der Gruppenwahl landet */
 export const DEFAULT_SECTION: Section = 'characters';

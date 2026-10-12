@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -91,7 +91,9 @@ describe('Migration 002: NPCs und Orte werden zu Notizen', () => {
     );
 
     const db = openDb(file);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()!.n).toBe(3);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()!.n).toBe(
+      readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).length,
+    );
     const app = buildApp(db);
     const gm = await loginAs(app, 'gm@test.de');
     const sheet = (await gm.get('/api/groups/1/articles/1/sheet')).status;

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "import-rulebook": "tsx src/import-rulebook.ts",
     "test": "vitest run",
     "check": "tsc --noEmit",
     "coverage": "vitest run --coverage"
@@ -15,6 +16,7 @@
     "@fastify/static": "^10.1.4",
     "@pnp/shared": "*",
     "fastify": "^5.12.5",
+    "pdfjs-dist": "^6.4.299",
     "tsx": "^4.23.13"
   },
   "devDependencies": {

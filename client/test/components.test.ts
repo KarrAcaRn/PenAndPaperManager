@@ -12,10 +12,12 @@ import FolderView from '../src/routes/FolderView.svelte';
 import ArticleView from '../src/routes/ArticleView.svelte';
 import ArticleEdit from '../src/routes/ArticleEdit.svelte';
 import GmManage from '../src/routes/GmManage.svelte';
+import Rules from '../src/routes/Rules.svelte';
 import FolderTree from '../src/lib/FolderTree.svelte';
 import MarkdownEditorHarness from './MarkdownEditorHarness.svelte';
 import { notifyContentChanged } from '../src/lib/content.svelte.ts';
 import { showNotice } from '../src/lib/notice.svelte.ts';
+import { MAX_RULE_HITS, type Rulebook } from '@pnp/shared';
 import {
   GM,
   PLAYER,
@@ -164,7 +166,17 @@ describe('GroupLayout', () => {
   it('versteckt den Bereich Spielleiter vor Spielern', () => {
     signIn(PLAYER, [playerGroup]);
     renderLayout('#/g/7/notes');
-    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen']);
+    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk']);
+  });
+
+  it('zeigt das Regelwerk allen Mitgliedern, ohne Ordnerbaum und SL-Unterpunkte', async () => {
+    api.rulebooks.mockResolvedValue([]);
+    signIn(PLAYER, [playerGroup]);
+    renderLayout('#/g/7/rules');
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Regelwerk' }).classList.contains('active')).toBe(true);
+    expect(await screen.findByText(/noch kein Regelwerk eingespielt/)).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Spielleiter' })).toBeNull();
+    expect(api.folders).not.toHaveBeenCalled();
   });
 
   it('sperrt Spieler auch bei direktem Aufruf aus', () => {
@@ -246,6 +258,105 @@ describe('GroupLayout', () => {
     expect(current.getAttribute('aria-current')).toBe('page');
     expect(await screen.findByRole('heading', { name: 'Wirt' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Bearbeiten' }).getAttribute('href')).toBe('#/g/7/notes/a/1/edit');
+  });
+});
+
+describe('Rules', () => {
+  const book = (over: Partial<Rulebook> = {}): Rulebook => ({
+    id: 1,
+    title: 'Fate Kompakt',
+    pageCount: 98,
+    importedAt: '2026-10-12 09:00:00',
+    chapters: [
+      { title: 'Konflikte', page: 51, label: '50', level: 0 },
+      { title: 'Angreifen', page: 52, label: '51', level: 1 },
+    ],
+    ...over,
+  });
+  const frame = () => screen.getByTitle('Fate Kompakt') as HTMLIFrameElement;
+
+  it('zeigt das Inhaltsverzeichnis und springt im PDF auf die Seite', async () => {
+    api.rulebooks.mockResolvedValue([book()]);
+    render(Rules);
+    const toc = await screen.findByRole('list', { name: 'Inhaltsverzeichnis' });
+    expect(frame().getAttribute('src')).toBe('/api/rulebooks/1/pdf?v=2026-10-12+09%3A00%3A00#page=1');
+    await userEvent.click(within(toc).getByRole('button', { name: /Angreifen/ }));
+    expect(frame().getAttribute('src')).toBe('/api/rulebooks/1/pdf?v=2026-10-12+09%3A00%3A00#page=52');
+    expect(screen.getByRole('link', { name: 'PDF in neuem Tab öffnen' }).getAttribute('href')).toBe('/api/rulebooks/1/pdf?v=2026-10-12+09%3A00%3A00#page=52');
+  });
+
+  it('sucht beim Tippen, markiert Treffer und kehrt bei leerer Suche zum Inhaltsverzeichnis zurück', async () => {
+    api.rulebooks.mockResolvedValue([book()]);
+    api.searchRules.mockResolvedValue([
+      { rulebookId: 1, page: 56, label: '55', chapter: 'Konflikte', snippet: [{ text: 'eine ', mark: false }, { text: 'Konsequenz', mark: true }, { text: ' heilen', mark: false }] },
+    ]);
+    render(Rules);
+    const input = await screen.findByRole('searchbox', { name: 'Im Regelwerk suchen' });
+    await userEvent.type(input, 'konseq');
+    const results = await screen.findByRole('list', { name: 'Suchergebnisse' });
+    expect(api.searchRules).toHaveBeenLastCalledWith('konseq', 1);
+    expect(within(results).getByText('Konsequenz').tagName).toBe('MARK');
+    expect(screen.getByText('1 Treffer')).toBeTruthy();
+    await userEvent.click(within(results).getByRole('button', { name: /S\. 55/ }));
+    expect(frame().getAttribute('src')).toBe('/api/rulebooks/1/pdf?v=2026-10-12+09%3A00%3A00#page=56');
+
+    await userEvent.clear(input);
+    expect(await screen.findByRole('list', { name: 'Inhaltsverzeichnis' })).toBeTruthy();
+  });
+
+  it('wechselt das Regelwerk, springt auf Seite 1 und sucht dort neu', async () => {
+    api.rulebooks.mockResolvedValue([book(), book({ id: 2, title: 'Turbo-Fate', chapters: [] })]);
+    api.searchRules.mockResolvedValue([]);
+    render(Rules);
+    await userEvent.click(within(await screen.findByRole('list', { name: 'Inhaltsverzeichnis' })).getByRole('button', { name: /Angreifen/ }));
+    await userEvent.type(screen.getByRole('searchbox'), 'Stress{Enter}');
+    await userEvent.selectOptions(screen.getByLabelText('Regelwerk'), 'Turbo-Fate');
+    expect(api.searchRules).toHaveBeenLastCalledWith('Stress', 2);
+    expect((screen.getByTitle('Turbo-Fate') as HTMLIFrameElement).getAttribute('src')).toMatch(/^\/api\/rulebooks\/2\/pdf\?.*#page=1$/);
+  });
+
+  it('zeigt Fehler veralteter Suchen nicht an und blendet Fehler beim Leeren aus', async () => {
+    api.rulebooks.mockResolvedValue([book()]);
+    let failOld!: (err: Error) => void;
+    api.searchRules
+      .mockReturnValueOnce(new Promise((_, reject) => (failOld = reject)))
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new ApiFailure(500, 'Interner Fehler'));
+    render(Rules);
+    const input = await screen.findByRole('searchbox');
+    await userEvent.type(input, 'a{Enter}');
+    await userEvent.type(input, 'b{Enter}');
+    expect(await screen.findByText('Keine Treffer.')).toBeTruthy();
+    failOld(new ApiFailure(500, 'Alt'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText('Alt')).toBeNull();
+    await userEvent.type(input, 'c{Enter}');
+    expect(await screen.findByText('Interner Fehler')).toBeTruthy();
+    await userEvent.clear(input);
+    await userEvent.type(input, '{Enter}');
+    expect(screen.queryByText('Interner Fehler')).toBeNull();
+  });
+
+  it('weist auf gekappte Trefferlisten hin', async () => {
+    api.rulebooks.mockResolvedValue([book()]);
+    api.searchRules.mockResolvedValue(
+      Array.from({ length: MAX_RULE_HITS }, (_, i) => ({ rulebookId: 1, page: i + 1, label: String(i), chapter: '', snippet: [] })),
+    );
+    render(Rules);
+    await userEvent.type(await screen.findByRole('searchbox'), 'a{Enter}');
+    expect(await screen.findByText(/Die 50 besten Treffer/)).toBeTruthy();
+  });
+
+  it('meldet Such- und Ladefehler', async () => {
+    api.rulebooks.mockResolvedValue([book()]);
+    api.searchRules.mockRejectedValue(new ApiFailure(400, 'Ungültige Eingabe'));
+    render(Rules);
+    await userEvent.type(await screen.findByRole('searchbox'), 'x{Enter}');
+    expect(await screen.findByText('Ungültige Eingabe')).toBeTruthy();
+
+    api.rulebooks.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+    render(Rules);
+    expect(await screen.findByText('Interner Fehler')).toBeTruthy();
   });
 });
 

@@ -15,6 +15,7 @@ npm test        # alle Tests: shared, Server (In-Memory-DB), Client (jsdom)
 npm run coverage
 npm run check   # Typprüfung Server + Client
 npm run build && npm start   # Produktion: Server liefert das gebaute Frontend auf :3000
+npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen (siehe unten)
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
@@ -47,3 +48,15 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Umbenannte Fertigkeiten behalten ihre Werte, IDs gelöschter werden nie wiederverwendet.
 - Ausgangspunkt sind Varianten (z.B. Fate Core, Turbo-Fate, Fate of Cthulhu), die beim ersten Start aus
   `server/src/presets/defaults.ts` eingespielt und danach im Admin-Bereich (`#/admin`) gepflegt werden.
+
+## Regelwerk
+
+- Reiter „Regelwerk“ in jeder Gruppe, für alle Mitglieder: links Inhaltsverzeichnis bzw. Volltextsuche, rechts das
+  PDF im Viewer des Browsers (Klick auf einen Treffer springt zur Seite).
+- Regelwerke gelten für alle Gruppen. Eingespielt werden sie auf dem Server per `npm run import-rulebook`; gleicher
+  Titel ersetzt das vorhandene. Das PDF liegt unter `data/rulebooks/<id>.pdf`, der Text seitenweise in
+  `rulebook_pages` mit FTS5-Index (`server/src/rulebooks.ts`).
+- PDFs und ihr Text kommen nie ins Repository (Urheberrecht; `data/` ist ignoriert). Fate Kompakt darf laut
+  Impressum für den privaten Gebrauch vervielfältigt werden.
+- Suche: alle eingegebenen Wörter müssen auf der Seite vorkommen, jedes als Wortanfang („konseq“ findet
+  „Konsequenzen“), Umlaute sind egal („uberwinden“). Seitenzahlen werden wie im Buch gedruckt angezeigt.

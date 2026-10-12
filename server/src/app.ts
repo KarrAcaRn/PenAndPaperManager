@@ -13,8 +13,10 @@ import { folderRoutes } from './routes/folders.ts';
 import { presetRoutes } from './routes/presets.ts';
 import { skillRoutes } from './routes/skills.ts';
 import { sheetRoutes } from './routes/sheets.ts';
+import { rulebookRoutes } from './routes/rulebooks.ts';
 import { parseAdminEmails } from './auth.ts';
 import { seedPresets } from './presets.ts';
+import { dbPath, rulebookDir } from './paths.ts';
 
 const CLIENT_DIST = join(import.meta.dirname, '../../client/dist');
 
@@ -22,6 +24,8 @@ export interface AppOptions {
   logger?: boolean;
   /** kommagetrennt; Vorgabe ist die Umgebungsvariable ADMIN_EMAILS */
   adminEmails?: string;
+  /** Ordner mit den PDF-Dateien der Regelwerke; Vorgabe ist data/rulebooks neben der Datenbank */
+  rulebookDir?: string;
 }
 
 export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
@@ -46,6 +50,7 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   presetRoutes(app, db, admins);
   skillRoutes(app, db);
   sheetRoutes(app, db);
+  rulebookRoutes(app, db, opts.rulebookDir ?? rulebookDir(dbPath()));
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {

@@ -13,6 +13,8 @@ export function openDb(path: string): Db {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
+  // Server und Kommandozeilen-Skripte (import-rulebook) teilen sich die Datei: kurz auf Sperren warten statt abzubrechen
+  db.exec('PRAGMA busy_timeout = 5000');
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
   migrate(db);
   return db;

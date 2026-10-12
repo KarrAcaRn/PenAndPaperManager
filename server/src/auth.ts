@@ -105,6 +105,13 @@ export function requireGm(db: Db, req: FastifyRequest): MemberContext {
   return ctx;
 }
 
+/** Für gruppenübergreifende Inhalte (Regelwerk): eingeloggt und Mitglied irgendeiner Gruppe */
+export function requireAnyMember(db: Db, req: FastifyRequest): User {
+  const user = requireUser(db, req);
+  if (!getRow(db, 'SELECT 1 FROM memberships WHERE user_id = ? LIMIT 1', user.id)) throw forbidden('Nur für Mitglieder einer Gruppe');
+  return user;
+}
+
 /** Der Bereich "Spielleiter" ist für Spieler komplett gesperrt. */
 export function assertSection(ctx: MemberContext, section: Section): void {
   if (!canAccessSection(ctx.role, section)) throw gmOnly();

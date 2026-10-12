@@ -9,16 +9,17 @@
   import ArticleEdit from './ArticleEdit.svelte';
   import GmManage from './GmManage.svelte';
   import GmSkills from './GmSkills.svelte';
+  import Rules from './Rules.svelte';
 
-  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'admin' }>;
+  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'rules' | 'admin' }>;
 
   let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
-  // Routen ohne eigenen Bereich (Verwalten, Fertigkeiten) sind Reiter des SL-Bereichs
-  const gmTab = $derived(!('section' in route));
-  const activeSection = $derived('section' in route ? route.section : 'gm');
-  const allowed = $derived(group !== undefined && canAccessSection(group.role, activeSection));
+  // Verwalten und Fertigkeiten sind Reiter des SL-Bereichs; das Regelwerk gehört zu keinem Bereich
+  const gmTab = $derived(route.name === 'manage' || route.name === 'skills');
+  const activeSection = $derived('section' in route ? route.section : gmTab ? 'gm' : null);
+  const allowed = $derived(group !== undefined && (activeSection === null || canAccessSection(group.role, activeSection)));
   const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
   /** Unterpunkte des SL-Bereichs erscheinen als zweite Zeile in der Navigation */
   const showGmTabs = $derived(activeSection === 'gm' && allowed);
@@ -61,6 +62,7 @@
               <a href={href.folder(group.id, section)} class:active={section === activeSection}>{SECTION_LABELS[section]}</a>
             {/if}
           {/each}
+          <a href={href.rules(group.id)} class:active={route.name === 'rules'}>Regelwerk</a>
         </nav>
         <span class="spacer"></span>
         <UserMenu />
@@ -85,6 +87,8 @@
           <GmManage {group} />
         {:else if route.name === 'skills'}
           <GmSkills {group} />
+        {:else if route.name === 'rules'}
+          <Rules />
         {:else}
           <div class="split">
             <aside class="card vine-frame no-print">
@@ -130,10 +134,4 @@
   .subnav { margin-top: 0.35rem; gap: 0.25rem; font-size: 0.9rem; width: max-content; max-width: 100%; }
   .subnav a { padding: 0.15rem 0.7rem; color: var(--muted); }
   .subnav a.active { background: none; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 0.3em; }
-  .split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-  aside { position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow-y: auto; }
-  @media (max-width: 45rem) {
-    .split { grid-template-columns: minmax(0, 1fr); }
-    aside { position: static; max-height: 40vh; }
-  }
 </style>

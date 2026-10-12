@@ -7,6 +7,8 @@ import type {
   Group,
   Member,
   Role,
+  RuleHit,
+  Rulebook,
   Section,
   SessionUser,
   Sheet,
@@ -99,4 +101,15 @@ export const api = {
   createPreset: (preset: SkillPresetInput) => request<SkillPreset>('POST', '/presets', preset),
   updatePreset: (id: number, preset: SkillPresetInput) => request<SkillPreset>('PUT', `/presets/${id}`, preset),
   deletePreset: (id: number) => request<unknown>('DELETE', `/presets/${id}`),
+
+  rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
+  searchRules: (q: string, rulebookId?: number) =>
+    request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
 };
+
+/**
+ * Für Links und den eingebetteten PDF-Viewer; page springt im PDF-Viewer des Browsers auf die Seite.
+ * v (Importzeitpunkt) sorgt dafür, dass nach erneutem Einspielen nicht das alte PDF aus dem Cache kommt.
+ */
+export const rulebookPdfUrl = (book: Pick<Rulebook, 'id' | 'importedAt'>, page?: number) =>
+  `/api/rulebooks/${book.id}/pdf?${qs({ v: book.importedAt })}${page ? `#page=${page}` : ''}`;

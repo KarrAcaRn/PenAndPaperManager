@@ -7,6 +7,7 @@ export type Route =
   | { name: 'new'; gid: number; section: Section; path: string }
   | { name: 'manage'; gid: number }
   | { name: 'skills'; gid: number }
+  | { name: 'rules'; gid: number }
   | { name: 'admin' };
 
 const isSection = (s: string | undefined): s is Section => SECTIONS.includes(s as Section);
@@ -32,7 +33,7 @@ export function parseHash(hash: string): Route {
   if (g === 'admin') return { name: 'admin' };
   const gid = Number(gidRaw);
   if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };
-  if (section === 'manage' || section === 'skills') return { name: section, gid };
+  if (section === 'manage' || section === 'skills' || section === 'rules') return { name: section, gid };
   if (!isSection(section)) return { name: 'folder', gid, section: DEFAULT_SECTION, path: '' };
   if (kind === 'a' && Number.isInteger(Number(rest[0]))) {
     return { name: 'article', gid, section, id: Number(rest[0]), edit: rest[1] === 'edit' };
@@ -53,6 +54,7 @@ export const href = {
   newArticle: (gid: number, section: Section, path = '') => `#/g/${gid}/${section}/new${path ? `/${encodePath(path)}` : ''}`,
   manage: (gid: number) => `#/g/${gid}/manage`,
   skills: (gid: number) => `#/g/${gid}/skills`,
+  rules: (gid: number) => `#/g/${gid}/rules`,
   admin: () => '#/admin',
 };
 
