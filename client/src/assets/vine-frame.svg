@@ -2,8 +2,8 @@
   <!--
     Rahmen aus knorrigen Zweigen als 9-Slice für border-image (Slice 32): Ecken 32×32, Kanten-Kachel 64×32.
     Der braune Zweig läuft in der Mitte des 32er-Bands (y=16) und beginnt/endet dort waagerecht, damit sich die
-    Kacheln nahtlos aneinanderreihen. Kurze Seitenzweige und Stummel tragen
-    grüne Blätter in zwei Größen. Die übrigen Kanten und Ecken sind
+    Kacheln nahtlos aneinanderreihen. Grüne Blätter in drei Größen liegen eng
+    an und über dem Zweig, damit der Rahmen schlank bleibt. Die übrigen Kanten und Ecken sind
     Drehungen um die Bildmitte. Farben passen sich per prefers-color-scheme dem hellen/dunklen Design an.
   -->
   <style>
@@ -29,40 +29,32 @@
     <g id="leaf-small" transform="scale(0.7)"><use href="#leaf" xlink:href="#leaf" /></g>
     <g id="leaf-big" transform="scale(1.35)"><use href="#leaf" xlink:href="#leaf" /></g>
 
-    <!-- Kante: knorriger Zweig mit Knoten, zwei beblätterten Seitenzweigen, beblätterten Stummeln und einem kahlen -->
+    <!-- Kante: knorriger Zweig mit Knoten und Stummeln; die Blätter liegen eng an und über dem Zweig -->
     <g id="edge">
       <path class="branch" d="M0 16 C4 16 6 15.6 9 15 L15 13.2 L22 14.4 L28 13.4 L34 17.4 L41 18.8 L48 17 L54 16.8 C58 16.2 60 16 64 16" />
       <path class="bark" d="M4 15.6 C9 15.4 13 14 18 13.5 M36 17.9 C39 18.3 42 18.2 45 17.9" />
       <ellipse class="knot" cx="31.5" cy="15.6" rx="1.3" ry="0.9" transform="rotate(35 31.5 15.6)" />
-      <ellipse class="knot" cx="15" cy="13.4" rx="1" ry="0.7" />
-      <path class="twig" d="M54 16.8 L56.6 20.2" />
-      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(56.6 20.2) rotate(60)" />
-      <path class="twig" d="M36.5 17.8 L37.8 13.8" />
-      <use href="#leaf" xlink:href="#leaf" transform="translate(37.8 13.8) rotate(-70)" />
-      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(17 13.6) rotate(80)" />
-      <!-- Aststummel ohne Blatt -->
-      <path class="twig" d="M9.5 15.4 L7.4 11.8" />
-      <!-- Seitenzweig nach oben -->
-      <path class="twig" d="M21 13.6 Q24.2 9.6 28.4 7.6" />
-      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(28.4 7.6) rotate(-15)" />
-      <use href="#leaf" xlink:href="#leaf" transform="translate(24.6 10.2) rotate(-120)" />
-      <!-- Seitenzweig nach unten -->
-      <path class="twig" d="M43 18.4 Q46.4 22.4 50.6 24" />
-      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(50.6 24) rotate(18)" />
-      <use href="#leaf" xlink:href="#leaf" transform="translate(46.8 21.6) rotate(115)" />
+      <!-- kahle Aststummel -->
+      <path class="twig" d="M9.5 15.4 L7.6 12.4" />
+      <path class="twig" d="M54 16.8 L55.8 19.6" />
+      <!-- Blätter: flach am Zweig entlang, damit der Rahmen schlank bleibt -->
+      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(3 15.8) rotate(25)" />
+      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(15 13.4) rotate(-22)" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(21.6 14.4) rotate(28)" />
+      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(34 17.4) rotate(16)" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(41.6 18.6) rotate(-32)" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(48.4 17) rotate(-155)" />
+      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(56 16.4) rotate(-25)" />
     </g>
 
-    <!-- Ecke: Zweig biegt um die Ecke, nach außen gabelt sich ein Seitenast mit Blattbüschel -->
+    <!-- Ecke: Zweig biegt um die Ecke, ein kurzer Seitenast mit großem Blatt zeigt nach außen -->
     <g id="corner">
       <path class="branch" d="M32 16 C24 16 16 24 16 32" />
       <path class="bark" d="M29 16.4 C24 16.8 19.5 19.5 17.6 24" />
-      <path class="twig" d="M20.7 20.7 Q15.6 15.4 9.6 9.8" />
-      <path class="twig" d="M13.6 13.4 L14.2 7.6" />
-      <path class="twig" d="M13.4 13.6 L7.6 14.2" />
-      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(9.6 9.8) rotate(-135)" />
-      <use href="#leaf" xlink:href="#leaf" transform="translate(14.2 7.6) rotate(-95)" />
-      <use href="#leaf" xlink:href="#leaf" transform="translate(7.6 14.2) rotate(-175)" />
-      <use href="#leaf-small" xlink:href="#leaf-small" transform="translate(25.5 17) rotate(-100)" />
+      <path class="twig" d="M20.7 20.7 L16.8 16.8" />
+      <use href="#leaf-big" xlink:href="#leaf-big" transform="translate(17.2 17.2) rotate(-135)" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(29.5 16.2) rotate(192)" />
+      <use href="#leaf" xlink:href="#leaf" transform="translate(16.2 29.5) rotate(-102)" />
       <ellipse class="knot" cx="18.3" cy="24.8" rx="0.9" ry="0.65" transform="rotate(-60 18.3 24.8)" />
     </g>
   </defs>
