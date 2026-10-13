@@ -20,7 +20,8 @@
   const gmTab = $derived(route.name === 'manage' || route.name === 'skills');
   const activeSection = $derived('section' in route ? route.section : gmTab ? 'gm' : null);
   const allowed = $derived(group !== undefined && (activeSection === null || canAccessSection(group.role, activeSection)));
-  const selection = (r: ContentRoute): TreeSelection => (r.name === 'article' ? { article: r.id } : { folder: r.path });
+  const selection = (r: ContentRoute): TreeSelection =>
+    r.name === 'article' ? { article: r.id } : { folder: r.path, newArticle: r.name === 'new' };
   /** Unterpunkte des SL-Bereichs erscheinen als zweite Zeile in der Navigation */
   const showGmTabs = $derived(activeSection === 'gm' && allowed);
 

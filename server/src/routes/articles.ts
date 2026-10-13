@@ -58,7 +58,7 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
         params,
       );
       const pathOf = folderPathLookup(db, ctx.groupId, section);
-      return rows.map((row) => toSummary(row, pathOf));
+      return rows.map((row) => toSummary(row, pathOf, ctx));
     },
   );
 
@@ -132,6 +132,29 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
     );
     return loadVisible(ctx, id);
   });
+
+  // Verschieben in einen anderen Ordner desselben Bereichs (Drag & Drop im Ordnerbaum). Ändert sonst nichts, auch
+  // nicht "zuletzt geändert" - wie beim Umbenennen eines Ordners ist das Ordnen keine Änderung am Inhalt.
+  app.patch(
+    '/api/groups/:gid/articles/:id',
+    { schema: { params: articleParams, body: objectOf({ path: { type: 'string' } }) } },
+    (req) => {
+      const ctx = requireMember(db, req);
+      const { id } = req.params as { id: number };
+      const existing = loadVisible(ctx, id);
+      if (!existing.canEdit) throw forbidden('Du darfst diesen Artikel nicht verschieben');
+      const path = parsePath((req.body as { path: string }).path);
+      transaction(db, () =>
+        run(
+          db,
+          'UPDATE articles SET folder_id = ? WHERE id = ?',
+          ensureFolderPath(db, ctx.groupId, existing.section, path, ctx.user.id),
+          id,
+        ),
+      );
+      return loadVisible(ctx, id);
+    },
+  );
 
   app.delete('/api/groups/:gid/articles/:id', { schema: { params: articleParams } }, (req) => {
     const ctx = requireMember(db, req);

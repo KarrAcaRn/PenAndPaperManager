@@ -75,6 +75,8 @@ export const api = {
   createArticle: (gid: number, input: ArticleInput) => request<Article>('POST', `/groups/${gid}/articles`, input),
   updateArticle: (gid: number, id: number, input: ArticleUpdate) =>
     request<Article>('PUT', `/groups/${gid}/articles/${id}`, input),
+  /** Nur den Ordner wechseln (im selben Bereich) */
+  moveArticle: (gid: number, id: number, path: string) => request<Article>('PATCH', `/groups/${gid}/articles/${id}`, { path }),
   deleteArticle: (gid: number, id: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${id}`),
 
   folders: (gid: number, section: Section) => request<Folder[]>('GET', `/groups/${gid}/folders?${qs({ section })}`),

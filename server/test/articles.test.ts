@@ -126,3 +126,38 @@ describe('Artikel von Mitgliedern, die ihren Zugriff verlieren', () => {
     expect((await alice.get(`${base}/articles/${diary}`)).body.visibility).toBe('private');
   });
 });
+
+describe('Artikel verschieben', () => {
+  it('ändert nur den Ordner, legt fehlende Ordner an und prüft das Bearbeitungsrecht', async () => {
+    const { base, gm, alice, bob } = await setupGroup(makeApp());
+    const created = (await alice.post(`${base}/articles`, article('public', { path: 'alt', bodyMd: 'Inhalt', title: 'Zoë' }))).body;
+    expect((await bob.patch(`${base}/articles/${created.id}`, { path: 'neu' })).status).toBe(403);
+    const moved = await gm.patch(`${base}/articles/${created.id}`, { path: ' neu / tief ' });
+    expect(moved.body).toMatchObject({ path: 'neu/tief', title: 'Zoë', bodyMd: 'Inhalt', section: 'characters', updatedAt: created.updatedAt });
+    expect((await gm.patch(`${base}/articles/${created.id}`, { path: '' })).body.path).toBe('');
+    // andere Felder werden ignoriert, Verschieben ändert nur den Ordner
+    expect((await gm.patch(`${base}/articles/${created.id}`, { path: 'x', title: 'nein' })).body.title).toBe('Zoë');
+    expect((await gm.patch(`${base}/articles/${created.id}`, {})).status).toBe(400);
+  });
+
+  it('verrät unsichtbare Artikel nicht und bleibt in Bereich und Gruppe', async () => {
+    const { base, gm, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('private'))).body.id;
+    expect((await gm.patch(`${base}/articles/${id}`, { path: 'x' })).status).toBe(404);
+    // Spieler erreichen Artikel im SL-Bereich auch nicht zum Verschieben
+    const secret = (await gm.post(`${base}/articles`, article('public', { section: 'gm' }))).body.id;
+    expect((await alice.patch(`${base}/articles/${secret}`, { path: 'x' })).status).toBe(404);
+    // über eine andere Gruppe kommt man nicht an den Artikel
+    const other = (await gm.post('/api/groups', { name: 'Andere' })).body.id;
+    expect((await gm.patch(`/api/groups/${other}/articles/${secret}`, { path: 'x' })).status).toBe(404);
+    expect((await gm.patch(`${base}/articles/${secret}`, { path: 'x'.repeat(500) })).status).toBe(400);
+    expect((await gm.get(`${base}/articles/${secret}`)).body).toMatchObject({ section: 'gm', path: '' });
+  });
+
+  it('meldet das Bearbeitungsrecht auch in der Liste', async () => {
+    const { base, alice, bob } = await setupGroup(makeApp());
+    await alice.post(`${base}/articles`, article('public'));
+    expect((await alice.get(`${base}/articles?section=characters`)).body[0].canEdit).toBe(true);
+    expect((await bob.get(`${base}/articles?section=characters`)).body[0].canEdit).toBe(false);
+  });
+});

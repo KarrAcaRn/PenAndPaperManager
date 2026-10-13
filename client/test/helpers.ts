@@ -39,6 +39,7 @@ export const summary = (over: Partial<ArticleSummary> = {}): ArticleSummary => (
   authorEmail: PLAYER.email,
   updatedAt: '2026-09-19 18:00:00',
   hasSheet: false,
+  canEdit: true,
   ...over,
 });
 

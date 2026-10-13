@@ -13,7 +13,8 @@
     type Section,
   } from '@pnp/shared';
   import { api } from '../lib/api.ts';
-  import { notifyContentChanged } from '../lib/content.svelte.ts';
+  import { contentChanges, notifyContentChanged } from '../lib/content.svelte.ts';
+  import { untrack } from 'svelte';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import Breadcrumb from '../lib/Breadcrumb.svelte';
@@ -34,22 +35,38 @@
   const subfolders = $derived(folders.filter((f) => parentPath(f.path) === path));
   const missing = $derived(path !== '' && !folders.some((f) => f.path === path) && articles.length === 0);
 
-  async function load() {
-    [folders, articles] = await Promise.all([api.folders(group.id, section), api.articles(group.id, section, path)]);
-    loaded = true;
-  }
-  task.run(load);
+  // Laden - auch nach Änderungen anderswo, z.B. Drag & Drop im Ordnerbaum. Pfad usw. werden nicht verfolgt: GroupLayout
+  // erzeugt die Ansicht je Route neu ({#key}). Eigener Task, damit ein Neuladen
+  // die Fehlermeldung einer Aktion nicht wegwischt; veraltete Antworten werden verworfen.
+  const loading = createTask();
+  let requestNo = 0;
+  $effect(() => {
+    void contentChanges.version;
+    const no = ++requestNo;
+    untrack(() =>
+      loading.run(async () => {
+        let f: Folder[], a: ArticleSummary[];
+        try {
+          [f, a] = await Promise.all([api.folders(group.id, section), api.articles(group.id, section, path)]);
+        } catch (err) {
+          if (no !== requestNo) return; // überholte Anfrage: ihr Fehler zählt nicht mehr
+          throw err;
+        }
+        if (no !== requestNo) return;
+        [folders, articles] = [f, a];
+        loaded = true;
+      }),
+    );
+  });
 
-  /** Aktion ausführen und danach die Ansicht aktualisieren */
+  /** Aktion ausführen; danach laden Ordnerbaum und diese Ansicht neu (auch bei Fehlern - Teiländerungen möglich) */
   const runAndReload = (action: () => Promise<unknown>) =>
     task.run(async () => {
       try {
         await action();
       } finally {
-        // Auch bei Fehlern, die Teiländerungen nicht ausschließen, z.B. Ordnerbaum aktualisieren
         notifyContentChanged();
       }
-      await load();
     });
 
   function createFolder(event: SubmitEvent) {
@@ -81,6 +98,7 @@
   <a class="button primary" href={href.newArticle(group.id, section, path)}>Neuer Artikel</a>
 </div>
 
+{#if loading.error}<p class="error">{loading.error}</p>{/if}
 {#if task.error}<p class="error">{task.error}</p>{/if}
 
 {#if newFolder !== null}
@@ -93,7 +111,7 @@
 {/if}
 
 {#if !loaded}
-  {#if task.busy}<p class="muted">Lade …</p>{/if}
+  {#if loading.busy}<p class="muted">Lade …</p>{/if}
 {:else if missing}
   <p class="muted">Diesen Ordner gibt es nicht (mehr).</p>
   <button onclick={() => navigate(href.folder(group.id, section))}>Zurück zu {SECTION_LABELS[section]}</button>

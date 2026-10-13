@@ -1,7 +1,8 @@
 <script lang="ts">
   import { VISIBILITY_LABELS, type Article, type Group } from '@pnp/shared';
   import { api } from '../lib/api.ts';
-  import { notifyContentChanged } from '../lib/content.svelte.ts';
+  import { contentChanges, notifyContentChanged } from '../lib/content.svelte.ts';
+  import { untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.ts';
   import { href, navigate } from '../lib/router.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
@@ -16,6 +17,23 @@
   // Die Komponente wird pro Artikel neu erzeugt ({#key} in GroupLayout), daher einmaliges Laden
   task.run(async () => {
     article = await api.article(group.id, id);
+  });
+
+  // Im Ordnerbaum verschoben (oder sein Ordner umbenannt): Ordner im Pfad oben nachziehen. Nur den Pfad - der
+  // FATE-Bogen darunter soll dabei nicht neu aufgebaut werden.
+  let seenChanges = untrack(() => contentChanges.version);
+  $effect(() => {
+    if (contentChanges.version === seenChanges) return;
+    seenChanges = contentChanges.version;
+    untrack(() => {
+      if (!article) return;
+      api
+        .article(group.id, id)
+        .then((fresh) => {
+          if (article) article.path = fresh.path;
+        })
+        .catch(() => {}); // z.B. gelöscht: dann bleibt die Ansicht, wie sie ist
+    });
   });
 
   function remove(a: Article) {

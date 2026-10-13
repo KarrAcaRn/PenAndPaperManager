@@ -15,7 +15,7 @@ import GmManage from '../src/routes/GmManage.svelte';
 import Rules from '../src/routes/Rules.svelte';
 import FolderTree from '../src/lib/FolderTree.svelte';
 import MarkdownEditorHarness from './MarkdownEditorHarness.svelte';
-import { notifyContentChanged } from '../src/lib/content.svelte.ts';
+import { contentChanges, notifyContentChanged } from '../src/lib/content.svelte.ts';
 import { showNotice } from '../src/lib/notice.svelte.ts';
 import { MAX_RULE_HITS, type Rulebook } from '@pnp/shared';
 import {
@@ -560,6 +560,142 @@ describe('FolderTree', () => {
     expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('x');
   });
 
+  describe('Drag & Drop', () => {
+    const node = (name: string | RegExp) => within(tree()).getByRole('link', { name }).closest('.node') as HTMLElement;
+    const dragOnto = async (from: HTMLElement, to: HTMLElement) => {
+      await fireEvent.dragStart(from);
+      await fireEvent.dragEnter(to);
+      await fireEvent.dragOver(to);
+      await fireEvent.drop(to);
+      await fireEvent.dragEnd(from);
+    };
+
+    it('verschiebt einen Ordner in einen anderen und wandert mit der Auswahl mit', async () => {
+      api.folders.mockResolvedValue([folder('Orte'), folder('Orte/Höhlen'), folder('NPCs')]);
+      api.articles.mockResolvedValue([]);
+      api.renameFolder.mockResolvedValue(folder('NPCs/Orte'));
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte/Höhlen' } });
+      await within(tree()).findByRole('link', { name: /Höhlen/ });
+      const before = contentChanges.version;
+      await dragOnto(node(/Orte/), node(/NPCs/));
+      await waitFor(() => expect(api.renameFolder).toHaveBeenCalledWith(7, 'notes', 'Orte', 'NPCs/Orte'));
+      await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/NPCs/Orte/H%C3%B6hlen'));
+      expect(contentChanges.version).toBeGreaterThan(before);
+    });
+
+    it('verschiebt einen Artikel in einen Ordner und auf die oberste Ebene', async () => {
+      api.folders.mockResolvedValue([folder('Orte')]);
+      api.articles.mockResolvedValue([summary({ id: 4, title: 'Wirt', path: '' }), summary({ id: 5, title: 'Burg', path: 'Orte' })]);
+      api.moveArticle.mockResolvedValue(fullArticle());
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+      await within(tree()).findByRole('link', { name: /Burg/ });
+      await dragOnto(node(/Wirt/), node(/Orte/));
+      await waitFor(() => expect(api.moveArticle).toHaveBeenCalledWith(7, 4, 'Orte'));
+      const root = within(tree()).getByRole('link', { name: 'Notizen' }).closest('.node') as HTMLElement;
+      await dragOnto(node(/Burg/), root);
+      await waitFor(() => expect(api.moveArticle).toHaveBeenCalledWith(7, 5, ''));
+    });
+
+    it('lässt nur Erlaubtes ziehen und ablegen', async () => {
+      api.folders.mockResolvedValue([folder('Orte'), folder('Orte/Höhlen'), folder('Fremd', false)]);
+      api.articles.mockResolvedValue([summary({ id: 4, title: 'Fremder', path: '', canEdit: false })]);
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte/Höhlen' } });
+      await within(tree()).findByRole('link', { name: /Höhlen/ });
+      expect(node(/Fremd$/).getAttribute('draggable')).toBe('false');
+      expect(node(/Fremder/).getAttribute('draggable')).toBe('false');
+      expect(node(/Orte/).getAttribute('draggable')).toBe('true');
+      // in sich selbst, in den eigenen Unterordner und dorthin, wo es schon liegt: kein Ablegen
+      await dragOnto(node(/Orte/), node(/Orte/));
+      await dragOnto(node(/Orte/), node(/Höhlen/));
+      await dragOnto(node(/Höhlen/), node(/Orte/));
+      // gesperrte Einträge: auch ein Ziehen, das doch startet (z.B. über einen Kindknoten), wird abgebrochen
+      expect(await fireEvent.dragStart(node(/Fremd$/))).toBe(false);
+      await dragOnto(node(/Fremd$/), node(/Orte/));
+      await dragOnto(node(/Fremder/), node(/Orte/));
+      expect(api.renameFolder).not.toHaveBeenCalled();
+      expect(api.moveArticle).not.toHaveBeenCalled();
+      // Links im Baum ziehen nicht ihre URL mit
+      expect(within(tree()).getByRole('link', { name: /Orte/ }).getAttribute('draggable')).toBe('false');
+    });
+
+    it('ignoriert Ablegen ohne Ziehvorgang aus dem Baum (z.B. Dateien) und während eines laufenden Verschiebens', async () => {
+      api.folders.mockResolvedValue([folder('Orte'), folder('NPCs'), folder('Sessions')]);
+      api.articles.mockResolvedValue([]);
+      let finish!: () => void;
+      api.renameFolder.mockImplementation(() => new Promise((resolve) => (finish = () => resolve(folder('NPCs/Orte')))));
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+      await within(tree()).findByRole('link', { name: /NPCs/ });
+      // fremder Ziehvorgang: abgefangen (kein Öffnen der Datei), aber keine Aktion
+      expect(await fireEvent.dragOver(node(/Orte/))).toBe(false);
+      await fireEvent.drop(node(/Orte/));
+      expect(api.renameFolder).not.toHaveBeenCalled();
+
+      await dragOnto(node(/Orte/), node(/NPCs/));
+      await dragOnto(node(/Sessions/), node(/NPCs/));
+      expect(api.renameFolder).toHaveBeenCalledTimes(1);
+      finish();
+    });
+
+    it('wandert aus dem Formular für einen neuen Artikel nicht weg', async () => {
+      api.folders.mockResolvedValue([folder('Orte'), folder('NPCs')]);
+      api.articles.mockResolvedValue([]);
+      api.renameFolder.mockResolvedValue(folder('NPCs/Orte'));
+      location.hash = '#/g/7/notes/new/Orte';
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte', newArticle: true } });
+      await within(tree()).findByRole('link', { name: /NPCs/ });
+      await dragOnto(node(/Orte/), node(/NPCs/));
+      await waitFor(() => expect(api.renameFolder).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(location.hash).toBe('#/g/7/notes/new/Orte');
+    });
+
+    it('klappt einen Ordner auf, über dem man verweilt, und behält aufgeklappte Ordner nach dem Verschieben', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        api.folders.mockResolvedValue([folder('Orte'), folder('Orte/Höhlen'), folder('NPCs'), folder('NPCs/Adel')]);
+        api.articles.mockResolvedValue([]);
+        api.renameFolder.mockResolvedValue(folder('NPCs/Orte'));
+        render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+        await within(tree()).findByRole('link', { name: /NPCs/ });
+        await fireEvent.click(screen.getByRole('button', { name: 'Orte aufklappen' }));
+        await fireEvent.dragStart(node(/Orte/));
+        await fireEvent.dragOver(node(/NPCs/));
+        await fireEvent.dragOver(node(/NPCs/));
+        expect(within(tree()).queryByRole('link', { name: /Adel/ })).toBeNull();
+        await vi.advanceTimersByTimeAsync(800);
+        expect(within(tree()).getByRole('link', { name: /Adel/ })).toBeTruthy();
+        await fireEvent.drop(node(/NPCs/));
+        await waitFor(() => expect(api.renameFolder).toHaveBeenCalled());
+        api.folders.mockResolvedValue([folder('NPCs'), folder('NPCs/Adel'), folder('NPCs/Orte'), folder('NPCs/Orte/Höhlen')]);
+        notifyContentChanged();
+        expect(await within(tree()).findByRole('link', { name: /Höhlen/ })).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('markiert das Ablageziel und zeigt Fehler', async () => {
+      api.folders.mockResolvedValue([folder('Orte'), folder('NPCs')]);
+      api.articles.mockResolvedValue([]);
+      api.renameFolder.mockRejectedValue(new ApiFailure(409, 'Es gibt bereits einen Ordner mit diesem Namen'));
+      render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+      await within(tree()).findByRole('link', { name: /NPCs/ });
+      await fireEvent.dragStart(node(/Orte/));
+      await fireEvent.dragOver(node(/NPCs/));
+      expect(node(/NPCs/).classList.contains('drop-target')).toBe(true);
+      // über einem Artikel/Zwischenraum bzw. beim Verlassen des Baums verschwindet die Markierung
+      await fireEvent.dragOver(tree());
+      expect(node(/NPCs/).classList.contains('drop-target')).toBe(false);
+      await fireEvent.dragOver(node(/NPCs/));
+      await fireEvent.dragLeave(tree());
+      expect(node(/NPCs/).classList.contains('drop-target')).toBe(false);
+      await fireEvent.dragOver(node(/NPCs/));
+      await fireEvent.drop(node(/NPCs/));
+      expect(node(/NPCs/).classList.contains('drop-target')).toBe(false);
+      expect(await screen.findByText('Es gibt bereits einen Ordner mit diesem Namen')).toBeTruthy();
+    });
+  });
+
   it('zeigt Ladefehler', async () => {
     api.folders.mockRejectedValue(new ApiFailure(403, 'Nur für Spielleiter'));
     api.articles.mockResolvedValue([]);
@@ -647,6 +783,16 @@ describe('FolderView', () => {
     expect(within(screen.getByRole('navigation', { name: 'Pfad' })).getAllByRole('link').map((a) => a.textContent)).toEqual(['Notizen', 'bar']);
     expect(screen.getByRole('link', { name: 'Neuer Artikel' }).getAttribute('href')).toBe('#/g/7/notes/new/bar');
     expect(api.articles).toHaveBeenCalledWith(7, 'notes', 'bar');
+  });
+
+  it('lädt nach Änderungen anderswo (z.B. Drag & Drop im Ordnerbaum) neu', async () => {
+    api.folders.mockResolvedValue([folder('bar')]);
+    api.articles.mockResolvedValue([]);
+    render(FolderView, props);
+    expect(await screen.findByText(/Hier ist noch nichts/)).toBeTruthy();
+    api.articles.mockResolvedValue([summary({ path: 'bar', title: 'Hereingezogen' })]);
+    notifyContentChanged();
+    expect(await screen.findByRole('link', { name: 'Hereingezogen' })).toBeTruthy();
   });
 
   it('findet den Ordner auch über einen nicht normalisierten Link', async () => {
@@ -994,5 +1140,17 @@ describe('GmManage', () => {
     render(GmManage, { group: gmGroup });
     await user.click(await screen.findByRole('button', { name: 'Zum Spielleiter machen' }));
     expect(await screen.findByText('Die Gruppe braucht mindestens einen Spielleiter')).toBeTruthy();
+  });
+});
+
+describe('ArticleView nach Verschieben', () => {
+  it('zieht den Ordner im Pfad nach, ohne neu aufzubauen', async () => {
+    api.article.mockResolvedValue(fullArticle({ path: 'alt' }));
+    render(ArticleView, { group: gmGroup, id: 1 });
+    const crumbs = () => within(screen.getByRole('navigation', { name: 'Pfad' })).getAllByRole('link').map((a) => a.textContent);
+    await waitFor(() => expect(crumbs()).toContain('alt'));
+    api.article.mockResolvedValue(fullArticle({ path: 'neu' }));
+    notifyContentChanged();
+    await waitFor(() => expect(crumbs()).toContain('neu'));
   });
 });

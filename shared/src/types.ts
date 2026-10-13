@@ -58,12 +58,13 @@ export interface ArticleSummary {
   updatedAt: string;
   /** hat einen FATE-Bogen */
   hasSheet: boolean;
+  /** Anfragender darf ihn bearbeiten (und z.B. im Ordnerbaum verschieben) */
+  canEdit: boolean;
 }
 
 export interface Article extends ArticleSummary {
   bodyMd: string;
   createdAt: string;
-  canEdit: boolean;
 }
 
 export interface ArticleInput {
