@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
@@ -396,6 +396,168 @@ describe('FolderTree', () => {
     notifyContentChanged();
     expect(await within(tree()).findByRole('link', { name: /Neu/ })).toBeTruthy();
     expect(api.folders).toHaveBeenCalledTimes(2);
+  });
+
+  it('zeigt Stift und Plus nur am gewählten Ordner, den Stift nur mit Verwaltungsrecht', async () => {
+    api.folders.mockResolvedValue([folder('a'), folder('b', false)]);
+    api.articles.mockResolvedValue([]);
+    const view = render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'a' } });
+    await within(tree()).findByRole('link', { name: /b/ });
+    expect(screen.getByRole('button', { name: 'a umbenennen' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'In a anlegen' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^b / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'In b anlegen' })).toBeNull();
+    view.unmount();
+
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'b' } });
+    await within(tree()).findByRole('link', { name: /b/ });
+    expect(screen.queryByRole('button', { name: 'b umbenennen' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'In b anlegen' })).toBeTruthy();
+  });
+
+  it('benennt den gewählten Ordner im Baum um', async () => {
+    api.folders.mockResolvedValue([folder('Orte'), folder('Orte/Städte')]);
+    api.articles.mockResolvedValue([]);
+    api.renameFolder.mockResolvedValue(folder('Orte/Dörfer'));
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte/Städte' } });
+    await user.click(await screen.findByRole('button', { name: 'Städte umbenennen' }));
+    const input = screen.getByRole('textbox', { name: 'Städte umbenennen' }) as HTMLInputElement;
+    expect(input.value).toBe('Städte');
+    await user.clear(input);
+    await user.type(input, 'Dörfer{Enter}');
+    await waitFor(() => expect(api.renameFolder).toHaveBeenCalledWith(7, 'notes', 'Orte/Städte', 'Orte/Dörfer'));
+    expect(api.renameFolder).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/Orte/D%C3%B6rfer'));
+  });
+
+  it('bricht das Umbenennen mit Escape oder unverändertem Namen ab', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    await user.click(await screen.findByRole('button', { name: 'Orte umbenennen' }));
+    await user.type(screen.getByRole('textbox'), 'x{Escape}');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Orte umbenennen' }));
+    await user.type(screen.getByRole('textbox'), '{Enter}');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(api.renameFolder).not.toHaveBeenCalled();
+  });
+
+  it('legt über das Plus-Menü einen Unterordner an', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    api.createFolder.mockResolvedValue(folder('Orte/Höhlen'));
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    await user.click(await screen.findByRole('button', { name: 'In Orte anlegen' }));
+    expect(screen.getByRole('button', { name: 'Artikel' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Ordner' }));
+    expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
+    await user.type(screen.getByRole('textbox', { name: 'Neuer Ordner in Orte' }), ' Höhlen {Enter}');
+    await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith(7, 'notes', 'Orte/Höhlen'));
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/Orte/H%C3%B6hlen'));
+  });
+
+  it('legt über das Plus-Menü einen Artikel im Ordner bzw. auf oberster Ebene an', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    const view = render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    await user.click(await screen.findByRole('button', { name: 'In Orte anlegen' }));
+    await user.click(screen.getByRole('button', { name: 'Artikel' }));
+    expect(location.hash).toBe('#/g/7/notes/new/Orte');
+    view.unmount();
+
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+    expect(screen.queryByRole('button', { name: /umbenennen/ })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'In Notizen anlegen' }));
+    await user.click(screen.getByRole('button', { name: 'Artikel' }));
+    expect(location.hash).toBe('#/g/7/notes/new');
+  });
+
+  it('schließt das Plus-Menü bei Klick daneben und mit Escape', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    const plus = await screen.findByRole('button', { name: 'In Orte anlegen' });
+    await user.click(plus);
+    expect(plus.getAttribute('aria-expanded')).toBe('true');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Ordner' })).toBeNull();
+    expect(document.activeElement).toBe(plus);
+    await user.click(plus);
+    await user.click(document.body);
+    expect(screen.queryByRole('button', { name: 'Ordner' })).toBeNull();
+    await user.click(plus);
+    window.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ordner' })).toBeNull());
+  });
+
+  it('bricht beim Verlassen des Felds ab und speichert nicht doppelt', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    let finish!: () => void;
+    api.renameFolder.mockImplementation(() => new Promise((resolve) => (finish = () => resolve(folder('Neu')))));
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    await user.click(await screen.findByRole('button', { name: 'Orte umbenennen' }));
+    await user.type(screen.getByRole('textbox'), 'X');
+    fireEvent.blur(screen.getByRole('textbox'));
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(api.renameFolder).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Orte umbenennen' }));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Neu{Enter}');
+    // während des Speicherns: weder Blur noch zweites Enter lösen etwas aus
+    fireEvent.blur(input);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    finish();
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/Neu'));
+    expect(api.renameFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('lehnt „/“ im Namen ab und legt auf oberster Ebene ohne Präfix an', async () => {
+    api.folders.mockResolvedValue([]);
+    api.articles.mockResolvedValue([]);
+    api.createFolder.mockResolvedValue(folder('Neu'));
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: '' } });
+    await user.click(await screen.findByRole('button', { name: 'In Notizen anlegen' }));
+    await user.click(screen.getByRole('button', { name: 'Ordner' }));
+    const input = screen.getByRole('textbox', { name: 'Neuer Ordner' });
+    await user.type(input, 'a/b{Enter}');
+    expect(screen.getByText(/darf kein „\/“ enthalten/)).toBeTruthy();
+    expect(api.createFolder).not.toHaveBeenCalled();
+    await user.clear(input);
+    await user.type(input, 'Neu{Enter}');
+    await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith(7, 'notes', 'Neu'));
+  });
+
+  it('schließt Menü und Eingabefeld, wenn sich die Auswahl ändert, und bringt den Fokus nach Escape zurück', async () => {
+    api.folders.mockResolvedValue([folder('a'), folder('b')]);
+    api.articles.mockResolvedValue([]);
+    const view = render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'a' } });
+    await user.click(await screen.findByRole('button', { name: 'a umbenennen' }));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'a umbenennen' }));
+
+    await user.click(screen.getByRole('button', { name: 'a umbenennen' }));
+    await view.rerender({ group: gmGroup, section: 'notes', current: { folder: 'b' } });
+    expect(screen.queryByRole('textbox')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'In b anlegen' }));
+    await view.rerender({ group: gmGroup, section: 'notes', current: { folder: 'a' } });
+    expect(screen.queryByRole('button', { name: 'Ordner' })).toBeNull();
+  });
+
+  it('zeigt Fehler beim Anlegen und behält die Eingabe', async () => {
+    api.folders.mockResolvedValue([folder('Orte')]);
+    api.articles.mockResolvedValue([]);
+    api.createFolder.mockRejectedValue(new ApiFailure(400, 'Ungültiger Name'));
+    render(FolderTree, { group: gmGroup, section: 'notes', current: { folder: 'Orte' } });
+    await user.click(await screen.findByRole('button', { name: 'In Orte anlegen' }));
+    await user.click(screen.getByRole('button', { name: 'Ordner' }));
+    await user.type(screen.getByRole('textbox'), 'x{Enter}');
+    expect(await screen.findByText('Ungültiger Name')).toBeTruthy();
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('x');
   });
 
   it('zeigt Ladefehler', async () => {
