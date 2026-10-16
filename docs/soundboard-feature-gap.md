@@ -17,6 +17,9 @@ Zeilenangaben `board.js:NNN` beziehen sich auf `pnp-soundboard/js/board.js` im S
 
 ## Architektur unseres Soundboards
 
+*Stand vor dem Nachbau (Ausgangslage der Analyse); den heutigen Stand beschreiben die Spalte „Unseres“ der
+Funktionstabelle, die Abschnitte „Umsetzung“ und der Paritätsbericht am Ende.*
+
 **Daten**
 
 - `shared/src/sounds.ts`: `BuiltinSound` (`id`, `title`, `category`, `url`, `durationSec`, `tags`, `license`,
@@ -72,17 +75,17 @@ zum Nachbau.
 
 | # | Funktion | Referenz (Datei / Funktion) | Unseres |
 | --- | --- | --- | --- |
-| 1 | **Trennung Hintergrundmusik / Effekte**: zwei getrennte Bereiche; beim Klick auf einen Sound wählt man per Dialog, ob er in die Musik- oder Effekt-Playlist kommt (Esc oder Klick auf den Hintergrund bricht ab) | `index.html` `#add-sound-modal`; `playSound`, `openAddSoundModal`, `closeAddSoundModal`, `onAddSoundModalBackdrop`, `addPendingToBackground`, `addPendingToEffects` (`board.js:330–380`); Esc in `document.onkeydown` (`board.js:1414`) | teilweise – anders als in der Referenz ist der Typ (`sfx`/`music`) eine Eigenschaft des Sounds: Vorgabe aus dem Manifest (`type`), je Kachel und beim Upload umstellbar, gespeichert; ein Klick spielt auf dem passenden Kanal, Umschalter „Alle / Hintergrundmusik / Effekte“. Kein Hinzufügen-Dialog und keine Playlisten (eigene Aufgaben) |
+| 1 | **Trennung Hintergrundmusik / Effekte**: zwei getrennte Bereiche; beim Klick auf einen Sound wählt man per Dialog, ob er in die Musik- oder Effekt-Playlist kommt (Esc oder Klick auf den Hintergrund bricht ab) | `index.html` `#add-sound-modal`; `playSound`, `openAddSoundModal`, `closeAddSoundModal`, `onAddSoundModalBackdrop`, `addPendingToBackground`, `addPendingToEffects` (`board.js:330–380`); Esc in `document.onkeydown` (`board.js:1414`) | **erledigt, bewusst anders** – der Typ (`sfx`/`music`) ist eine Eigenschaft des Sounds: Vorgabe aus dem Manifest (`type`), je Kachel und beim Upload umstellbar, gespeichert; ein Klick spielt sofort auf dem passenden Kanal, „+“ legt Musik in eine Playlist, Umschalter „Alle / Hintergrundmusik / Effekte“. Kein Hinzufügen-Dialog (Begründung im Paritätsbericht) |
 | 2 | **Musik exklusiv**: im Musikkanal läuft immer genau ein Titel; Start eines anderen stoppt den vorherigen | `playBackgroundIndex` stoppt per `stopBackgroundSource` (`board.js:959`, `989`), Token `backgroundPlayToken` verwirft veraltete Ladevorgänge | ja – Musikkanal in `createPlayer` (`play` stoppt den laufenden bzw. ladenden Titel, Generationszähler verwirft veraltete Ladevorgänge), Schleife per „Musik wiederholen“ |
 | 3 | **Effekte überlagern sich**: beliebig viele Effekte gleichzeitig und parallel zur Musik | `startEffect`, `effectNodes` je Eintrag (`board.js:1091`) | ja – Effektkanal, unabhängig vom Musikkanal |
 | 4 | **Master-Lautstärke Musik** (Start 70 %) | `setBackgroundMasterVolume` → `backgroundMasterGain` (`board.js:747`), Slider `#bg-master-volume` | ja – Regler „Musik“ (Start 70 %), dazu Gesamtlautstärke; gespeichert |
 | 5 | **Master-Lautstärke Effekte** (Start 100 %) | `setEffectsMasterVolume` → `effectsMasterGain` (`board.js:760`), Slider `#fx-master-volume` | ja – Regler „Effekte“ (Start 100 %); gespeichert |
 | 6 | **Lautstärke je Effekt** (Slider pro Eintrag, 0–100) | `setEffectItemVolume` (`board.js:773`), Slider in `renderEffectsPlaylist` (`board.js:713`) | **erledigt** – Lautstärke-Regler je Kachel (Faktor zu Gesamt- × Kanallautstärke, wirkt sofort, gespeichert; `soundSettings.svelte.ts`) |
-| 7 | **Effekte starten bei Lautstärke 0** und laufen sofort (zum Einblenden per Slider – die Referenz-Variante von „Fade-in“) | `addToEffectsPlaylist` setzt `volume: 0` und ruft `startEffect` (`board.js:402`) | nein |
+| 7 | **Effekte starten bei Lautstärke 0** und laufen sofort (zum Einblenden per Slider – die Referenz-Variante von „Fade-in“) | `addToEffectsPlaylist` setzt `volume: 0` und ruft `startEffect` (`board.js:402`) | bewusst nein – setzt die Effekt-Liste voraus (siehe „Offene Punkte“); auf Kacheln hieße es „Klick, und man hört nichts“ |
 | 8 | **Endlosschleife je Effekt** (Schalter „Endless“, Standard an, wirkt auch während der Wiedergabe) | `toggleEffectLoop` setzt `source.loop` (`board.js:1168`), Vorgabe `loop: true` in `addToEffectsPlaylist` | **erledigt** – Schalter „⟳“ je Kachel, wirkt auch während der Wiedergabe, gespeichert; Standard aus (siehe unten) |
 | 9 | **Effekt einzeln starten/stoppen** (Play/Stop-Knopf je Eintrag, Zustand sichtbar) | `toggleEffectPlayback`, `isEffectPlaying` (`board.js:1151–1166`) | ja – Kachel-Toggle (`player.toggle`) |
-| 10 | **Effekt entfernen** (stoppt ihn) | `removeEffectItem` (`board.js:1181`) | nein (keine Effekt-Liste) |
-| 11 | **Effekte neu anordnen** per Drag & Drop, nur am Griff (wegen Slider/Knöpfen) | `reorderEffectsPlaylist`, `bindEffectDrag`, `bindPlaylistDrag`, `ensureDragDisarm` (`board.js:881–957`) | nein |
+| 10 | **Effekt entfernen** (stoppt ihn) | `removeEffectItem` (`board.js:1181`) | offen – keine Effekt-Liste; Stoppen geht über die Kachel bzw. „Effekte stoppen“ (siehe „Offene Punkte“) |
+| 11 | **Effekte neu anordnen** per Drag & Drop, nur am Griff (wegen Slider/Knöpfen) | `reorderEffectsPlaylist`, `bindEffectDrag`, `bindPlaylistDrag`, `ensureDragDisarm` (`board.js:881–957`) | offen – keine Effekt-Liste; die Kachel-Reihenfolge kommt aus Kategorie/Ordner und bestimmt die Tasten (siehe „Offene Punkte“) |
 
 ### Playlist Hintergrundmusik
 
@@ -122,7 +125,7 @@ zum Nachbau.
 | 33 | **Dynamische Hotkeys je Kategorie**: Kacheln bekommen der Reihe nach `0–9`, `a–z`, `A–Z` (62 Plätze) als Badge; die Taste löst die Kachel im aktuellen Tab aus (öffnet also den Hinzufügen-Dialog) | `generateListOfHotKeys`, `createHotkeyElements`, `createBadge`, `createCategoryButttonBadges`, `hotButton` (`board.js:261–298`, `1376`) | **erledigt** – `soundHotkeys.ts`: sichtbare Kacheln in Anzeigereihenfolge, Taste als Abzeichen und `aria-keyshortcuts`; die Taste wirkt wie ein Klick (`activate`). |
 | 34 | **Pfeil hoch/runter**: Musik-Lautstärke ±1 | `volumeChange`, `keyBindings` (`board.js:1383–1407`) | **erledigt** – ±1 % auf die Musik-Lautstärke (`onKeydown`, Fall `volume`) |
 | 35 | **Alt**: Fokus ins Suchfeld; Tippen im Suchfeld wechselt in den Such-Tab | `keyBindings[ALT]`, `document.onkeydown` (`board.js:1406`, `1424–1428`) | **erledigt** – Alt fokussiert das Suchfeld; Tippen dort zeigt den Bereich „Suche“ |
-| 36 | **Esc** schließt den Hinzufügen-Dialog; solange er offen ist, sind alle anderen Hotkeys aus | `document.onkeydown` (`board.js:1414–1422`) | teilweise – Kürzel sind aus, solange ein `dialog[open]` oder `[aria-modal="true"]` offen ist; den Dialog selbst (samt Esc) baut die Aufgabe Musik/Effekte |
+| 36 | **Esc** schließt den Hinzufügen-Dialog; solange er offen ist, sind alle anderen Hotkeys aus | `document.onkeydown` (`board.js:1414–1422`) | **erledigt, soweit anwendbar** – es gibt keinen Hinzufügen-Dialog (#1); Kürzel sind aus, solange ein `dialog[open]` oder `[aria-modal="true"]` offen ist, Esc schließt solche Dialoge selbst |
 | 37 | **Hotkeys aus beim Tippen** in Eingabefeldern | `document.onkeydown` (`board.js:1424`) | **erledigt** – aus in input, textarea, select, contenteditable und mit Strg/Cmd |
 | 38 | Frei belegbare Hotkeys je Sound | nicht in der Referenz (nur positionsabhängig) | nein |
 
@@ -143,7 +146,7 @@ zum Nachbau.
 | 44 | **Auslieferung mit HTTP-Range**, Symlinks, Schutz vor Pfad-Traversal | `soundsMiddleware` in `start-server.js` | ja – `@fastify/static` mit `allowedPath` (`server/src/routes/sounds.ts`), Speicher-Anbieter liefern selbst |
 | 45 | **Eigener Titel** der Seite | `js/customizations.json` (`title`), `init` (`board.js:233`) | nein – fest „Soundboard“ (für uns unwichtig) |
 | 46 | **Persistenz** | keine: Playlisten, Lautstärken und Schleifen gehen beim Neuladen verloren | **erledigt** (mehr als die Referenz) – Gesamt-, Musik- und Effektlautstärke, „Musik wiederholen“, Typ je Sound (`pnp.soundboard.types`) sowie Lautstärke/Schleife je Sound (`pnp.soundboard.sounds`) in `localStorage`; Playlisten samt gewählter Playlist, Zufall und Wiederholen unter `pnp.soundboard.playlists` |
-| 47 | **Zweispaltiges Layout**: Playlisten links, Bibliothek rechts | `index.html` `.app-layout`, `css/custom.css` | nein – eine Spalte mit Kachelraster |
+| 47 | **Zweispaltiges Layout**: Playlisten links, Bibliothek rechts | `index.html` `.app-layout`, `css/custom.css` | **erledigt** – ab 72rem Breite Playlisten links (mitlaufend), Bibliothek rechts; schmal untereinander (`.layout` in `Soundboard.svelte`) |
 | 48 | Import/Export der Board-Konfiguration | nicht in der Referenz | nein |
 | 49 | Mehrere Quellen, Anmeldung, eigener Speicher, Löschen, „Weitere laden“ | nicht in der Referenz | ja (nur bei uns) |
 
@@ -263,3 +266,59 @@ Tests: `client/test/playlists.test.ts` (Warteschlange, Speichern, Wiedergabe mit
 `client/test/soundboardPage.test.ts` (Bereich „Soundboard: Playlisten“, Löschen einer Datei aus einer Playlist).
 
 Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen als eigener Abschnitt über den Kacheln.
+→ mit t_0fc28287 erledigt, siehe unten.
+
+## Offene Punkte
+
+| Punkt | Worum es geht | Warum offen |
+| --- | --- | --- |
+| Effekt-Liste (#7, #10, #11) | Die Referenz legt Effekte in eine eigene Liste: Start bei Lautstärke 0 zum Einblenden, Entfernen, Umsortieren am Griff. | Bei uns sind die Kacheln selbst die Effekt-Steuerung (Start/Stopp, Lautstärke und Schleife je Kachel, „Effekte stoppen“). Eine zusätzliche Effekt-Liste („Szene“: zusammengestellte Effekte mit eigenen Reglern) ist ein eigenes Feature mit Oberfläche, Speicherung und Tastenbelegung – zu groß für diese Prüfaufgabe. Bei Bedarf eigene Aufgabe. |
+| Unterordner bei Google Drive (#26) | Kategorien aus Unterordnern gehen bei S3, bei Drive nur der verbundene Ordner. | Braucht rekursives Auflisten im Server-Anbieter (`server/src/storage/googleDrive.ts`, `listFiles`). |
+| Echte Wiedergabe aus S3/Drive im Browser | Im Browser geprüft wurde mit den Standard-Sounds; Dateien aus eigenem Speicher nur in den Client-Tests (gemockte API). | In der Prüfumgebung gibt es keinen erreichbaren S3-/Drive-Speicher. |
+| `Soundboard.svelte` aufteilen | Die Seite hat ~900 Zeilen (Playlisten, Upload, Kacheln, Tastatur). | Reiner Umbau ohne Verhaltensänderung; sinnvoll vor der nächsten größeren Soundboard-Erweiterung (z.B. Komponente `PlaylistPanel`). |
+
+## Paritätsbericht (Aufgabe t_0fc28287, 2026-10-16)
+
+**Prüfung**
+
+- `npm test` (shared 32, server 366 + 4 übersprungen, client 355), `npm run check` (0 Fehler, 0 Warnungen) und
+  `npm run build` laufen fehlerfrei.
+- Im echten Browser (Chromium, Vorschau-Instanz) mit echter Audio-Wiedergabe der Standard-Sounds; die Referenz lief
+  daneben (`start-server.js`, Port 8081) zum Vergleich der Bedienung. Geprüft wurden:
+  - **Effekt über laufender Playlist**: Taste `1` (Glocke) während der Playlist – beide Audio-Elemente laufen, die
+    Playlist schaltet am Titelende normal weiter.
+  - **Musikwechsel**: Musik per Kachel ersetzt den Playlist-Titel (harter Wechsel, Playlist zeigt „Gestoppt“ und
+    setzt mit „Abspielen“ wieder ein); ein auf „Musik“ umgestellter Effekt läuft auf dem Musikkanal.
+  - **Kanal-Lautstärken**: Musik 0,8 × 0,7 = 0,56 am Audio-Element, Pfeil hoch → 0,568 (Musik 71 %, gespeichert),
+    Effekte auf 50 % → Glocke 0,4; Playlist-Titel ohne Schleife.
+  - **Pause/Fortsetzen**: angehaltener Titel bleibt an derselben Stelle, Fortsetzen spielt dort weiter.
+  - **Zufall und Wiederholen**: „alle“ beginnt nach dem letzten Titel von vorn, „aus“ hört danach auf; Zufall und
+    Wiederholen werden gespeichert.
+  - **Neuladen**: Playlisten, Auswahl, Zufall, Wiederholen, Typen und Lautstärken sind danach wieder da.
+  - **Altdaten**: `pnp.soundboard = { volume: 0.3, exclusive: true }` → Gesamt 30 %, Musik 70 %, Effekte 100 %;
+    kaputtes `pnp.soundboard.playlists` → leere Playlisten statt Absturz.
+  - **Löschen eines Sounds aus einer Playlist** (nur mit eigenem Speicher möglich): per Client-Test
+    (`soundboardPage.test.ts` „nimmt eine gelöschte Datei aus allen Playlisten …“) – der Eintrag verschwindet aus
+    allen Playlisten, lief er gerade, spielt der nächste.
+  - Layout bei 1500, 1000 und 420 px Breite ohne horizontales Scrollen.
+
+**Behoben**
+
+- **Aktualisieren eines Speichers** leerte die Dateiliste bis zur Antwort. Endete in dieser Zeit ein Playlist-Titel,
+  galten die Titel dieses Speichers als „nicht verfügbar“ und wurden übersprungen (im schlimmsten Fall hielt die
+  Playlist an). Jetzt bleibt die alte Liste stehen, bis die neue da ist (`loadFiles`). Test: „behält beim
+  Aktualisieren eines Speichers die Titel laufender Playlisten“.
+- **#47 Zweispaltiges Layout** wie in der Referenz: Playlisten links, Bibliothek rechts; schmal untereinander. Test:
+  „stellt die Playlisten wie in der Referenz neben die Bibliothek“.
+- Das Namensfeld der Playlist ragte in schmalen Spalten in den Knopf „Playlist löschen“ (`min-width: 0`).
+
+**Ergebnis**
+
+Alle 49 Punkte haben einen Status: vorhanden bzw. erledigt (#2–#6, #8, #9, #12–#23, #25–#31, #33–#35, #37, #39,
+#41–#44, #46, #47, #49), bewusst anders mit Begründung (#1 Typ am Sound statt Dialog, #24 kein Crossfade, #36 ohne
+eigenen Dialog, #40 Audio-Elemente statt dekodierter Puffer, #45 Titel über Themes), nicht in der Referenz und
+deshalb nicht nachgebaut (#32, #38, #48) oder offen mit Grund (#7, #10, #11 Effekt-Liste; Drive-Teil von #26).
+
+Der wichtigste bewusste Unterschied: In der Referenz öffnet ein Klick auf einen Sound den Dialog „Background music /
+Effects“, der Typ hängt an der Liste. Bei uns hat jeder Sound einen Typ und ein Klick spielt sofort – am Spieltisch
+ist das ein Klick statt zwei, und Tasten lösen Sounds direkt aus. Musik kommt über „+“ in eine Playlist.

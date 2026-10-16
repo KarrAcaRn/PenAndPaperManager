@@ -101,13 +101,17 @@
 
   async function loadFiles(cid: number, more = false): Promise<void> {
     const previous = files[cid];
-    files[cid] = { sounds: more ? (previous?.sounds ?? []) : [], nextCursor: null, loading: true, error: '' };
+    // beim Neuladen bleibt die alte Liste stehen, bis die neue da ist – sonst fehlen laufenden Playlisten
+    // in der Zwischenzeit die Titel dieses Speichers und würden übersprungen
+    files[cid] = { sounds: previous?.sounds ?? [], nextCursor: null, loading: true, error: '' };
     try {
       const page = await api.storageFiles(cid, more ? (previous?.nextCursor ?? undefined) : undefined);
       const list = files[cid];
-      list.sounds = [...list.sounds, ...page.files.map((f) => fileToBoard(cid, f))];
+      const loaded = page.files.map((f) => fileToBoard(cid, f));
+      list.sounds = more ? [...list.sounds, ...loaded] : loaded;
       list.nextCursor = page.nextCursor;
     } catch (err) {
+      files[cid].sounds = more ? files[cid].sounds : [];
       files[cid].error = afterStorageError(err);
     } finally {
       files[cid].loading = false;
@@ -550,274 +554,281 @@
     </div>
   </section>
 
-  <section class="playlists card" aria-labelledby="sb-playlists">
-    <div class="row">
-      <h2 id="sb-playlists">Playlisten</h2>
-      {#if playlists.list.length > 0}
-        <label class="inline">
-          Playlist
-          <select value={playlists.selectedId} onchange={(e) => playlists.select((e.currentTarget as HTMLSelectElement).value)}>
-            {#each playlists.list as p (p.id)}<option value={p.id}>{p.name} ({p.tracks.length})</option>{/each}
-          </select>
-        </label>
-      {/if}
-      <span class="spacer"></span>
-      <button onclick={() => playlists.create()} disabled={playlists.full}>Neue Playlist</button>
-    </div>
+  <!-- wie in der Referenz: Playlisten links, Bibliothek rechts (schmal untereinander) -->
+  <div class="layout">
+    <aside class="side">
+      <section class="playlists card" aria-labelledby="sb-playlists">
+        <div class="row">
+          <h2 id="sb-playlists">Playlisten</h2>
+          {#if playlists.list.length > 0}
+            <label class="inline">
+              Playlist
+              <select value={playlists.selectedId} onchange={(e) => playlists.select((e.currentTarget as HTMLSelectElement).value)}>
+                {#each playlists.list as p (p.id)}<option value={p.id}>{p.name} ({p.tracks.length})</option>{/each}
+              </select>
+            </label>
+          {/if}
+          <span class="spacer"></span>
+          <button onclick={() => playlists.create()} disabled={playlists.full}>Neue Playlist</button>
+        </div>
 
-    {#if activePlaylist && playlistPlayer.entry}
-      {@const position = seeking ?? progress?.current ?? 0}
-      <div class="row">
-        <p class="now-playing" role="status">
-          {playlistPlayer.status === 'playing' ? 'Läuft' : playlistPlayer.status === 'loading' ? 'Lädt' : playlistPlayer.status === 'paused' ? 'Angehalten' : 'Gestoppt'}:
-          <strong>{soundsByKey.get(playlistPlayer.entry.sound)?.title ?? playlistPlayer.entry.title}</strong>
-          <span class="muted">· Titel {playlistPlayer.index + 1} von {activePlaylist.tracks.length} aus „{activePlaylist.name}“</span>
-        </p>
-        {#if !selectedIsActive}
-          <button class="link" onclick={() => playlists.select(activePlaylist.id)}>Zur laufenden Playlist</button>
+        {#if activePlaylist && playlistPlayer.entry}
+          {@const position = seeking ?? progress?.current ?? 0}
+          <div class="row">
+            <p class="now-playing" role="status">
+              {playlistPlayer.status === 'playing' ? 'Läuft' : playlistPlayer.status === 'loading' ? 'Lädt' : playlistPlayer.status === 'paused' ? 'Angehalten' : 'Gestoppt'}:
+              <strong>{soundsByKey.get(playlistPlayer.entry.sound)?.title ?? playlistPlayer.entry.title}</strong>
+              <span class="muted">· Titel {playlistPlayer.index + 1} von {activePlaylist.tracks.length} aus „{activePlaylist.name}“</span>
+            </p>
+            {#if !selectedIsActive}
+              <button class="link" onclick={() => playlists.select(activePlaylist.id)}>Zur laufenden Playlist</button>
+            {/if}
+          </div>
+          {#if progress}
+            <div class="progress row">
+              <input
+                type="range"
+                min="0"
+                max={progress.duration || 0}
+                step="0.1"
+                value={position}
+                disabled={!progress.duration}
+                aria-label="Position im Titel"
+                aria-valuetext="{formatPlayTime(position)} von {formatPlayTime(progress.duration)}"
+                oninput={(e) => (seeking = Number((e.currentTarget as HTMLInputElement).value))}
+                onchange={seek}
+              />
+              <span class="muted time">{formatPlayTime(position)} / {formatPlayTime(progress.duration)}</span>
+            </div>
+          {/if}
         {/if}
+
+        {#if playlistError}<p class="error" role="alert">{playlistError}</p>{/if}
+
+        {#if !selectedPlaylist}
+          <p class="muted">Noch keine Playlist. Lege eine an oder füge Musik über „+“ auf einer Musik-Kachel hinzu.</p>
+        {:else}
+          {@const pl = selectedPlaylist}
+          {@const status = selectedIsActive ? playlistPlayer.status : 'stopped'}
+          <div class="row">
+            <label class="inline name">
+              Name
+              <input
+                value={pl.name}
+                maxlength={MAX_PLAYLIST_NAME}
+                onchange={(e) => renamePlaylist(pl, e.currentTarget as HTMLInputElement)}
+                onkeydown={(e) => e.key === 'Enter' && renamePlaylist(pl, e.currentTarget as HTMLInputElement)}
+              />
+            </label>
+            <button class="danger" onclick={() => deletePlaylist(pl)}>Playlist löschen</button>
+          </div>
+          <div class="row transport" role="group" aria-label="Steuerung der Playlist">
+            <button aria-label="Vorheriger Titel" title="Vorheriger Titel" onclick={() => playlistPlayer.previous()} disabled={!selectedIsActive}>|◀</button>
+            <button
+              aria-label={status === 'playing' || status === 'loading' ? 'Anhalten' : 'Abspielen'}
+              title={status === 'playing' || status === 'loading' ? 'Anhalten' : 'Abspielen'}
+              onclick={() => togglePlaylist(pl)}
+              disabled={pl.tracks.length === 0}>{status === 'playing' || status === 'loading' ? '❚❚' : '▶'}</button
+            >
+            <button aria-label="Nächster Titel" title="Nächster Titel" onclick={() => playlistPlayer.next()} disabled={!selectedIsActive}>▶|</button>
+            <button aria-label="Playlist stoppen" title="Playlist stoppen" onclick={() => playlistPlayer.stop()} disabled={!selectedIsActive}>■</button>
+            <button aria-pressed={playlists.shuffle} title="Zufällige Reihenfolge" onclick={() => playlists.setShuffle(!playlists.shuffle)}>Zufall</button>
+            <button
+              aria-label="Wiederholen: {REPEAT_LABELS[playlists.repeat]}"
+              title="Wiederholen: aus → alle → einen Titel"
+              aria-pressed={playlists.repeat !== 'off'}
+              onclick={() => playlists.setRepeat(NEXT_REPEAT[playlists.repeat])}>⟳ {REPEAT_LABELS[playlists.repeat]}</button
+            >
+          </div>
+          {#if pl.tracks.length === 0}
+            <p class="muted">Noch keine Titel. Füge Musik über „+“ auf einer Musik-Kachel hinzu.</p>
+          {:else}
+            <ol class="tracks" aria-label="Titel von „{pl.name}“">
+              {#each pl.tracks as track, i (track.id)}
+                {@const sound = soundsByKey.get(track.sound)}
+                {@const title = sound?.title ?? track.title}
+                {@const current = selectedIsActive && playlistPlayer.entry?.id === track.id}
+                <li
+                  class:current
+                  class:dragging={dragFrom === i}
+                  aria-current={current ? 'true' : undefined}
+                  draggable="true"
+                  ondragstart={(e) => onEntryDragStart(e, i, track.id)}
+                  ondragover={onEntryDragOver}
+                  ondrop={(e) => onEntryDrop(e, pl, i)}
+                  ondragend={() => (dragFrom = null)}
+                  ondblclick={(e) => onRowDblclick(e, pl, track.id)}
+                >
+                  <span class="handle" aria-hidden="true">⠿</span>
+                  <button class="jump link" aria-label="„{title}“ abspielen" title="Ab hier abspielen (Doppelklick auf die Zeile)" onclick={() => jumpTo(pl, track.id)}>
+                    {#if current}<span aria-hidden="true">{status === 'playing' ? '♪' : status === 'loading' ? '…' : '❚❚'}</span>{/if}
+                    {title}
+                  </button>
+                  {#if !sound}<span class="muted">(nicht verfügbar)</span>{/if}
+                  {#if current && sound && player.errors[sound.key]}<span class="error" role="alert">{player.errors[sound.key]}</span>{/if}
+                  <span class="spacer"></span>
+                  <button class="small" aria-label="„{title}“ nach oben" title="Nach oben" disabled={i === 0} onclick={() => moveEntry(pl, i, i - 1)}>↑</button>
+                  <button class="small" aria-label="„{title}“ nach unten" title="Nach unten" disabled={i === pl.tracks.length - 1} onclick={() => moveEntry(pl, i, i + 1)}>↓</button>
+                  <button class="small" aria-label="„{title}“ aus der Playlist entfernen" title="Entfernen" onclick={() => playlistPlayer.removeEntry(pl.id, track.id)}>✕</button>
+                </li>
+              {/each}
+            </ol>
+          {/if}
+        {/if}
+      </section>
+    </aside>
+
+    <div class="library">
+      <div class="tabs" role="group" aria-label="Art der Sounds">
+        <span class="group-label" aria-hidden="true">Art</span>
+        {#each viewTabs as tab (tab.value)}
+          <button class:active={view === tab.value} aria-pressed={view === tab.value} onclick={() => (view = tab.value)}>{tab.label}</button>
+        {/each}
       </div>
-      {#if progress}
-        <div class="progress row">
-          <input
-            type="range"
-            min="0"
-            max={progress.duration || 0}
-            step="0.1"
-            value={position}
-            disabled={!progress.duration}
-            aria-label="Position im Titel"
-            aria-valuetext="{formatPlayTime(position)} von {formatPlayTime(progress.duration)}"
-            oninput={(e) => (seeking = Number((e.currentTarget as HTMLInputElement).value))}
-            onchange={seek}
-          />
-          <span class="muted time">{formatPlayTime(position)} / {formatPlayTime(progress.duration)}</span>
+
+      {#if categories.length > 0}
+        <div class="cats" role="group" aria-label="Kategorie">
+          <span class="group-label" aria-hidden="true">Kategorie</span>
+          <button class="step" aria-label="Vorherige Kategorie" title="Vorherige Kategorie (Pfeil links)" onclick={() => selectCategory(stepCategory(categories, activeCategory, -1))}>‹</button>
+          <button aria-pressed={!searching && activeCategory === ''} onclick={() => selectCategory('')}>Alle</button>
+          {#each categories as c (c)}
+            <button aria-pressed={!searching && activeCategory === c} onclick={() => selectCategory(c)}>{c}</button>
+          {/each}
+          {#if searching}<button aria-pressed="true" onclick={() => searchInput?.focus()}>Suche</button>{/if}
+          <button class="step" aria-label="Nächste Kategorie" title="Nächste Kategorie (Pfeil rechts)" onclick={() => selectCategory(stepCategory(categories, activeCategory, 1))}>›</button>
         </div>
       {/if}
-    {/if}
+      <p class="muted keys">
+        Tasten: <kbd>0</kbd>–<kbd>9</kbd>, <kbd>a</kbd>–<kbd>z</kbd>, <kbd>A</kbd>–<kbd>Z</kbd> spielen die markierten Sounds ·
+        <kbd>←</kbd> <kbd>→</kbd> Kategorie · <kbd>↑</kbd> <kbd>↓</kbd> Musik-Lautstärke · <kbd>Alt</kbd> Suche
+      </p>
 
-    {#if playlistError}<p class="error" role="alert">{playlistError}</p>{/if}
-
-    {#if !selectedPlaylist}
-      <p class="muted">Noch keine Playlist. Lege eine an oder füge Musik über „+“ auf einer Musik-Kachel hinzu.</p>
-    {:else}
-      {@const pl = selectedPlaylist}
-      {@const status = selectedIsActive ? playlistPlayer.status : 'stopped'}
-      <div class="row">
-        <label class="inline name">
-          Name
-          <input
-            value={pl.name}
-            maxlength={MAX_PLAYLIST_NAME}
-            onchange={(e) => renamePlaylist(pl, e.currentTarget as HTMLInputElement)}
-            onkeydown={(e) => e.key === 'Enter' && renamePlaylist(pl, e.currentTarget as HTMLInputElement)}
-          />
-        </label>
-        <button class="danger" onclick={() => deletePlaylist(pl)}>Playlist löschen</button>
-      </div>
-      <div class="row transport" role="group" aria-label="Steuerung der Playlist">
-        <button aria-label="Vorheriger Titel" title="Vorheriger Titel" onclick={() => playlistPlayer.previous()} disabled={!selectedIsActive}>|◀</button>
-        <button
-          aria-label={status === 'playing' || status === 'loading' ? 'Anhalten' : 'Abspielen'}
-          title={status === 'playing' || status === 'loading' ? 'Anhalten' : 'Abspielen'}
-          onclick={() => togglePlaylist(pl)}
-          disabled={pl.tracks.length === 0}>{status === 'playing' || status === 'loading' ? '❚❚' : '▶'}</button
-        >
-        <button aria-label="Nächster Titel" title="Nächster Titel" onclick={() => playlistPlayer.next()} disabled={!selectedIsActive}>▶|</button>
-        <button aria-label="Playlist stoppen" title="Playlist stoppen" onclick={() => playlistPlayer.stop()} disabled={!selectedIsActive}>■</button>
-        <button aria-pressed={playlists.shuffle} title="Zufällige Reihenfolge" onclick={() => playlists.setShuffle(!playlists.shuffle)}>Zufall</button>
-        <button
-          aria-label="Wiederholen: {REPEAT_LABELS[playlists.repeat]}"
-          title="Wiederholen: aus → alle → einen Titel"
-          aria-pressed={playlists.repeat !== 'off'}
-          onclick={() => playlists.setRepeat(NEXT_REPEAT[playlists.repeat])}>⟳ {REPEAT_LABELS[playlists.repeat]}</button
-        >
-      </div>
-      {#if pl.tracks.length === 0}
-        <p class="muted">Noch keine Titel. Füge Musik über „+“ auf einer Musik-Kachel hinzu.</p>
-      {:else}
-        <ol class="tracks" aria-label="Titel von „{pl.name}“">
-          {#each pl.tracks as track, i (track.id)}
-            {@const sound = soundsByKey.get(track.sound)}
-            {@const title = sound?.title ?? track.title}
-            {@const current = selectedIsActive && playlistPlayer.entry?.id === track.id}
-            <li
-              class:current
-              class:dragging={dragFrom === i}
-              aria-current={current ? 'true' : undefined}
-              draggable="true"
-              ondragstart={(e) => onEntryDragStart(e, i, track.id)}
-              ondragover={onEntryDragOver}
-              ondrop={(e) => onEntryDrop(e, pl, i)}
-              ondragend={() => (dragFrom = null)}
-              ondblclick={(e) => onRowDblclick(e, pl, track.id)}
-            >
-              <span class="handle" aria-hidden="true">⠿</span>
-              <button class="jump link" aria-label="„{title}“ abspielen" title="Ab hier abspielen (Doppelklick auf die Zeile)" onclick={() => jumpTo(pl, track.id)}>
-                {#if current}<span aria-hidden="true">{status === 'playing' ? '♪' : status === 'loading' ? '…' : '❚❚'}</span>{/if}
-                {title}
-              </button>
-              {#if !sound}<span class="muted">(nicht verfügbar)</span>{/if}
-              {#if current && sound && player.errors[sound.key]}<span class="error" role="alert">{player.errors[sound.key]}</span>{/if}
-              <span class="spacer"></span>
-              <button class="small" aria-label="„{title}“ nach oben" title="Nach oben" disabled={i === 0} onclick={() => moveEntry(pl, i, i - 1)}>↑</button>
-              <button class="small" aria-label="„{title}“ nach unten" title="Nach unten" disabled={i === pl.tracks.length - 1} onclick={() => moveEntry(pl, i, i + 1)}>↓</button>
-              <button class="small" aria-label="„{title}“ aus der Playlist entfernen" title="Entfernen" onclick={() => playlistPlayer.removeEntry(pl.id, track.id)}>✕</button>
-            </li>
-          {/each}
-        </ol>
-      {/if}
-    {/if}
-  </section>
-
-  <div class="tabs" role="group" aria-label="Art der Sounds">
-    <span class="group-label" aria-hidden="true">Art</span>
-    {#each viewTabs as tab (tab.value)}
-      <button class:active={view === tab.value} aria-pressed={view === tab.value} onclick={() => (view = tab.value)}>{tab.label}</button>
-    {/each}
-  </div>
-
-  {#if categories.length > 0}
-    <div class="cats" role="group" aria-label="Kategorie">
-      <span class="group-label" aria-hidden="true">Kategorie</span>
-      <button class="step" aria-label="Vorherige Kategorie" title="Vorherige Kategorie (Pfeil links)" onclick={() => selectCategory(stepCategory(categories, activeCategory, -1))}>‹</button>
-      <button aria-pressed={!searching && activeCategory === ''} onclick={() => selectCategory('')}>Alle</button>
-      {#each categories as c (c)}
-        <button aria-pressed={!searching && activeCategory === c} onclick={() => selectCategory(c)}>{c}</button>
-      {/each}
-      {#if searching}<button aria-pressed="true" onclick={() => searchInput?.focus()}>Suche</button>{/if}
-      <button class="step" aria-label="Nächste Kategorie" title="Nächste Kategorie (Pfeil rechts)" onclick={() => selectCategory(stepCategory(categories, activeCategory, 1))}>›</button>
-    </div>
-  {/if}
-  <p class="muted keys">
-    Tasten: <kbd>0</kbd>–<kbd>9</kbd>, <kbd>a</kbd>–<kbd>z</kbd>, <kbd>A</kbd>–<kbd>Z</kbd> spielen die markierten Sounds ·
-    <kbd>←</kbd> <kbd>→</kbd> Kategorie · <kbd>↑</kbd> <kbd>↓</kbd> Musik-Lautstärke · <kbd>Alt</kbd> Suche
-  </p>
-
-  {#if !session.user}
-    <p class="muted">Eigene Sounds aus deinem Speicher (S3, Google Drive) kannst du nach dem <a href={href.login(href.sounds())}>Anmelden</a> nutzen.</p>
-  {:else if connectionsTask.error}
-    <p class="error">Speicher konnten nicht geladen werden: {connectionsTask.error}</p>
-  {:else if !connectionsTask.busy && connections.length === 0}
-    <p class="hint card">
-      Du hast noch keinen Speicher verbunden. Eigene Sounds lädst du in deinen eigenen Speicher (S3 oder Google Drive) –
-      verbinde ihn in den <a href={href.settings()}>Kontoeinstellungen</a>.
-    </p>
-  {:else if connections.length > 0}
-    <section
-      class="upload card"
-      class:dragging
-      aria-label="Hochladen"
-      ondragover={(e) => {
-        if (!draggingFiles(e)) return;
-        e.preventDefault();
-        dragging = true;
-      }}
-      ondragleave={() => (dragging = false)}
-      ondrop={onDrop}
-    >
-      <div class="row">
-        <label>
-          Ziel
-          <select bind:value={uploadCid}>
-            {#each connections as c (c.id)}
-              <option value={c.id} disabled={c.status === 'disconnected'}>{c.displayName} ({STORAGE_PROVIDER_LABELS[c.providerType]})</option>
-            {/each}
-          </select>
-        </label>
-        <label>
-          Typ
-          <select bind:value={uploadType}>
-            <option value="sfx">{SOUND_TYPE_LABELS.sfx}</option>
-            <option value="music">{SOUND_TYPE_LABELS.music}</option>
-          </select>
-        </label>
-        <label class="button primary file">
-          Dateien wählen …
-          <input type="file" multiple accept={ACCEPT_AUDIO} onchange={onPick} disabled={uploadCid === null} />
-        </label>
-        <span class="muted">oder hierher ziehen · mp3, wav, ogg, m4a bis {formatBytes(MAX_STORAGE_UPLOAD_BYTES)}</span>
-      </div>
-      {#if uploads.length > 0}
-        <ul class="uploads">
-          {#each uploads as u (u.id)}
-            <li>
-              <span>{u.name}</span>
-              {#if u.error}
-                <span class="error" role="alert">{u.error}</span>
-              {:else if u.done}
-                <span class="muted">hochgeladen</span>
-              {:else}
-                <progress max="1" value={u.progress} aria-label="Fortschritt {u.name}"></progress>
-                <span class="muted">{Math.round(u.progress * 100)} %</span>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-        {#if uploads.every((u) => u.done || u.error)}
-          <button class="link" onclick={() => (uploads = [])}>Liste leeren</button>
-        {/if}
-      {/if}
-    </section>
-  {/if}
-
-  {#if deleteError}<p class="error" role="alert">{deleteError}</p>{/if}
-
-  {#if showsBuiltin}
-    <section aria-labelledby="sb-builtin">
-      <h2 id="sb-builtin">Standard</h2>
-      {#if builtinTask.error}
-        <p class="error">Standard-Sounds konnten nicht geladen werden: {builtinTask.error}</p>
-      {:else if builtinTask.busy}
-        <p class="muted">Lade …</p>
-      {:else if builtinGroups.length === 0}
-        <p class="muted">{builtin.length === 0 ? 'Keine Standard-Sounds vorhanden.' : noMatch}</p>
-      {:else}
-        {#each builtinGroups as group (group.category)}
-          <h3>{group.category}</h3>
-          <ul class="tiles">
-            {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
-          </ul>
-        {/each}
-      {/if}
-    </section>
-  {/if}
-
-  {#each connectionViews as { c, list, groups } (c.id)}
-    <section aria-labelledby="sb-{c.id}">
-      <div class="row">
-        <h2 id="sb-{c.id}">{c.displayName}</h2>
-        <span class="muted">{STORAGE_PROVIDER_LABELS[c.providerType]}</span>
-        <span class="badge" class:private={c.status !== 'connected'}>{statusLabel[c.status]}</span>
-        <span class="spacer"></span>
-        <button onclick={() => loadFiles(c.id)} disabled={list?.loading}>Aktualisieren</button>
-      </div>
-      {#if c.status !== 'connected'}
-        <p class="error">
-          {c.statusMessage || 'Der Speicher meldet eine Störung.'}
-          {#if c.status === 'disconnected'}Bitte in den <a href={href.settings()}>Kontoeinstellungen</a> neu verbinden.{/if}
+      {#if !session.user}
+        <p class="muted">Eigene Sounds aus deinem Speicher (S3, Google Drive) kannst du nach dem <a href={href.login(href.sounds())}>Anmelden</a> nutzen.</p>
+      {:else if connectionsTask.error}
+        <p class="error">Speicher konnten nicht geladen werden: {connectionsTask.error}</p>
+      {:else if !connectionsTask.busy && connections.length === 0}
+        <p class="hint card">
+          Du hast noch keinen Speicher verbunden. Eigene Sounds lädst du in deinen eigenen Speicher (S3 oder Google Drive) –
+          verbinde ihn in den <a href={href.settings()}>Kontoeinstellungen</a>.
         </p>
+      {:else if connections.length > 0}
+        <section
+          class="upload card"
+          class:dragging
+          aria-label="Hochladen"
+          ondragover={(e) => {
+            if (!draggingFiles(e)) return;
+            e.preventDefault();
+            dragging = true;
+          }}
+          ondragleave={() => (dragging = false)}
+          ondrop={onDrop}
+        >
+          <div class="row">
+            <label>
+              Ziel
+              <select bind:value={uploadCid}>
+                {#each connections as c (c.id)}
+                  <option value={c.id} disabled={c.status === 'disconnected'}>{c.displayName} ({STORAGE_PROVIDER_LABELS[c.providerType]})</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              Typ
+              <select bind:value={uploadType}>
+                <option value="sfx">{SOUND_TYPE_LABELS.sfx}</option>
+                <option value="music">{SOUND_TYPE_LABELS.music}</option>
+              </select>
+            </label>
+            <label class="button primary file">
+              Dateien wählen …
+              <input type="file" multiple accept={ACCEPT_AUDIO} onchange={onPick} disabled={uploadCid === null} />
+            </label>
+            <span class="muted">oder hierher ziehen · mp3, wav, ogg, m4a bis {formatBytes(MAX_STORAGE_UPLOAD_BYTES)}</span>
+          </div>
+          {#if uploads.length > 0}
+            <ul class="uploads">
+              {#each uploads as u (u.id)}
+                <li>
+                  <span>{u.name}</span>
+                  {#if u.error}
+                    <span class="error" role="alert">{u.error}</span>
+                  {:else if u.done}
+                    <span class="muted">hochgeladen</span>
+                  {:else}
+                    <progress max="1" value={u.progress} aria-label="Fortschritt {u.name}"></progress>
+                    <span class="muted">{Math.round(u.progress * 100)} %</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+            {#if uploads.every((u) => u.done || u.error)}
+              <button class="link" onclick={() => (uploads = [])}>Liste leeren</button>
+            {/if}
+          {/if}
+        </section>
       {/if}
-      {#if list?.error}
-        <p class="error" role="alert">{list.error}</p>
+
+      {#if deleteError}<p class="error" role="alert">{deleteError}</p>{/if}
+
+      {#if showsBuiltin}
+        <section aria-labelledby="sb-builtin">
+          <h2 id="sb-builtin">Standard</h2>
+          {#if builtinTask.error}
+            <p class="error">Standard-Sounds konnten nicht geladen werden: {builtinTask.error}</p>
+          {:else if builtinTask.busy}
+            <p class="muted">Lade …</p>
+          {:else if builtinGroups.length === 0}
+            <p class="muted">{builtin.length === 0 ? 'Keine Standard-Sounds vorhanden.' : noMatch}</p>
+          {:else}
+            {#each builtinGroups as group (group.category)}
+              <h3>{group.category}</h3>
+              <ul class="tiles">
+                {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
+              </ul>
+            {/each}
+          {/if}
+        </section>
       {/if}
-      {#if !list || (list.loading && list.sounds.length === 0)}
-        <p class="muted">Lade …</p>
-      {:else if groups.length === 0 && !list.error}
-        <p class="muted">{list.sounds.length === 0 ? 'Noch keine Sounds in diesem Speicher.' : noMatch}</p>
-      {:else}
-        {#each groups as group (group.category)}
-          {#if group.category !== null}<h3>{group.category}</h3>{/if}
-          <ul class="tiles">
-            {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
-          </ul>
-        {/each}
-      {/if}
-      {#if list?.nextCursor}
-        <button onclick={() => loadFiles(c.id, true)} disabled={list.loading}>Weitere laden</button>
-      {/if}
-    </section>
-  {/each}
+
+      {#each connectionViews as { c, list, groups } (c.id)}
+        <section aria-labelledby="sb-{c.id}">
+          <div class="row">
+            <h2 id="sb-{c.id}">{c.displayName}</h2>
+            <span class="muted">{STORAGE_PROVIDER_LABELS[c.providerType]}</span>
+            <span class="badge" class:private={c.status !== 'connected'}>{statusLabel[c.status]}</span>
+            <span class="spacer"></span>
+            <button onclick={() => loadFiles(c.id)} disabled={list?.loading}>Aktualisieren</button>
+          </div>
+          {#if c.status !== 'connected'}
+            <p class="error">
+              {c.statusMessage || 'Der Speicher meldet eine Störung.'}
+              {#if c.status === 'disconnected'}Bitte in den <a href={href.settings()}>Kontoeinstellungen</a> neu verbinden.{/if}
+            </p>
+          {/if}
+          {#if list?.error}
+            <p class="error" role="alert">{list.error}</p>
+          {/if}
+          {#if !list || (list.loading && list.sounds.length === 0)}
+            <p class="muted">Lade …</p>
+          {:else if groups.length === 0 && !list.error}
+            <p class="muted">{list.sounds.length === 0 ? 'Noch keine Sounds in diesem Speicher.' : noMatch}</p>
+          {:else}
+            {#each groups as group (group.category)}
+              {#if group.category !== null}<h3>{group.category}</h3>{/if}
+              <ul class="tiles">
+                {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
+              </ul>
+            {/each}
+          {/if}
+          {#if list?.nextCursor}
+            <button onclick={() => loadFiles(c.id, true)} disabled={list.loading}>Weitere laden</button>
+          {/if}
+        </section>
+      {/each}
+    </div>
+  </div>
 </main>
 
 <style>
@@ -864,11 +875,16 @@
   .group-label { min-width: 5.5rem; font-size: 0.85em; font-weight: 600; color: var(--color-text-muted); }
   .cats { align-items: center; }
   .tabs button.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
-  .playlists { margin-bottom: 1rem; }
+  main.soundboard { max-width: 90rem; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+  @media (min-width: 72rem) {
+    .layout { grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr); }
+    .side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+  }
   .playlists h2 { margin: 0; }
   .playlists label { margin-bottom: 0; }
   .playlists label.name { flex: 1; min-width: 12rem; }
-  .playlists label.name input { flex: 1; }
+  .playlists label.name input { flex: 1; min-width: 0; }
   .playlists .row { margin-bottom: 0.5rem; }
   .transport button[aria-pressed='true'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
   .progress input { flex: 1; min-width: 8rem; margin: 0; }

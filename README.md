@@ -101,6 +101,13 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 
 ## Soundboard-Seite
 
+Kurz für Spielleiter: Jeder Sound ist entweder **Hintergrundmusik** (läuft allein, ein neuer Titel ersetzt den
+alten) oder **Effekt** (beliebig viele gleichzeitig, auch über der Musik); die Art lässt sich je Kachel umstellen.
+Musik sammelt man über „+“ in benannten **Playlisten** (links neben der Bibliothek), die von selbst weiterschalten –
+mit Pause, Weiter/Zurück, Zufall, Wiederholen und Spulen. Getrennte Regler für Gesamt-, Musik- und
+Effektlautstärke, je Kachel eigene Lautstärke und Endlosschleife. Kategorien, Suche und Tasten (`0–9`, `a–z`,
+`A–Z`, Pfeile, Alt) wie im Referenz-Soundboard. Der Browser merkt sich alles davon. Details:
+
 - `#/sounds` (Link im Benutzermenü und auf der Login-Seite), `client/src/routes/Soundboard.svelte`. Ohne Login
   gibt es nur die Standard-Sounds (`GET /api/sounds/builtin` steht deshalb in `PUBLIC_API_PATHS`), mit Login
   zusätzlich je verbundenem Speicher einen Abschnitt.
@@ -133,7 +140,10 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
   (harter Wechsel wie in der Referenz). Effekte laufen über der Playlist weiter; Musik per Kachel oder „Musik
   stoppen“ beendet sie. Nicht verfügbare Titel (z.B. Speicher noch nicht geladen) werden übersprungen; eine
   gelöschte Datei verschwindet aus allen Playlisten. Gespeichert im Browser (`pnp.soundboard.playlists`: Playlisten
-  mit Einträgen `{ id, sound: key, title }`, gewählte Playlist, Zufall, Wiederholen), nicht auf dem Server.
+  mit Einträgen `{ id, sound: key, title }`, gewählte Playlist, Zufall, Wiederholen), nicht auf dem Server. Auf
+  breiten Bildschirmen stehen die Playlisten wie in der Referenz links neben der Bibliothek, schmal darüber. Ein
+  Aktualisieren der Speicherliste lässt die alte Liste stehen, bis die neue da ist (laufende Playlisten verlieren
+  dabei keine Titel).
 - Tastatur wie im Referenz-Soundboard (`lib/soundHotkeys.ts`): die sichtbaren Kacheln bekommen der Reihe nach
   `0–9`, `a–z`, `A–Z`; Pfeil links/rechts wechselt die Kategorie, hoch/runter die Musik-Lautstärke, Alt springt in
   die Suche. Beim Tippen in Feldern und bei offenem Dialog ist das aus. Vergleich mit der Referenz:

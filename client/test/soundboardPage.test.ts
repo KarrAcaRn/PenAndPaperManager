@@ -331,6 +331,15 @@ describe('Soundboard: Playlisten', () => {
     await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 1 von 2/));
   });
 
+  it('stellt die Playlisten wie in der Referenz neben die Bibliothek (eigene Spalte)', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    const side = screen.getByRole('complementary');
+    expect(within(side).getByRole('region', { name: 'Playlisten' })).toBeTruthy();
+    expect(side.contains(tile('Glocke'))).toBe(false);
+    expect(side.nextElementSibling!.contains(tile('Glocke'))).toBe(true);
+  });
+
   it('bedient Pause, Weiter, Zurück, Zufall, Wiederholen und Reihenfolge und merkt sich alles über das Neuladen', async () => {
     const { unmount } = render(Soundboard);
     await screen.findByRole('button', { name: 'Glocke' });
@@ -650,6 +659,30 @@ describe('Soundboard mit Login', () => {
     expect(JSON.parse(localStorage.getItem('pnp.soundboard.playlists')!).playlists[0].tracks).toEqual([
       expect.objectContaining({ sound: 'builtin:fanfare' }),
     ]);
+  });
+
+  it('behält beim Aktualisieren eines Speichers die Titel laufender Playlisten', async () => {
+    localStorage.setItem('pnp.soundboard.types', JSON.stringify({ '3:sb/Regen.mp3': 'music', '3:sb/Wind.mp3': 'music' }));
+    api.storageConnections.mockResolvedValue([connection()]);
+    api.storageFiles.mockResolvedValue({ files: [file('Regen.mp3'), file('Wind.mp3')], nextCursor: null });
+    api.playbackUrl.mockImplementation(async (_cid: number, id: string) => ({ url: `https://bucket.example/${id}?sig=get`, expiresAt: '2099-01-01T00:00:00Z' }));
+    render(Soundboard);
+    await user.click(await screen.findByRole('button', { name: '„Regen“ zu einer neuen Playlist hinzufügen' }));
+    await user.click(screen.getByRole('button', { name: '„Wind“ zu „Playlist 1“ hinzufügen' }));
+    const status = () => within(screen.getByRole('region', { name: 'Playlisten' })).getByRole('status').textContent;
+    await waitFor(() => expect(status()).toMatch(/Läuft: Regen · Titel 1 von 2/));
+
+    // Liste lädt gerade neu, da endet der Titel: der nächste darf nicht als „nicht verfügbar“ übersprungen werden
+    let finishLoading!: (page: { files: ReturnType<typeof file>[]; nextCursor: null }) => void;
+    api.storageFiles.mockReturnValue(new Promise((resolve) => (finishLoading = resolve)));
+    await user.click(within(screen.getByRole('region', { name: 'Mein Bucket' })).getByRole('button', { name: 'Aktualisieren' }));
+    expect(within(screen.getByRole('region', { name: 'Mein Bucket' })).getByRole('button', { name: 'Regen' })).toBeTruthy();
+    const regen = [...(play.mock.contexts as HTMLAudioElement[])].reverse().find((a) => a.src.includes('Regen.mp3'))!;
+    regen.onended!(new Event('ended'));
+    await waitFor(() => expect(status()).toMatch(/Läuft: Wind · Titel 2 von 2/));
+    finishLoading({ files: [file('Regen.mp3'), file('Wind.mp3')], nextCursor: null });
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Mein Bucket' })).getByRole('button', { name: 'Aktualisieren' }).hasAttribute('disabled')).toBe(false));
+    expect(status()).toMatch(/Läuft: Wind/);
   });
 
   it('meldet getrennte Speicher verständlich und lädt deren Status neu', async () => {
