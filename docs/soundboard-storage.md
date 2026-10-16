@@ -170,7 +170,8 @@ Endpoints im lokalen/privaten Netz (`localhost`, `10.x`, `192.168.x`, `169.254.x
 Adressen – Hostnamen, die (auch per DNS-Rebinding) auf interne Adressen zeigen, scheitern mit „Der Endpoint zeigt auf
 eine Adresse im privaten Netz“. Wer ein eigenes MinIO im LAN nutzen will, startet den Server mit
 `S3_ALLOW_PRIVATE_ENDPOINTS=1` (schaltet beide Prüfungen ab). Endpoint-Vorgaben aus der Umgebung des Servers
-(`AWS_ENDPOINT_URL…`, `~/.aws/config`) ignoriert der Adapter.
+(`AWS_ENDPOINT_URL…`, `~/.aws/config`) ignoriert der Adapter. Achtung: NAT64-Adressen (`64:ff9b::/96`) gelten als
+privat – auf reinen IPv6-Hosts mit DNS64 scheitert dadurch jeder Endpoint, dort bleibt nur die Variable.
 
 ### Verhalten
 

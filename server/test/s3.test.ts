@@ -7,9 +7,11 @@ import { StorageProviderError } from '../src/storage/provider.ts';
 import { StorageProviderRegistry } from '../src/storage/registry.ts';
 import {
   S3StorageProvider,
+  isPrivateAddress,
   parseEndpoint,
   parseS3Input,
   publicOnlyLookup,
+  s3ClientConfig,
   s3Provider,
   translateS3Error,
   type S3ClientLike,
@@ -180,6 +182,21 @@ describe('S3: Eingaben (parseInput)', () => {
     const blocked = translateS3Error((await run('rebind.example', false)).err, 'x', config()) as StorageProviderError;
     expect(blocked).toMatchObject({ kind: 'permission' });
     expect(blocked.message).toContain('privaten Netz');
+    expect((await run('oeffentlich.example', false)).err).toBeNull();
+    const failing = publicOnlyLookup((_host, _opts, cb) => cb(Object.assign(new Error('nx'), { code: 'ENOTFOUND' }), []));
+    const failed = await new Promise<NodeJS.ErrnoException | null>((resolve) => failing('x.example', {}, (err) => resolve(err)));
+    expect(failed?.code).toBe('ENOTFOUND');
+    for (const ip of ['::ffff:7f00:1', '0:0:0:0:0:ffff:a00:1', '2001:0:4136:e378::1']) expect(isPrivateAddress(ip), ip).toBe(true);
+    for (const ip of ['8.8.8.8', '52.219.170.1', '2a05:d014::1']) expect(isPrivateAddress(ip), ip).toBe(false);
+  });
+
+  it('baut den echten Client mit DNS-Prüfung und ohne Endpoint-Vorgaben aus der Umgebung', () => {
+    const cfg = s3ClientConfig(config(), { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY });
+    expect(cfg).toMatchObject({ ignoreConfiguredEndpointUrls: true, useFipsEndpoint: false, useDualstackEndpoint: false, requestChecksumCalculation: 'WHEN_REQUIRED' });
+    expect((cfg.requestHandler as { httpsAgent?: { lookup?: unknown } }).httpsAgent?.lookup).toBeTypeOf('function');
+    const lan = s3ClientConfig(config({ endpoint: 'http://minio:9000' }), { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY }, true);
+    expect(lan).toMatchObject({ endpoint: 'http://minio:9000', forcePathStyle: true });
+    expect(lan.requestHandler).not.toHaveProperty('httpsAgent');
   });
 });
 
@@ -207,6 +224,9 @@ describe('S3: Fehler übersetzen', () => {
   it('reicht Programmierfehler unverändert weiter, damit sie im Log landen', () => {
     const bug = new TypeError('undefined is not a function');
     expect(translateS3Error(bug, 'x', cfg)).toBe(bug);
+    const nodeBug = Object.assign(new TypeError('ungültig'), { code: 'ERR_INVALID_ARG_TYPE' });
+    expect(translateS3Error(nodeBug, 'x', cfg)).toBe(nodeBug);
+    expect(translateS3Error(Object.assign(new Error('tls'), { code: 'HOSTNAME_MISMATCH' }), 'x', cfg)).toMatchObject({ kind: 'unavailable' });
   });
 
   it('nennt Bucket, Region und Endpoint verständlich', () => {

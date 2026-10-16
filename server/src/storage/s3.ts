@@ -89,6 +89,7 @@ const PRIVATE_NETWORKS = (() => {
     ['64:ff9b::', 96], // NAT64
     ['64:ff9b:1::', 48],
     ['100::', 64],
+    ['2001::', 32], // Teredo (enthält eine IPv4-Adresse)
     ['2001:db8::', 32],
     ['2002::', 16], // 6to4 (enthält eine IPv4-Adresse)
     ['fc00::', 7],
@@ -232,8 +233,9 @@ export function parseS3Input(
 
 const AUTH_CODES = new Set(['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'InvalidToken', 'ExpiredToken', 'TokenRefreshRequired', 'InvalidClientTokenId', 'AccountProblem']);
 const REGION_CODES = new Set(['PermanentRedirect', 'AuthorizationHeaderMalformed', 'IllegalLocationConstraintException', 'Redirect']);
-/** Netz-/TLS-Fehler von Node (ECONNREFUSED, ENOTFOUND, CERT_HAS_EXPIRED, ERR_TLS_…, …) */
-const NETWORK_CODE_RE = /^(E[A-Z_]+|ERR_TLS_\w+|ERR_SSL_\w+|CERT_\w+|UNABLE_TO_\w+|DEPTH_ZERO_\w+|SELF_SIGNED_\w+)$/;
+/** Netz-/TLS-Fehler von Node (ECONNREFUSED, ENOTFOUND, CERT_HAS_EXPIRED, ERR_TLS_…, …); nicht ERR_INVALID_… o.ä. */
+const NETWORK_CODE_RE =
+  /^(E[A-Z]+|ERR_TLS_\w+|ERR_SSL_\w+|CERT_\w+|UNABLE_TO_\w+|DEPTH_ZERO_\w+|SELF_SIGNED_\w+|HOSTNAME_MISMATCH|INVALID_CA|INVALID_PURPOSE|PATH_LENGTH_EXCEEDED)$/;
 
 /**
  * SDK-/Netzfehler → StorageProviderError mit eigenem Text. SDK-Meldungen werden bewusst nicht übernommen (können
