@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { BASE_THEME_ID, THEME_ID_PATTERN } from '@pnp/shared';
+import { BASE_THEME_ID, SITE_DEFAULT_STYLESHEET, THEME_ID_PATTERN, themeStylesheetUrl } from '@pnp/shared';
 import { notFound } from '../errors.ts';
 import { objectOf } from '../schemas.ts';
 import { STYLESHEET_FILE, themeAsset, type Theme, type ThemeRegistry } from '../themes.ts';
@@ -36,6 +36,11 @@ export function themeRoutes(app: FastifyInstance, registry: ThemeRegistry, defau
 
   /** defaultTheme: Theme für alle ohne eigene Wahl (DEFAULT_THEME des Seitenbetreibers, sonst „default“) */
   app.get('/api/themes', () => ({ themes: registry.listThemes().map(toInfo), defaultTheme: defaultTheme() }));
+
+  // Weiterleitung statt Inhalt: relative url(…) im Zusatz-CSS lösen so gegen den Ordner des Themes auf
+  app.get(SITE_DEFAULT_STYLESHEET, (_req, reply) =>
+    reply.header('Cache-Control', 'no-cache').redirect(themeStylesheetUrl(defaultTheme()), 302),
+  );
 
   app.get('/api/themes/:id', { schema: { params: themeParams } }, (req) => ({
     theme: toInfo(getTheme((req.params as { id: string }).id)),

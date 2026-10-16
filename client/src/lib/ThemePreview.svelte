@@ -1,26 +1,12 @@
 <script lang="ts">
-  import type { ThemeInfo, ThemeToken } from '@pnp/shared';
+  import { THEME_TOKEN_NAMES, type ThemeInfo, type ThemeToken } from '@pnp/shared';
 
   /**
    * Mini-Vorschau eines Themes für die Theme-Auswahl: Vorschaubild aus dem Manifest oder, ohne Bild, eine kleine
-   * Seite aus den Farb-Tokens (hell und, falls vorhanden, dunkel). Die Tokens werden als Custom Properties nur auf
-   * die Vorschau gesetzt, so lösen auch Werte wie var(--color-accent) im Theme selbst auf.
+   * Seite aus den Farb-Tokens (hell und, falls vorhanden, dunkel). Alle Tokens werden als Custom Properties nur auf
+   * die Vorschau gesetzt, so lösen auch Verweise wie var(--color-accent) im Theme selbst auf statt im aktiven.
    */
   let { theme }: { theme: ThemeInfo } = $props();
-
-  const PREVIEW_TOKENS: ThemeToken[] = [
-    'color-bg',
-    'color-surface',
-    'color-border',
-    'color-text',
-    'color-text-muted',
-    'color-accent',
-    'color-accent-text',
-    'border-radius',
-    'border-width',
-    'border-style',
-    'font-body',
-  ];
 
   const variants = $derived([
     { label: 'Hell', tokens: theme.tokens },
@@ -29,7 +15,7 @@
 
   /** Tokens als style-Attribut (Themes stammen vom Seitenbetreiber und sind vom Server geprüft; Svelte maskiert das Attribut) */
   const styleOf = (tokens: Partial<Record<ThemeToken, string>>) =>
-    PREVIEW_TOKENS.filter((t) => tokens[t] !== undefined).map((t) => `--${t}: ${tokens[t]}`).join('; ');
+    THEME_TOKEN_NAMES.filter((t) => tokens[t] !== undefined).map((t) => `--${t}: ${tokens[t]}`).join('; ');
 </script>
 
 <span class="preview" aria-hidden="true">

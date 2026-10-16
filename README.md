@@ -129,10 +129,13 @@ nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 - Anwenden (`client/src/lib/userSettings.svelte.ts`): Farbschema als `data-color-scheme` an `<html>` (ohne Attribut
   entscheidet `prefers-color-scheme`), Theme per `applyTheme`. Fehlt das gewählte Theme oder lädt es nicht, gilt
   das Vorgabe-Theme der Seite, danach `default` – ohne Fehlermeldung.
-- Ohne Aufblitzen: Das zuletzt angewendete Theme und Farbschema liegen in `localStorage` (`pnp-theme-id`,
-  `pnp-color-scheme`). `client/index.html` lädt das Basis-Theme immer per `<link>` und schreibt per Inline-Skript
-  vor dem ersten Zeichnen den Link des gemerkten Themes (blockiert das Rendern wie ein normaler Link). Fehlt dieses
-  Theme inzwischen, entfernt sich der Link und das Basis-Theme bleibt, bis die App die Vorgabe anwendet.
+- Ohne Aufblitzen: Farbschema und ausdrücklich gewähltes Theme liegen in `localStorage` (`pnp-color-scheme`,
+  `pnp-theme-id`; ohne eigene Wahl kein Eintrag). `client/index.html` lädt das Basis-Theme immer per `<link>` und
+  schreibt per Inline-Skript vor dem ersten Zeichnen den Link des gemerkten Themes bzw. ohne Wahl
+  `/themes/site-default.css` (Weiterleitung auf das aktuelle Vorgabe-Theme der Seite). Beide blockieren das Rendern
+  wie normale Links. Fehlt das gemerkte Theme inzwischen, entfernt sich der Link, das Basis-Theme bleibt, bis die
+  App die Vorgabe anwendet. Grenze: Hat man Theme oder Farbschema auf einem anderen Gerät geändert, zeigt dieses
+  Gerät beim nächsten Aufruf kurz noch seinen gemerkten Stand, bis `/api/me/settings` geantwortet hat.
 - Gäste (ohne Login): Auf der Anmeldeseite wählt eine Auswahlliste „Design“ das Theme, gespeichert nur im Browser
   (`pnp-guest-theme`). Beim Logout (bzw. ohne gültige Session) gilt wieder diese Gast-Wahl bzw. die Vorgabe.
 
@@ -150,7 +153,8 @@ nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
   Themes werden daraus ergänzt. `darkTokens` (Abweichungen bei dunklem Farbschema) werden nicht ergänzt, sonst
   mischten sich fremde Farben ein.
 - Vorgabe-Theme für alle ohne eigene Wahl: `DEFAULT_THEME` (Theme-ID); fehlt es, gilt `default` (Warnung im Log
-  beim Start). `GET /api/themes` liefert `{ themes, defaultTheme }`, bei jedem Aufruf neu bestimmt.
+  beim Start). `GET /api/themes` liefert `{ themes, defaultTheme }`, bei jedem Aufruf neu bestimmt;
+  `GET /themes/site-default.css` leitet (302, `no-cache`) auf dessen Stylesheet weiter.
 - Der Server erzeugt je Theme `/themes/<id>/theme.css` (Tokens auf `:root`, danach `darkTokens` – bei dunklem
   System-Farbschema, außer `data-color-scheme="light"`, und immer bei `data-color-scheme="dark"` –, danach das
   Zusatz-CSS) und liefert Theme-Dateien unter `/themes/<id>/…` aus (nur Grafiken, Schriften, CSS).

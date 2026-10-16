@@ -116,6 +116,12 @@ export interface ThemeInfo {
 /** URL des erzeugten Stylesheets eines Themes */
 export const themeStylesheetUrl = (id: string) => `/themes/${encodeURIComponent(id)}/theme.css`;
 
+/**
+ * Leitet auf das Stylesheet des aktuellen Vorgabe-Themes der Seite weiter (DEFAULT_THEME, sonst „default“).
+ * index.html lädt es vor dem ersten Zeichnen, wenn kein Theme ausdrücklich gewählt ist.
+ */
+export const SITE_DEFAULT_STYLESHEET = '/themes/site-default.css';
+
 const fileSchema = (description: string, ext: string) => ({
   type: 'string',
   maxLength: THEME_LIMITS.file,

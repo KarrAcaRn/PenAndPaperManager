@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { tick } from 'svelte';
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_USER_SETTINGS, type ThemeInfo, type UserSettings } from '@pnp/shared';
 import { ApiFailure } from '../src/lib/api.ts';
 import { loadSession, logout, session } from '../src/lib/session.svelte.ts';
 import { THEME_BASE_LINK_ID, THEME_LINK_ID } from '../src/lib/theme.ts';
-import { forgetSiteDefaultTheme, resetUserSettings, userSettings } from '../src/lib/userSettings.svelte.ts';
+import { applyPreferredTheme, forgetSiteDefaultTheme, resetUserSettings, userSettings } from '../src/lib/userSettings.svelte.ts';
 import Settings from '../src/routes/Settings.svelte';
 import Login from '../src/routes/Login.svelte';
 import { GM, mockApi, PLAYER, signIn } from './helpers.ts';
@@ -213,7 +214,8 @@ describe('Theme-Auswahl', () => {
       [THEME_BASE_LINK_ID, '/themes/default/theme.css'],
       [THEME_LINK_ID, '/themes/wald/theme.css'],
     ]);
-    expect(localStorage.getItem('pnp-theme-id')).toBe('default'); // gemerkt bleibt das gespeicherte, wald ist nur Vorschau
+    // gemerkt wird nur eine ausdrückliche Wahl; „wald“ ist bisher nur Vorschau
+    expect(localStorage.getItem('pnp-theme-id')).toBeNull();
     await user.click(saveButton());
     expect(api.updateSettings).toHaveBeenCalledWith({ theme: 'wald' });
     await screen.findByText('Einstellungen gespeichert.');
@@ -262,7 +264,46 @@ describe('Theme-Auswahl', () => {
     await screen.findByRole('radiogroup', { name: 'Theme' });
     expect(radio('Vorgabe der Seite').closest('label')!.textContent).toContain('derzeit Nacht');
     await waitFor(() => expect(root.dataset.theme).toBe('nacht'));
-    expect(localStorage.getItem('pnp-theme-id')).toBe('nacht');
+    // Vorgabe der Seite wird nicht als ID gemerkt: index.html lädt sie per Weiterleitung, auch wenn sie sich ändert
+    expect(localStorage.getItem('pnp-theme-id')).toBeNull();
+  });
+});
+
+describe('Wettläufe und Sperren', () => {
+  it('lässt ein später fertiges, älteres Theme das inzwischen gewünschte nicht überschreiben', async () => {
+    const first = applyPreferredTheme('wald');
+    const second = applyPreferredTheme('default'); // schon aktiv: nichts zu laden
+    expect(await second).toBe('default');
+    expect(await first).toBeNull();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(root.dataset.theme).toBe('default');
+    expect(themeLinks()).toEqual([[THEME_BASE_LINK_ID, '/themes/default/theme.css']]);
+  });
+
+  it('nimmt die Vorschau auch zurück, wenn man verwirft, bevor sie geladen ist', async () => {
+    api.settings.mockResolvedValue(settings());
+    render(Settings);
+    await screen.findByRole('radiogroup', { name: 'Theme' });
+    radio('Wald').click(); // ohne auf das Laden des Stylesheets zu warten
+    await tick(); // nur bis Svelte den Knopf freigibt
+    screen.getByRole('button', { name: 'Verwerfen' }).click();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(root.dataset.theme).toBe('default');
+    expect(radio('Vorgabe der Seite').checked).toBe(true);
+  });
+
+  it('sperrt die Auswahl, solange gespeichert wird', async () => {
+    let resolve!: (value: UserSettings) => void;
+    api.settings.mockResolvedValue(settings());
+    api.updateSettings.mockReturnValue(new Promise((r) => (resolve = r)));
+    render(Settings);
+    await user.click(await screen.findByRole('radio', { name: /^Wald/ }));
+    await user.click(saveButton());
+    expect(radio('Nacht').matches(':disabled')).toBe(true);
+    expect(radio('Dunkel').matches(':disabled')).toBe(true);
+    resolve(settings({ theme: 'wald' }));
+    await screen.findByText('Einstellungen gespeichert.');
+    expect(radio('Nacht').matches(':disabled')).toBe(false);
   });
 });
 
@@ -278,7 +319,7 @@ describe('Fallback bei gelöschtem Theme', () => {
     api.settings.mockResolvedValue(settings({ theme: 'weg' }));
     await loadSession();
     await waitFor(() => expect(root.dataset.theme).toBe('wald'));
-    expect(localStorage.getItem('pnp-theme-id')).toBe('wald');
+    expect(localStorage.getItem('pnp-theme-id')).toBeNull(); // nächstes Mal gleich die Vorgabe der Seite
     expect(themeLinks().map(([, href]) => href)).toEqual(['/themes/default/theme.css', '/themes/wald/theme.css']);
   });
 
@@ -289,7 +330,7 @@ describe('Fallback bei gelöschtem Theme', () => {
     api.settings.mockResolvedValue(settings({ theme: 'weg' }));
     await loadSession();
     await waitFor(() => expect(root.dataset.theme).toBe('default'));
-    expect(localStorage.getItem('pnp-theme-id')).toBe('default');
+    expect(localStorage.getItem('pnp-theme-id')).toBeNull();
 
     forgetSiteDefaultTheme();
     root.dataset.theme = 'alt';
@@ -411,6 +452,19 @@ describe('Theme-Wahl für Gäste', () => {
     expect(userSettings.value.theme).toBe('nacht');
   });
 
+  it('kehrt mit „Vorgabe der Seite“ zum Vorgabe-Theme zurück und vergisst die Gast-Wahl', async () => {
+    localStorage.setItem('pnp-guest-theme', 'wald');
+    resetUserSettings();
+    await waitFor(() => expect(root.dataset.theme).toBe('wald'));
+    render(Login);
+    const select = (await screen.findByRole('combobox', { name: 'Design' })) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('wald'));
+    await user.selectOptions(select, 'Vorgabe der Seite (Standard)');
+    await waitFor(() => expect(root.dataset.theme).toBe('default'));
+    expect(localStorage.getItem('pnp-guest-theme')).toBeNull();
+    expect(localStorage.getItem('pnp-theme-id')).toBeNull();
+  });
+
   it('fällt bei einer gelöschten Gast-Wahl auf die Vorgabe zurück und zeigt sie als ausgewählt', async () => {
     localStorage.setItem('pnp-guest-theme', 'weg');
     resetUserSettings();
@@ -457,15 +511,24 @@ describe('Inline-Skript in index.html (kein Aufblitzen)', () => {
     expect(attributes).toEqual({ 'data-theme': 'wald', 'data-color-scheme': 'dark' });
   });
 
-  it('übergeht ungültige Werte und braucht für das Basis-Theme keinen zweiten Link', () => {
-    expect(runScript({ 'pnp-theme-id': '"><script>', 'pnp-color-scheme': 'neon' })).toMatchObject({ written: [], attributes: {} });
+  it('nimmt ohne ausdrückliche (oder mit ungültiger) Wahl das aktuelle Vorgabe-Theme der Seite', () => {
+    const cases: Record<string, string>[] = [{}, { 'pnp-theme-id': '"><script>', 'pnp-color-scheme': 'neon' }];
+    for (const stored of cases) {
+      const { written, attributes } = runScript(stored);
+      expect(written).toHaveLength(1);
+      expect(written[0]).toContain('<link id="theme-stylesheet" rel="stylesheet" href="/themes/site-default.css"');
+      // welches Theme die Weiterleitung liefert, weiß erst die App
+      expect(attributes).toEqual({ 'data-theme': '' });
+    }
+  });
+
+  it('braucht für das ausdrücklich gewählte Basis-Theme keinen zweiten Link', () => {
     expect(runScript({ 'pnp-theme-id': 'default' })).toMatchObject({ written: [], attributes: {} });
-    expect(runScript({})).toMatchObject({ written: [], attributes: {} });
   });
 
   it('übernimmt das früher unter pnp-theme gespeicherte Farbschema', () => {
     const { attributes, storage } = runScript({ 'pnp-theme': 'dark' });
-    expect(attributes).toEqual({ 'data-color-scheme': 'dark' });
+    expect(attributes).toEqual({ 'data-color-scheme': 'dark', 'data-theme': '' });
     expect(storage).toEqual({ 'pnp-color-scheme': 'dark' });
   });
 

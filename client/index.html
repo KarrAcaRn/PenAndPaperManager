@@ -6,9 +6,10 @@
     <title>Pen &amp; Paper Manager</title>
     <!--
       Design-Tokens: das Basis-Theme ist immer geladen (fehlt ein gewähltes Theme, bleibt die Seite gestaltet).
-      Das zuletzt angewendete Theme und Farbschema (lib/userSettings.svelte.ts) setzt das Skript darunter vor dem
-      ersten Zeichnen: Der per document.write eingefügte Link blockiert das Rendern wie ein normaler, so blitzt
-      nichts auf. applyTheme() (lib/theme.ts) tauscht #theme-stylesheet später zur Laufzeit aus.
+      Das Skript darunter setzt vor dem ersten Zeichnen das gemerkte Farbschema und das ausdrücklich gewählte Theme
+      (lib/userSettings.svelte.ts), sonst das aktuelle Vorgabe-Theme der Seite: Der per document.write eingefügte
+      Link blockiert das Rendern wie ein normaler, so blitzt nichts auf. applyTheme() (lib/theme.ts) tauscht
+      #theme-stylesheet später zur Laufzeit aus.
     -->
     <link id="theme-base" rel="stylesheet" href="/themes/default/theme.css" vite-ignore />
     <script>
@@ -30,13 +31,17 @@
           }
         } catch (e) {}
         if (scheme === 'light' || scheme === 'dark') root.setAttribute('data-color-scheme', scheme);
-        if (id && /^[a-z0-9][a-z0-9-]{0,39}$/.test(id) && id !== 'default') {
+        // Ohne ausdrückliche Wahl das aktuelle Vorgabe-Theme der Seite (Weiterleitung, s. SITE_DEFAULT_STYLESHEET)
+        var explicit = !!id && /^[a-z0-9][a-z0-9-]{0,39}$/.test(id);
+        if (!explicit || id !== 'default') {
           // Fehlt das Theme inzwischen, bleibt das Basis-Theme; die App wendet danach die Vorgabe der Seite an
           document.write(
-            '<link id="theme-stylesheet" rel="stylesheet" href="/themes/' + id + '/theme.css"' +
-              ' onerror="this.remove(); document.documentElement.setAttribute(\'data-theme\', \'default\')" />',
+            '<link id="theme-stylesheet" rel="stylesheet" href="' +
+              (explicit ? '/themes/' + id + '/theme.css' : '/themes/site-default.css') +
+              '" onerror="this.remove(); document.documentElement.setAttribute(\'data-theme\', \'default\')" />',
           );
-          root.setAttribute('data-theme', id);
+          // ohne ausdrückliche Wahl ist noch offen, welches Theme die Weiterleitung liefert: leer = unbekannt
+          root.setAttribute('data-theme', explicit ? id : '');
         }
       })();
     </script>

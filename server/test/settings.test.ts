@@ -249,8 +249,23 @@ describe('Theme-Wahl in den Einstellungen', () => {
   it('nimmt das vom Seitenbetreiber konfigurierte Vorgabe-Theme, solange es existiert', async () => {
     const a = app({ defaultTheme: 'wald' });
     expect((await a.inject({ url: '/api/themes' })).json().defaultTheme).toBe('wald');
+    // index.html lädt es ohne Login per Weiterleitung (relative url(…) lösen so im Theme-Ordner auf)
+    const alias = await a.inject({ url: '/themes/site-default.css' });
+    expect(alias.statusCode).toBe(302);
+    expect(alias.headers.location).toBe('/themes/wald/theme.css');
+    expect(alias.headers['cache-control']).toBe('no-cache');
     rmSync(join(extra, 'wald'), { recursive: true });
     expect((await a.inject({ url: '/api/themes' })).json().defaultTheme).toBe('default');
+    expect((await a.inject({ url: '/themes/site-default.css' })).headers.location).toBe('/themes/default/theme.css');
     expect((await app({ defaultTheme: 'gibtsnicht' }).inject({ url: '/api/themes' })).json().defaultTheme).toBe('default');
+  });
+
+  it('liest das Vorgabe-Theme aus DEFAULT_THEME', async () => {
+    process.env.DEFAULT_THEME = 'nacht';
+    try {
+      expect((await app().inject({ url: '/api/themes' })).json().defaultTheme).toBe('nacht');
+    } finally {
+      delete process.env.DEFAULT_THEME;
+    }
   });
 });

@@ -25,12 +25,23 @@ export async function getTheme(id: string): Promise<ThemeInfo> {
   return (await api.theme(id)).theme;
 }
 
-/** ID des angewendeten Themes */
+/** ID des angewendeten Themes; leer, solange index.html das Vorgabe-Theme der Seite per Weiterleitung geladen hat */
 export function currentTheme(): string {
   return document.documentElement.dataset.theme ?? BASE_THEME_ID;
 }
 
 let pending = 0;
+/** Abbruch der noch ladenden Stylesheets (siehe cancelPendingThemes) */
+const cancels = new Set<() => void>();
+
+/**
+ * Verwirft alle noch ladenden Theme-Wechsel, z.B. wenn das gewünschte Theme schon aktiv ist und nichts geladen
+ * werden muss – sonst würde ein später fertiges, älteres Stylesheet es noch überschreiben.
+ */
+export function cancelPendingThemes(): void {
+  pending++;
+  for (const cancel of [...cancels]) cancel();
+}
 
 /**
  * Wendet ein Theme zur Laufzeit an. Liefert true, sobald das Stylesheet geladen und aktiv ist, und false, wenn
@@ -44,7 +55,14 @@ export function applyTheme(id: string): Promise<boolean> {
   link.href = themeStylesheetUrl(id);
   link.dataset.themePending = id;
   return new Promise<boolean>((resolve, reject) => {
+    const cancel = () => {
+      cancels.delete(cancel);
+      link.remove();
+      resolve(false);
+    };
+    cancels.add(cancel);
     link.addEventListener('load', () => {
+      cancels.delete(cancel);
       if (request !== pending) {
         link.remove();
         return resolve(false);
@@ -56,6 +74,7 @@ export function applyTheme(id: string): Promise<boolean> {
       resolve(true);
     });
     link.addEventListener('error', () => {
+      cancels.delete(cancel);
       link.remove();
       // Fehler eines überholten Aufrufs interessieren niemanden mehr
       if (request !== pending) resolve(false);

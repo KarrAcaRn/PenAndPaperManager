@@ -1,6 +1,6 @@
 import { BASE_THEME_ID, DEFAULT_USER_SETTINGS, isThemeId, type ColorScheme, type UserSettings } from '@pnp/shared';
 import { api } from './api.ts';
-import { applyTheme, currentTheme, themeCatalog } from './theme.ts';
+import { applyTheme, cancelPendingThemes, currentTheme, themeCatalog } from './theme.ts';
 
 /**
  * localStorage-Schlüssel. theme/colorScheme merken das zuletzt angewendete Aussehen, damit das Inline-Skript in
@@ -81,10 +81,13 @@ export async function applyPreferredTheme(id: string | null, { remember = true }
   while (candidate !== null && !stale()) {
     tried.add(candidate);
     try {
-      // schon aktiv (z.B. vom Inline-Skript in index.html gesetzt): nicht noch einmal laden
-      if (candidate !== currentTheme() && !(await applyTheme(candidate))) return null;
+      // schon aktiv (z.B. vom Inline-Skript in index.html gesetzt): nichts laden, aber ältere Ladevorgänge verwerfen
+      if (candidate === currentTheme()) cancelPendingThemes();
+      else if (!(await applyTheme(candidate))) return null;
       if (stale()) return null;
-      if (remember) writeStorage(STORAGE_KEYS.theme, candidate);
+      // Gemerkt wird nur eine ausdrückliche Wahl; sonst lädt index.html beim nächsten Mal das aktuelle
+      // Vorgabe-Theme der Seite (/themes/site-default.css) – auch wenn der Seitenbetreiber es inzwischen ändert.
+      if (remember) writeStorage(STORAGE_KEYS.theme, candidate === id ? candidate : null);
       return candidate;
     } catch {
       const fallback = await siteDefaultTheme();

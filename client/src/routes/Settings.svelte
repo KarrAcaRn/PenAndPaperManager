@@ -73,7 +73,7 @@
   /** Fastify meldet Schemafehler als "Ungültige Eingabe: body/<feld> …" – dem Feld zuordnen, wenn möglich */
   function fieldOf(err: unknown): Key | null {
     if (!(err instanceof ApiFailure) || err.status !== 400) return null;
-    if (/Theme/.test(err.message) && !/body\//.test(err.message)) return 'theme';
+    if (err.message.startsWith('Das Theme „')) return 'theme';
     const key = /body\/(\w+)/.exec(err.message)?.[1];
     return key && (USER_SETTING_KEYS as string[]).includes(key) ? (key as Key) : null;
   }
@@ -149,14 +149,25 @@
           role="radiogroup"
           aria-describedby={describedBy('theme', true)}
           aria-invalid={fieldErrors.theme ? true : undefined}
+          disabled={saving.busy}
         >
           <legend>Theme</legend>
           <div class="themes" class:invalid={!!fieldErrors.theme}>
             <label class="theme-card">
-              <input type="radio" name="theme" value="" checked={draft.theme === null} onchange={() => pickTheme(null)} />
+              <input
+                type="radio"
+                name="theme"
+                value=""
+                checked={draft.theme === null}
+                onchange={() => pickTheme(null)}
+                aria-labelledby="site-default-choice-name"
+                aria-describedby="site-default-choice-meta"
+              />
               <span class="theme-body">
-                <span class="theme-name">Vorgabe der Seite</span>
-                <span class="muted theme-meta">derzeit {defaultThemeName}</span>
+                <span class="theme-name" id="site-default-choice-name">Vorgabe der Seite</span>
+                <span class="muted theme-meta" id="site-default-choice-meta">
+                  derzeit {defaultThemeName}; folgt der Wahl des Seitenbetreibers
+                </span>
                 {#if themes.find((t) => t.id === defaultThemeId)}
                   <ThemePreview theme={themes.find((t) => t.id === defaultThemeId)!} />
                 {/if}
@@ -170,11 +181,12 @@
                   value={theme.id}
                   checked={draft.theme === theme.id}
                   onchange={() => pickTheme(theme.id)}
-                  aria-describedby="theme-{theme.id}-meta"
+                  aria-labelledby="themecard-{theme.id}-name"
+                  aria-describedby="themecard-{theme.id}-meta"
                 />
                 <span class="theme-body">
-                  <span class="theme-name">{theme.name}</span>
-                  <span class="muted theme-meta" id="theme-{theme.id}-meta" title={theme.description}>
+                  <span class="theme-name" id="themecard-{theme.id}-name">{theme.name}</span>
+                  <span class="muted theme-meta" id="themecard-{theme.id}-meta" title={theme.description}>
                     von {theme.author}{#if theme.description}<span class="theme-description">{' – '}{theme.description}</span>{/if}
                   </span>
                   <ThemePreview {theme} />
@@ -197,6 +209,7 @@
               role="radiogroup"
               aria-describedby={describedBy(field.key, !!field.hint)}
               aria-invalid={error ? true : undefined}
+              disabled={saving.busy}
             >
               <legend>{field.label}</legend>
               <div class="options" class:invalid={!!error}>
@@ -282,6 +295,10 @@
     box-shadow: inset 0 0 0 var(--border-width-strong) var(--color-accent);
   }
   .theme-card input:focus-visible + .theme-body { outline: var(--outline-width) solid var(--color-accent); outline-offset: 2px; }
+  /* Hochkontrastmodus: Rahmenfarben und Schatten fallen weg, die Auswahl braucht eine eigene Markierung */
+  @media (forced-colors: active) {
+    .theme-card input:checked + .theme-body { outline: var(--border-width-strong) solid Highlight; outline-offset: -4px; }
+  }
   .theme-name { font-weight: 600; }
   .theme-meta { font-size: 0.85rem; }
   /* lange Beschreibungen kürzen; vollständig bleiben sie über aria-describedby vorlesbar */
