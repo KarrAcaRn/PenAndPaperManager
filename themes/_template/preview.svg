@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
+  <!-- Vorschaubild für die Theme-Auswahl (Feld „preview“ im Manifest): eine stilisierte Seite in den Theme-Farben -->
+  <rect width="320" height="200" fill="#eef2f0" />
+  <rect x="12" y="12" width="296" height="32" rx="6" fill="#ffffff" stroke="#1d6b5a" stroke-width="2" />
+  <rect x="24" y="23" width="80" height="10" rx="2" fill="#1f2a27" />
+  <rect x="244" y="20" width="52" height="16" rx="4" fill="#1d6b5a" />
+  <rect x="12" y="56" width="88" height="132" rx="6" fill="#ffffff" stroke="#1d6b5a" stroke-width="2" />
+  <rect x="22" y="68" width="60" height="8" rx="2" fill="#1d6b5a" />
+  <rect x="22" y="84" width="50" height="8" rx="2" fill="#4f605a" />
+  <rect x="22" y="100" width="56" height="8" rx="2" fill="#4f605a" />
+  <rect x="112" y="56" width="196" height="132" rx="6" fill="#ffffff" stroke="#b9c9c2" />
+  <rect x="124" y="70" width="120" height="14" rx="2" fill="#1f2a27" />
+  <rect x="124" y="94" width="170" height="6" rx="2" fill="#4f605a" />
+  <rect x="124" y="106" width="160" height="6" rx="2" fill="#4f605a" />
+  <rect x="124" y="118" width="150" height="6" rx="2" fill="#4f605a" />
+  <rect x="124" y="160" width="60" height="18" rx="4" fill="#1d6b5a" />
+</svg>

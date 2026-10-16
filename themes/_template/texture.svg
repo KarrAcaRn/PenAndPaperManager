@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Kachel für den Seitenhintergrund (Token bg-image); wird wiederholt, deshalb nahtlos und sehr zurückhaltend -->
+  <style>
+    circle { fill: rgba(29, 107, 90, 0.08); }
+    @media (prefers-color-scheme: dark) {
+      circle { fill: rgba(92, 196, 168, 0.06); }
+    }
+  </style>
+  <circle cx="6" cy="6" r="1.2" />
+  <circle cx="18" cy="18" r="1.2" />
+</svg>

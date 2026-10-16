@@ -51,7 +51,7 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Oberfläche über `--font-…` – nur Design-Tokens (`var(--color-…)`, `var(--border)`, …, siehe README „Themes“;
   ein Test prüft feste Farben und px-Rahmen). Ausnahme: Linienstärken und Maße des FATE-Bogens (Druckvorlage).
   Neues Token: in `THEME_TOKENS` (`shared/src/theme.ts`) und `themes/default/theme.json` eintragen, dann
-  `npm run theme:schema -w server`.
+  `npm run theme:schema -w server`, und in der Token-Referenz von `docs/themes.md` beschreiben (ein Test prüft das).
 
 ## Tests
 
