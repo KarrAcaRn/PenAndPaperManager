@@ -270,6 +270,23 @@ describe('Theme-Auswahl', () => {
 });
 
 describe('Wettläufe und Sperren', () => {
+  it('übernimmt das von index.html per Weiterleitung geladene Vorgabe-Theme ohne erneutes Laden', async () => {
+    root.dataset.theme = ''; // so hinterlässt es das Inline-Skript ohne ausdrückliche Wahl
+    document.head.insertAdjacentHTML('beforeend', `<link id="${THEME_LINK_ID}" rel="stylesheet" href="/themes/site-default.css">`);
+    api.themes.mockResolvedValue(catalog('nacht'));
+    expect(await applyPreferredTheme(null)).toBe('nacht');
+    expect(root.dataset.theme).toBe('nacht');
+    expect(themeLinks().map(([, href]) => href)).toEqual(['/themes/default/theme.css', '/themes/site-default.css']);
+
+    // lädt die Theme-Liste nicht, bleibt das Vorgabe-Theme stehen statt dem Basis-Theme zu weichen
+    forgetSiteDefaultTheme();
+    root.dataset.theme = '';
+    api.themes.mockRejectedValue(new Error('offline'));
+    expect(await applyPreferredTheme(null)).toBeNull();
+    expect(root.dataset.theme).toBe('');
+    expect(themeLinks().map(([, href]) => href)).toEqual(['/themes/default/theme.css', '/themes/site-default.css']);
+  });
+
   it('lässt ein später fertiges, älteres Theme das inzwischen gewünschte nicht überschreiben', async () => {
     const first = applyPreferredTheme('wald');
     const second = applyPreferredTheme('default'); // schon aktiv: nichts zu laden
@@ -278,6 +295,19 @@ describe('Wettläufe und Sperren', () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(root.dataset.theme).toBe('default');
     expect(themeLinks()).toEqual([[THEME_BASE_LINK_ID, '/themes/default/theme.css']]);
+  });
+
+  it('verwirft ein noch ladendes Theme auch, solange die Vorgabe der Seite erst ermittelt wird', async () => {
+    let resolveCatalog!: (value: unknown) => void;
+    api.themes.mockReturnValue(new Promise((r) => (resolveCatalog = r)));
+    const first = applyPreferredTheme('wald');
+    const second = applyPreferredTheme(null);
+    await new Promise((r) => setTimeout(r, 10)); // „wald“ wäre jetzt geladen
+    expect(root.dataset.theme).toBe('default');
+    resolveCatalog(catalog('nacht'));
+    expect(await second).toBe('nacht');
+    expect(await first).toBeNull();
+    expect(root.dataset.theme).toBe('nacht');
   });
 
   it('nimmt die Vorschau auch zurück, wenn man verwirft, bevor sie geladen ist', async () => {

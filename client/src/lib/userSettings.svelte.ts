@@ -46,18 +46,23 @@ export function applyColorScheme(scheme: ColorScheme, { remember = true }: Apply
   if (remember) writeStorage(STORAGE_KEYS.colorScheme, scheme === 'system' ? null : scheme);
 }
 
-let siteDefault: Promise<string> | null = null;
+let siteDefault: Promise<string | null> | null = null;
 
-/** Vorgabe-Theme der Seite (DEFAULT_THEME des Seitenbetreibers); schlägt das Laden fehl, das Basis-Theme */
-export function siteDefaultTheme(): Promise<string> {
+/** Vorgabe-Theme der Seite laut Server; null, wenn die Theme-Liste nicht lädt (dann beim nächsten Mal neu versuchen) */
+function loadSiteDefaultTheme(): Promise<string | null> {
   siteDefault ??= themeCatalog().then(
     (catalog) => catalog.defaultTheme,
     () => {
-      siteDefault = null; // beim nächsten Mal neu versuchen
-      return BASE_THEME_ID;
+      siteDefault = null;
+      return null;
     },
   );
   return siteDefault;
+}
+
+/** Vorgabe-Theme der Seite (DEFAULT_THEME des Seitenbetreibers); schlägt das Laden fehl, das Basis-Theme */
+export async function siteDefaultTheme(): Promise<string> {
+  return (await loadSiteDefaultTheme()) ?? BASE_THEME_ID;
 }
 
 /** nur für Tests: zwischengespeichertes Vorgabe-Theme vergessen */
@@ -76,18 +81,29 @@ let themeRequest = 0;
 export async function applyPreferredTheme(id: string | null, { remember = true }: ApplyOptions = {}): Promise<string | null> {
   const own = ++themeRequest;
   const stale = () => own !== themeRequest;
+  // ein neuer Wunsch macht alle noch ladenden Stylesheets älterer Aufrufe hinfällig
+  cancelPendingThemes();
+  const explicit = id !== null && isThemeId(id) ? id : null;
+  if (explicit === null && currentTheme() === '') {
+    // index.html hat das Vorgabe-Theme der Seite schon per Weiterleitung geladen: nur noch seine ID eintragen.
+    // Lädt die Theme-Liste nicht, bleibt es einfach stehen (statt es durch das Basis-Theme zu ersetzen).
+    const active = await loadSiteDefaultTheme();
+    if (stale() || active === null || currentTheme() !== '') return null;
+    document.documentElement.dataset.theme = active;
+    if (remember) writeStorage(STORAGE_KEYS.theme, null);
+    return active;
+  }
   const tried = new Set<string>();
-  let candidate: string | null = id !== null && isThemeId(id) ? id : await siteDefaultTheme();
+  let candidate: string | null = explicit ?? (await siteDefaultTheme());
   while (candidate !== null && !stale()) {
     tried.add(candidate);
     try {
-      // schon aktiv (z.B. vom Inline-Skript in index.html gesetzt): nichts laden, aber ältere Ladevorgänge verwerfen
-      if (candidate === currentTheme()) cancelPendingThemes();
-      else if (!(await applyTheme(candidate))) return null;
+      // schon aktiv (z.B. vom Inline-Skript in index.html gesetzt): nichts laden
+      if (candidate !== currentTheme() && !(await applyTheme(candidate))) return null;
       if (stale()) return null;
       // Gemerkt wird nur eine ausdrückliche Wahl; sonst lädt index.html beim nächsten Mal das aktuelle
       // Vorgabe-Theme der Seite (/themes/site-default.css) – auch wenn der Seitenbetreiber es inzwischen ändert.
-      if (remember) writeStorage(STORAGE_KEYS.theme, candidate === id ? candidate : null);
+      if (remember) writeStorage(STORAGE_KEYS.theme, candidate === explicit ? candidate : null);
       return candidate;
     } catch {
       const fallback = await siteDefaultTheme();
