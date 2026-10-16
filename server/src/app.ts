@@ -6,6 +6,8 @@ import fastifyStatic from '@fastify/static';
 import type { Db } from './db.ts';
 import { HttpError } from './errors.ts';
 import { authRoutes } from './routes/auth.ts';
+import { loginCodeRoutes } from './routes/login-codes.ts';
+import { stubSendLoginCodeEmail, type SendLoginCodeEmail } from './login-codes.ts';
 import { groupRoutes } from './routes/groups.ts';
 import { memberRoutes } from './routes/members.ts';
 import { articleRoutes } from './routes/articles.ts';
@@ -26,6 +28,8 @@ export interface AppOptions {
   adminEmails?: string;
   /** Ordner mit den PDF-Dateien der Regelwerke; Vorgabe ist data/rulebooks neben der Datenbank */
   rulebookDir?: string;
+  /** Versand der Login-Codes; Vorgabe ist der Stub (Konsole im Dev-Betrieb), Tests fangen die Codes hier ab */
+  sendLoginCodeEmail?: SendLoginCodeEmail;
 }
 
 export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
@@ -43,6 +47,7 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   });
 
   authRoutes(app, db, admins);
+  loginCodeRoutes(app, db, admins, opts.sendLoginCodeEmail ?? stubSendLoginCodeEmail);
   groupRoutes(app, db);
   memberRoutes(app, db);
   articleRoutes(app, db);
