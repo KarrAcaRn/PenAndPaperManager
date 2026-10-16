@@ -16,11 +16,13 @@
     "@fastify/static": "^10.1.4",
     "@pnp/shared": "*",
     "fastify": "^5.12.5",
+    "nodemailer": "^10.1.1",
     "pdfjs-dist": "^6.4.299",
     "tsx": "^4.23.13"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
+    "@types/nodemailer": "^8.0.2",
     "vitest": "^5.0.1"
   }
 }
