@@ -1,7 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { ArticleInput, Visibility } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
+import { buildApp, type AppOptions } from '../src/app.ts';
 import { SESSION_COOKIE } from '../src/auth.ts';
 
 type Call = (url: string, body?: unknown) => Promise<{ status: number; body: any }>;
@@ -27,8 +28,8 @@ export const article = (visibility: Visibility, extra: Partial<Record<keyof Arti
 
 export const ADMIN_EMAIL = 'admin@test.de';
 
-export function makeApp(): FastifyInstance {
-  return buildApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL });
+export function makeApp(opts: AppOptions = {}): FastifyInstance {
+  return buildApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL, secretKey: randomBytes(32), ...opts });
 }
 
 export async function loginAs(app: FastifyInstance, email: string): Promise<Client> {

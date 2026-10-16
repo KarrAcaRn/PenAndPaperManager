@@ -19,7 +19,9 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
-`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen).
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen),
+`APP_SECRET_KEY` (32 Bytes Base64 zum Verschlüsseln gespeicherter Zugangsdaten; fehlt er, wird `data/secret.key`
+angelegt – zusammen mit der Datenbank, aber getrennt von ihr sichern).
 
 ## Regeln
 
@@ -40,6 +42,14 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   ein- und ausgeblendet werden nur Artikel über ihre Sichtbarkeit. Wird ein Artikel in einen noch nicht vorhandenen
   Ordner gespeichert, wird der Ordner angelegt. Umbenennen/Verschieben/Löschen (nur leer, auch ohne unsichtbare
   Artikel): Ersteller oder Spielleiter.
+
+## Soundboard-Speicher
+
+- Nutzer-Uploads speichert der Server nicht. Jeder Nutzer verknüpft in seinem Konto eigene externe Speicher
+  (S3, Google Drive; mehrere möglich), Abspielen und Hochladen laufen per signierter URL direkt zwischen Browser
+  und Anbieter. Verbindungen sieht und nutzt nur ihr Besitzer.
+- Zugangsdaten liegen verschlüsselt in `user_storage_connections` und erscheinen in keiner API-Antwort.
+- Architektur, API, Sicherheit (CORS) und Annahmen: `docs/soundboard-storage.md`.
 
 ## FATE-Bogen und Fertigkeiten
 
