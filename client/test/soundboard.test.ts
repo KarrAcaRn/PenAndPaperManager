@@ -8,12 +8,15 @@ import {
   checkUploadFile,
   createPlaybackUrlCache,
   describeStorageError,
+  fileCategory,
   fileTitle,
   fileToBoard,
   filterSounds,
   groupByCategory,
   type BoardSound,
 } from '../src/lib/soundboard.ts';
+import { HOTKEYS, assignHotkeys, hotkeyAction, isTypingTarget, stepCategory } from '../src/lib/soundHotkeys.ts';
+import { SOUND_SETTINGS_KEY, createSoundSettings } from '../src/lib/soundSettings.svelte.ts';
 import { UploadError, uploadDirect } from '../src/lib/upload.ts';
 import { createPlayer } from '../src/lib/soundPlayer.svelte.ts';
 import { FakeXhr, builtinSound } from './soundHelpers.ts';
@@ -50,9 +53,94 @@ describe('Soundboard-Logik', () => {
     expect(filterSounds(sounds, 'fanfare', 'Effekte')).toEqual([]);
     expect(categoriesOf(sounds)).toEqual(['Musik', 'Effekte']);
     expect(groupByCategory(sounds).map((g) => [g.category, g.sounds.length])).toEqual([
+      [null, 1],
       ['Musik', 1],
       ['Effekte', 2],
     ]);
+  });
+
+  it('nimmt Unterordner der Nutzer-Dateien als Kategorie und sucht auch in Kategorie und Schlagwörtern', () => {
+    expect(fileCategory('kampf.mp3')).toBeNull();
+    expect(fileCategory('packs/regen/leise.mp3')).toBe('packs / regen');
+    const rain = fileToBoard(3, { id: 'sb/packs/regen/leise.mp3', name: 'packs/regen/leise.mp3', size: 1, mimeType: null, updatedAt: null });
+    expect(rain).toMatchObject({ title: 'leise', category: 'packs / regen', tags: [] });
+    const tagged = builtinToBoard({ ...builtinSound('wind', 'Wind', 'Natur'), tags: ['Sturm', 'Draußen'] });
+    const all = [...sounds, rain, tagged];
+    expect(filterSounds(all, 'regen').map((s) => s.title)).toEqual(['leise']);
+    expect(filterSounds(all, 'packs leise').map((s) => s.title)).toEqual(['leise']);
+    expect(filterSounds(all, 'draußen').map((s) => s.title)).toEqual(['Wind']);
+    expect(filterSounds(all, 'effekte glo').map((s) => s.id)).toEqual(['glocke']);
+    expect(filterSounds(all, '', 'packs / regen').map((s) => s.title)).toEqual(['leise']);
+    expect(categoriesOf(all)).toEqual(['Musik', 'Effekte', 'packs / regen', 'Natur']);
+  });
+});
+
+describe('Tastatur', () => {
+  const key = (k: string, over: Partial<KeyboardEvent> = {}) =>
+    ({ key: k, altKey: false, ctrlKey: false, metaKey: false, target: document.body, ...over }) as KeyboardEvent;
+
+  it('vergibt 0–9, a–z, A–Z in Anzeigereihenfolge, höchstens 62', () => {
+    expect(HOTKEYS).toHaveLength(62);
+    const keys = Array.from({ length: 70 }, (_, i) => `s${i}`);
+    const map = assignHotkeys(keys);
+    expect(map.size).toBe(62);
+    expect([map.get('s0'), map.get('s9'), map.get('s10'), map.get('s35'), map.get('s36'), map.get('s61')]).toEqual(['0', '9', 'a', 'z', 'A', 'Z']);
+    expect(map.has('s62')).toBe(false);
+  });
+
+  it('wechselt die Kategorie ringsum, „alle“ eingeschlossen', () => {
+    expect(stepCategory(['A', 'B'], '', 1)).toBe('A');
+    expect(stepCategory(['A', 'B'], 'B', 1)).toBe('');
+    expect(stepCategory(['A', 'B'], '', -1)).toBe('B');
+    expect(stepCategory(['A', 'B'], 'weg', 1)).toBe('A');
+  });
+
+  it('übersetzt Tasten und schweigt beim Tippen, mit Strg/Cmd und bei offenem Dialog', () => {
+    const map = assignHotkeys(['x', 'y']);
+    expect(hotkeyAction(key('1'), map)).toEqual({ kind: 'sound', soundKey: 'y' });
+    expect(hotkeyAction(key('5'), map)).toBeNull();
+    expect(hotkeyAction(key('ArrowLeft'), map)).toEqual({ kind: 'category', step: -1 });
+    expect(hotkeyAction(key('ArrowRight'), map)).toEqual({ kind: 'category', step: 1 });
+    expect(hotkeyAction(key('ArrowUp'), map)).toEqual({ kind: 'volume', step: 0.01 });
+    expect(hotkeyAction(key('ArrowDown'), map)).toEqual({ kind: 'volume', step: -0.01 });
+    expect(hotkeyAction(key('Alt', { altKey: true }), map)).toEqual({ kind: 'search' });
+    expect(hotkeyAction(key('Enter'), map)).toBeNull();
+    expect(hotkeyAction(key('0', { ctrlKey: true }), map)).toBeNull();
+    expect(hotkeyAction(key('0', { altKey: true }), map)).toBeNull();
+    const input = document.createElement('input');
+    expect(isTypingTarget(input)).toBe(true);
+    expect(hotkeyAction(key('0', { target: input }), map)).toBeNull();
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    document.body.append(dialog);
+    expect(hotkeyAction(key('0'), map)).toBeNull();
+    dialog.remove();
+    expect(hotkeyAction(key('0'), map)).toEqual({ kind: 'sound', soundKey: 'x' });
+  });
+});
+
+describe('Einstellungen je Sound', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it('merkt sich nur Abweichungen vom Standard und verwirft kaputte Einträge', () => {
+    const settings = createSoundSettings();
+    expect(settings.get('a')).toEqual({ volume: 1, loop: false });
+    settings.setVolume('a', 0.4);
+    settings.setLoop('b', true);
+    settings.setVolume('c', 9);
+    expect(settings.get('c').volume).toBe(1);
+    expect(JSON.parse(localStorage.getItem(SOUND_SETTINGS_KEY)!)).toEqual({ a: { volume: 0.4, loop: false }, b: { volume: 1, loop: true } });
+    settings.setLoop('b', false);
+    settings.forget('a');
+    expect(JSON.parse(localStorage.getItem(SOUND_SETTINGS_KEY)!)).toEqual({});
+
+    localStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify({ x: { volume: 'laut', loop: true }, y: null, z: { volume: -1 } }));
+    const again = createSoundSettings();
+    expect(again.get('x')).toEqual({ volume: 1, loop: true });
+    expect(again.get('z')).toEqual({ volume: 0, loop: false });
+    localStorage.setItem(SOUND_SETTINGS_KEY, '{kaputt');
+    expect(createSoundSettings().get('x')).toEqual({ volume: 1, loop: false });
   });
 
   it('lässt nur Audiodateien bis zum Größenlimit hochladen', () => {
@@ -163,6 +251,7 @@ class FakeAudio {
   static all: FakeAudio[] = [];
   src = '';
   volume = 1;
+  loop = false;
   preload = '';
   paused = true;
   error: { code: number } | null = null;
@@ -225,6 +314,25 @@ describe('Player', () => {
     await player.play(glocke);
     expect(Object.keys(player.states)).toEqual([glocke.key]);
     expect(JSON.parse(localStorage.getItem('pnp.soundboard')!)).toMatchObject({ exclusive: true });
+  });
+
+  it('wendet Lautstärke und Schleife je Sound an, auch nachträglich', async () => {
+    const own: Record<string, { volume: number; loop: boolean }> = { [glocke.key]: { volume: 0.5, loop: true } };
+    const player = createPlayer({
+      resolveUrl: async (s) => s.url!,
+      createAudio: () => new FakeAudio() as unknown as HTMLAudioElement,
+      soundOptions: (key) => own[key] ?? { volume: 1, loop: false },
+    });
+    await player.play(glocke);
+    await player.play(fanfare);
+    expect(FakeAudio.all[0]).toMatchObject({ volume: 0.4, loop: true });
+    expect(FakeAudio.all[1]).toMatchObject({ volume: 0.8, loop: false });
+    own[fanfare.key] = { volume: 0.25, loop: true };
+    player.refreshSound(fanfare.key);
+    expect(FakeAudio.all[1]).toMatchObject({ volume: 0.2, loop: true });
+    player.setVolume(0.4);
+    expect(FakeAudio.all[0].volume).toBeCloseTo(0.2);
+    expect(FakeAudio.all[1].volume).toBeCloseTo(0.1);
   });
 
   it('setzt die Lautstärke für laufende und neue Sounds und merkt sie sich', async () => {

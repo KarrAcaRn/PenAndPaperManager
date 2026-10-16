@@ -31,6 +31,8 @@ export interface PlayerOptions {
   resolveUrl: (sound: BoardSound, retry: boolean) => Promise<string>;
   /** für Tests austauschbar */
   createAudio?: () => HTMLAudioElement;
+  /** Lautstärke (0…1, Faktor zur Gesamtlautstärke) und Schleife je Sound; ohne: 1 und keine Schleife */
+  soundOptions?: (key: string) => { volume: number; loop: boolean };
 }
 
 /** MediaError.MEDIA_ERR_NETWORK (als Zahl, weil nicht jede Umgebung MediaError kennt) */
@@ -51,6 +53,15 @@ export function createPlayer(options: PlayerOptions) {
   const audios = new Map<string, HTMLAudioElement>();
   /** Zählt Starts je Kachel, damit ein später fertig gewordener alter Start nichts mehr anrichtet */
   const generation = new Map<string, number>();
+
+  const soundOptions = options.soundOptions ?? (() => ({ volume: 1, loop: false }));
+
+  /** Gesamtlautstärke × Lautstärke des Sounds, dazu die Schleife */
+  function applyOptions(key: string, audio: HTMLAudioElement): void {
+    const own = soundOptions(key);
+    audio.volume = settings.volume * own.volume;
+    audio.loop = own.loop;
+  }
 
   const save = () => {
     try {
@@ -89,7 +100,7 @@ export function createPlayer(options: PlayerOptions) {
       if (!current()) return;
       const audio = createAudio();
       audios.set(sound.key, audio);
-      audio.volume = settings.volume;
+      applyOptions(sound.key, audio);
       audio.preload = 'auto';
       audio.onended = () => current() && stop(sound.key);
       audio.onerror = () => {
@@ -143,8 +154,13 @@ export function createPlayer(options: PlayerOptions) {
     stopAll,
     setVolume(volume: number): void {
       settings.volume = Math.min(1, Math.max(0, volume));
-      for (const audio of audios.values()) audio.volume = settings.volume;
+      for (const [key, audio] of audios) applyOptions(key, audio);
       save();
+    },
+    /** Lautstärke/Schleife eines Sounds geändert: gilt sofort, auch während er läuft */
+    refreshSound(key: string): void {
+      const audio = audios.get(key);
+      if (audio) applyOptions(key, audio);
     },
     setExclusive(exclusive: boolean): void {
       settings.exclusive = exclusive;

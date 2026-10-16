@@ -6,6 +6,8 @@
   import { createTask } from '../lib/task.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
   import { createPlayer } from '../lib/soundPlayer.svelte.ts';
+  import { createSoundSettings } from '../lib/soundSettings.svelte.ts';
+  import { assignHotkeys, hotkeyAction, stepCategory } from '../lib/soundHotkeys.ts';
   import { UploadError, uploadDirect } from '../lib/upload.ts';
   import {
     ACCEPT_AUDIO,
@@ -48,6 +50,7 @@
   let uploads = $state<UploadEntry[]>([]);
   let dragging = $state(false);
   let deleteError = $state('');
+  let searchInput = $state<HTMLInputElement | null>(null);
   let nextUploadId = 0;
 
   const builtinTask = createTask();
@@ -61,7 +64,10 @@
     return describeStorageError(err);
   }
 
+  const soundSettings = createSoundSettings();
+
   const player = createPlayer({
+    soundOptions: (key) => soundSettings.get(key),
     resolveUrl: async (sound, retry) => {
       if (sound.source === 'builtin') return sound.url!;
       if (retry) urls.invalidate(sound.source, sound.id);
@@ -107,9 +113,57 @@
   $effect(() => () => player.stopAll());
 
   const showsBuiltin = $derived(source === '' || source === 'builtin');
-  const categories = $derived(categoriesOf(builtin));
-  const visibleBuiltin = $derived(filterSounds(builtin, query, category));
   const visibleConnections = $derived(connections.filter((c) => source === '' || source === String(c.id)));
+  /** Kategorien aller angezeigten Quellen: Manifest-Kategorien und Unterordner der Speicher */
+  const categories = $derived(
+    categoriesOf([...(showsBuiltin ? builtin : []), ...visibleConnections.flatMap((c) => files[c.id]?.sounds ?? [])]),
+  );
+  /** Wie in der Referenz: wer sucht, sucht über alle Kategorien (Bereich „Suche“) */
+  const searching = $derived(query.trim() !== '');
+  const activeCategory = $derived(searching || !categories.includes(category) ? '' : category);
+  const builtinGroups = $derived(groupByCategory(filterSounds(builtin, query, activeCategory)));
+  const connectionViews = $derived(
+    visibleConnections.map((c) => ({ c, list: files[c.id], groups: groupByCategory(filterSounds(files[c.id]?.sounds ?? [], query, activeCategory)) })),
+  );
+  /** Sichtbare Kacheln in Anzeigereihenfolge, für die Tasten 0–9, a–z, A–Z */
+  const visibleSounds = $derived([
+    ...(showsBuiltin ? builtinGroups.flatMap((g) => g.sounds) : []),
+    ...connectionViews.flatMap((v) => v.groups.flatMap((g) => g.sounds)),
+  ]);
+  const hotkeys = $derived(assignHotkeys(visibleSounds.map((s) => s.key)));
+
+  /** Klick auf eine Kachel oder ihre Taste */
+  function activate(sound: BoardSound): void {
+    player.toggle(sound);
+  }
+
+  function selectCategory(next: string): void {
+    category = next;
+    query = '';
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    const action = hotkeyAction(event, hotkeys);
+    if (!action) return;
+    if (action.kind !== 'search') event.preventDefault();
+    if (action.kind === 'search') searchInput?.focus();
+    else if (action.kind === 'category') selectCategory(stepCategory(categories, activeCategory, action.step));
+    else if (action.kind === 'volume') player.setVolume(Math.round((player.settings.volume + action.step) * 100) / 100);
+    else {
+      const sound = visibleSounds.find((s) => s.key === action.soundKey);
+      if (sound) activate(sound);
+    }
+  }
+
+  function setSoundVolume(sound: BoardSound, volume: number): void {
+    soundSettings.setVolume(sound.key, volume);
+    player.refreshSound(sound.key);
+  }
+
+  function toggleLoop(sound: BoardSound): void {
+    soundSettings.setLoop(sound.key, !soundSettings.get(sound.key).loop);
+    player.refreshSound(sound.key);
+  }
 
   async function remove(sound: BoardSound): Promise<void> {
     if (sound.source === 'builtin' || !sound.deletable) return;
@@ -119,6 +173,7 @@
     try {
       await api.deleteStorageFile(cid, sound.id);
       player.stop(sound.key);
+      soundSettings.forget(sound.key);
       urls.invalidate(cid, sound.id);
       files[cid].sounds = files[cid].sounds.filter((s) => s.key !== sound.key);
     } catch (err) {
@@ -179,17 +234,49 @@
 
 {#snippet tile(sound: BoardSound)}
   {@const state = player.states[sound.key]}
+  {@const hotkey = hotkeys.get(sound.key)}
+  {@const own = soundSettings.get(sound.key)}
   <li class="tile" class:playing={state === 'playing'} class:loading={state === 'loading'}>
-    <button class="play" aria-pressed={state !== undefined} onclick={() => player.toggle(sound)} title={state ? 'Stoppen' : 'Abspielen'}>
-      <span class="icon" aria-hidden="true">{state === 'playing' ? '■' : state === 'loading' ? '…' : '▶'}</span>
+    <button
+      class="play"
+      aria-pressed={state !== undefined}
+      aria-keyshortcuts={hotkey}
+      onclick={() => activate(sound)}
+      title={(state ? 'Stoppen' : 'Abspielen') + (hotkey ? ` (Taste ${hotkey})` : '')}
+    >
+      <span class="top" aria-hidden="true">
+        <span class="icon">{state === 'playing' ? '■' : state === 'loading' ? '…' : '▶'}</span>
+        {#if hotkey}<kbd class="hotkey">{hotkey}</kbd>{/if}
+      </span>
       <span class="name">{sound.title}</span>
     </button>
     {#if sound.deletable}
       <button class="delete danger" aria-label="„{sound.title}“ löschen" title="Löschen" onclick={() => remove(sound)}>✕</button>
     {/if}
+    <div class="opts">
+      <button
+        class="loop"
+        aria-pressed={own.loop}
+        aria-label="Endlosschleife für „{sound.title}“"
+        title={own.loop ? 'Endlosschleife an' : 'Endlosschleife aus'}
+        onclick={() => toggleLoop(sound)}>⟳</button
+      >
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        aria-label="Lautstärke von „{sound.title}“"
+        title="Lautstärke {Math.round(own.volume * 100)} %"
+        value={own.volume}
+        oninput={(e) => setSoundVolume(sound, Number((e.currentTarget as HTMLInputElement).value))}
+      />
+    </div>
     {#if player.errors[sound.key]}<p class="error" role="alert">{player.errors[sound.key]}</p>{/if}
   </li>
 {/snippet}
+
+<svelte:window onkeydown={onKeydown} />
 
 <main class="soundboard">
   <div class="row">
@@ -206,7 +293,7 @@
   <div class="controls card row">
     <label class="search">
       Suche
-      <input type="search" placeholder="Titel suchen …" bind:value={query} />
+      <input type="search" placeholder="Titel, Kategorie oder Schlagwort … (Alt)" bind:value={query} bind:this={searchInput} />
     </label>
     {#if connections.length > 0}
       <label>
@@ -218,22 +305,13 @@
         </select>
       </label>
     {/if}
-    {#if showsBuiltin && categories.length > 1}
-      <label>
-        Kategorie
-        <select bind:value={category}>
-          <option value="">Alle</option>
-          {#each categories as c (c)}<option value={c}>{c}</option>{/each}
-        </select>
-      </label>
-    {/if}
     <label>
       Lautstärke
       <input
         type="range"
         min="0"
         max="1"
-        step="0.05"
+        step="0.01"
         value={player.settings.volume}
         oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       />
@@ -244,6 +322,22 @@
     </label>
     <button onclick={() => player.stopAll()} disabled={Object.keys(player.states).length === 0}>Alle stoppen</button>
   </div>
+
+  {#if categories.length > 0}
+    <div class="cats" role="group" aria-label="Kategorie">
+      <button class="step" aria-label="Vorherige Kategorie" title="Vorherige Kategorie (Pfeil links)" onclick={() => selectCategory(stepCategory(categories, activeCategory, -1))}>‹</button>
+      <button aria-pressed={!searching && activeCategory === ''} onclick={() => selectCategory('')}>Alle</button>
+      {#each categories as c (c)}
+        <button aria-pressed={!searching && activeCategory === c} onclick={() => selectCategory(c)}>{c}</button>
+      {/each}
+      {#if searching}<button aria-pressed="true" onclick={() => searchInput?.focus()}>Suche</button>{/if}
+      <button class="step" aria-label="Nächste Kategorie" title="Nächste Kategorie (Pfeil rechts)" onclick={() => selectCategory(stepCategory(categories, activeCategory, 1))}>›</button>
+    </div>
+  {/if}
+  <p class="muted keys">
+    Tasten: <kbd>0</kbd>–<kbd>9</kbd>, <kbd>a</kbd>–<kbd>z</kbd>, <kbd>A</kbd>–<kbd>Z</kbd> spielen die markierten Sounds ·
+    <kbd>←</kbd> <kbd>→</kbd> Kategorie · <kbd>↑</kbd> <kbd>↓</kbd> Lautstärke · <kbd>Alt</kbd> Suche
+  </p>
 
   {#if !session.user}
     <p class="muted">Eigene Sounds aus deinem Speicher (S3, Google Drive) kannst du nach dem <a href={href.login(href.sounds())}>Anmelden</a> nutzen.</p>
@@ -313,10 +407,10 @@
         <p class="error">Standard-Sounds konnten nicht geladen werden: {builtinTask.error}</p>
       {:else if builtinTask.busy}
         <p class="muted">Lade …</p>
-      {:else if visibleBuiltin.length === 0}
+      {:else if builtinGroups.length === 0}
         <p class="muted">{builtin.length === 0 ? 'Keine Standard-Sounds vorhanden.' : 'Keine Treffer.'}</p>
       {:else}
-        {#each groupByCategory(visibleBuiltin) as group (group.category)}
+        {#each builtinGroups as group (group.category)}
           <h3>{group.category}</h3>
           <ul class="tiles">
             {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
@@ -326,9 +420,7 @@
     </section>
   {/if}
 
-  {#each visibleConnections as c (c.id)}
-    {@const list = files[c.id]}
-    {@const visible = filterSounds(list?.sounds ?? [], query)}
+  {#each connectionViews as { c, list, groups } (c.id)}
     <section aria-labelledby="sb-{c.id}">
       <div class="row">
         <h2 id="sb-{c.id}">{c.displayName}</h2>
@@ -348,12 +440,15 @@
       {/if}
       {#if !list || (list.loading && list.sounds.length === 0)}
         <p class="muted">Lade …</p>
-      {:else if visible.length === 0 && !list.error}
+      {:else if groups.length === 0 && !list.error}
         <p class="muted">{list.sounds.length === 0 ? 'Noch keine Sounds in diesem Speicher.' : 'Keine Treffer.'}</p>
       {:else}
-        <ul class="tiles">
-          {#each visible as sound (sound.key)}{@render tile(sound)}{/each}
-        </ul>
+        {#each groups as group (group.category)}
+          {#if group.category !== null}<h3>{group.category}</h3>{/if}
+          <ul class="tiles">
+            {#each group.sounds as sound (sound.key)}{@render tile(sound)}{/each}
+          </ul>
+        {/each}
       {/if}
       {#if list?.nextCursor}
         <button onclick={() => loadFiles(c.id, true)} disabled={list.loading}>Weitere laden</button>
@@ -383,8 +478,17 @@
   .tile .play { width: 100%; min-height: 4.5rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; text-align: left; padding-right: 2rem; }
   .tile.playing .play { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
   .tile.loading .play { border-color: var(--color-accent); }
+  .tile .top { display: flex; gap: 0.5rem; align-items: center; }
   .tile .icon { font-size: 0.85em; opacity: 0.8; }
+  .tile .hotkey { font-size: 0.75em; padding: 0 0.35em; border: var(--border); border-radius: var(--border-radius-small); font-family: var(--font-mono); }
   .tile .name { font-weight: 600; overflow-wrap: anywhere; }
+  .tile .opts { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem; }
+  .tile .opts input { flex: 1; min-width: 0; margin: 0; }
+  .tile .loop { padding: 0 0.45rem; font-size: 0.9em; }
+  .tile .loop[aria-pressed='true'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+  .cats { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+  .cats button[aria-pressed='true'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+  .keys { font-size: 0.85em; margin: 0 0 1rem; }
   .tile .delete { position: absolute; top: 0.25rem; right: 0.25rem; padding: 0.1rem 0.4rem; font-size: 0.8em; }
   .tile .error { font-size: 0.85em; }
 </style>

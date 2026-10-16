@@ -22,8 +22,10 @@ export interface BoardSound {
   /** ID innerhalb der Quelle (Manifest-ID bzw. Datei-ID des Anbieters) */
   id: string;
   title: string;
-  /** nur Standard-Sounds haben Kategorien */
+  /** Standard-Sounds: Kategorie aus dem Manifest; Nutzer-Dateien: Unterordner („packs / regen“), sonst null */
   category: string | null;
+  /** Schlagwörter aus dem Manifest (werden mit durchsucht); Nutzer-Dateien haben keine */
+  tags: string[];
   /** feste URL (Standard-Sounds); Nutzer-Dateien holen ihre URL erst bei Bedarf */
   url: string | null;
   /** Nutzer-Dateien dürfen gelöscht werden, Standard-Sounds nicht */
@@ -36,6 +38,7 @@ export const builtinToBoard = (sound: BuiltinSound): BoardSound => ({
   id: sound.id,
   title: sound.title,
   category: sound.category,
+  tags: sound.tags,
   url: sound.url,
   deletable: false,
 });
@@ -46,32 +49,50 @@ export function fileTitle(name: string): string {
   return audioExtension(base) ? base.slice(0, base.lastIndexOf('.')) : base;
 }
 
+/**
+ * Kategorie einer Nutzer-Datei wie in der Referenz aus dem Ordner (`packs/regen/x.mp3` → „packs / regen“);
+ * Dateien direkt im verbundenen Ordner haben keine.
+ */
+export function fileCategory(name: string): string | null {
+  const folders = name.split('/').slice(0, -1).filter(Boolean);
+  return folders.length > 0 ? folders.join(' / ') : null;
+}
+
 export const fileToBoard = (cid: number, file: StorageFile): BoardSound => ({
   key: `${cid}:${file.id}`,
   source: cid,
   id: file.id,
   title: fileTitle(file.name),
-  category: null,
+  category: fileCategory(file.name),
+  tags: [],
   url: null,
   deletable: true,
 });
 
 const normalize = (text: string) => text.toLocaleLowerCase('de').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 
-/** Suche im Titel (ohne Groß-/Kleinschreibung und Akzente) und optional nur eine Kategorie */
+/** Durchsuchter Text eines Sounds: Titel, Kategorie (bzw. Ordner) und Schlagwörter – wie in der Referenz der ganze Pfad */
+const searchText = (s: BoardSound) => normalize([s.title, s.category ?? '', ...s.tags].join(' '));
+
+/**
+ * Suche ohne Groß-/Kleinschreibung und Akzente; mehrere Wörter müssen alle vorkommen (in Titel, Kategorie oder
+ * Schlagwörtern). Optional nur eine Kategorie.
+ */
 export function filterSounds(sounds: readonly BoardSound[], query: string, category = ''): BoardSound[] {
   const words = normalize(query).split(/\s+/).filter(Boolean);
-  return sounds.filter((s) => (category === '' || s.category === category) && words.every((w) => normalize(s.title).includes(w)));
+  return sounds.filter((s) => (category === '' || s.category === category) && words.every((w) => searchText(s).includes(w)));
 }
 
-/** Kategorien in der Reihenfolge des Manifests */
+/** Kategorien in der Reihenfolge des Manifests (bzw. der Dateiliste) */
 export function categoriesOf(sounds: readonly BoardSound[]): string[] {
   return [...new Set(sounds.map((s) => s.category).filter((c): c is string => c !== null))];
 }
 
-/** Sounds nach Kategorie gruppiert, Reihenfolge wie im Manifest */
-export function groupByCategory(sounds: readonly BoardSound[]): { category: string; sounds: BoardSound[] }[] {
-  return categoriesOf(sounds).map((category) => ({ category, sounds: sounds.filter((s) => s.category === category) }));
+/** Sounds nach Kategorie gruppiert, Reihenfolge wie im Manifest; Sounds ohne Kategorie (null) kommen zuerst */
+export function groupByCategory(sounds: readonly BoardSound[]): { category: string | null; sounds: BoardSound[] }[] {
+  const loose = sounds.filter((s) => s.category === null);
+  const groups = categoriesOf(sounds).map((category) => ({ category, sounds: sounds.filter((s) => s.category === category) }));
+  return loose.length > 0 ? [{ category: null, sounds: loose }, ...groups] : groups;
 }
 
 export const formatBytes = (bytes: number) =>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { ApiFailure } from '../src/lib/api.ts';
 import { parseHash, router } from '../src/lib/router.svelte.ts';
@@ -33,7 +33,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const tile = (name: string) => screen.getByRole('button', { name: new RegExp(name) });
+const tile = (name: string) => screen.getByRole('button', { name });
 
 describe('Soundboard ohne Login', () => {
   it('ist über #/sounds erreichbar und zeigt die Standard-Sounds statt des Logins', async () => {
@@ -44,7 +44,7 @@ describe('Soundboard ohne Login', () => {
     api.me.mockResolvedValue({ user: null });
     render(App);
     expect(await screen.findByRole('heading', { name: 'Soundboard' })).toBeTruthy();
-    expect(await screen.findByRole('button', { name: /Glocke/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Glocke' })).toBeTruthy();
     expect(location.hash).toBe('#/sounds');
     expect(api.storageConnections).not.toHaveBeenCalled();
   });
@@ -66,14 +66,112 @@ describe('Soundboard ohne Login', () => {
 
   it('sucht nach Titel und filtert nach Kategorie', async () => {
     render(Soundboard);
-    await screen.findByRole('button', { name: /Glocke/ });
+    await screen.findByRole('button', { name: 'Glocke' });
     await user.type(screen.getByRole('searchbox'), 'trom');
-    expect(screen.queryByRole('button', { name: /Glocke/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /Trommelwirbel/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Glocke' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Trommelwirbel' })).toBeTruthy();
     await user.clear(screen.getByRole('searchbox'));
-    await user.selectOptions(screen.getByLabelText('Kategorie'), 'Musik');
-    expect(screen.getByRole('button', { name: /Fanfare/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Glocke/ })).toBeNull();
+    const cats = screen.getByRole('group', { name: 'Kategorie' });
+    await user.click(within(cats).getByRole('button', { name: 'Musik' }));
+    expect(screen.getByRole('button', { name: 'Fanfare' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Glocke' })).toBeNull();
+  });
+
+  it('sucht auch in Kategorie und Schlagwörtern, im eigenen Bereich „Suche“ über alle Kategorien', async () => {
+    api.builtinSounds.mockResolvedValue({ sounds: [...BUILTIN.slice(0, 2), { ...BUILTIN[2], tags: ['Spannung'] }] });
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    const cats = screen.getByRole('group', { name: 'Kategorie' });
+    await user.click(within(cats).getByRole('button', { name: 'Musik' }));
+    await user.type(screen.getByRole('searchbox'), 'spann');
+    expect(screen.getByRole('button', { name: 'Trommelwirbel' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Fanfare' })).toBeNull();
+    expect(within(cats).getByRole('button', { name: 'Suche' }).getAttribute('aria-pressed')).toBe('true');
+    await user.clear(screen.getByRole('searchbox'));
+    await user.type(screen.getByRole('searchbox'), 'effekte');
+    expect(screen.getByRole('button', { name: 'Glocke' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Fanfare' })).toBeNull();
+    // Suche leeren: zurück zur gewählten Kategorie
+    await user.clear(screen.getByRole('searchbox'));
+    expect(screen.getByRole('button', { name: 'Fanfare' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Glocke' })).toBeNull();
+  });
+
+  it('bedient sich per Tastatur: Tasten je Kachel, Pfeile für Kategorie und Lautstärke, Alt für die Suche', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    // Reihenfolge der Anzeige: Musik (Fanfare), Effekte (Glocke, Trommelwirbel)
+    expect(tile('Fanfare').getAttribute('aria-keyshortcuts')).toBe('0');
+    expect(tile('Glocke').getAttribute('aria-keyshortcuts')).toBe('1');
+    expect(tile('Trommelwirbel').getAttribute('aria-keyshortcuts')).toBe('2');
+
+    await user.keyboard('1');
+    await waitFor(() => expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true'));
+    await user.keyboard('1');
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('false');
+
+    // Pfeil rechts: Alle → Musik → Effekte; die Tasten zählen je Bereich neu
+    await user.keyboard('{ArrowRight}{ArrowRight}');
+    expect(screen.queryByRole('button', { name: 'Fanfare' })).toBeNull();
+    expect(tile('Glocke').getAttribute('aria-keyshortcuts')).toBe('0');
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: 'Fanfare' })).toBeTruthy();
+    await user.keyboard('{ArrowLeft}');
+    expect(screen.queryByRole('button', { name: 'Fanfare' })).toBeNull();
+
+    const volume = () => JSON.parse(localStorage.getItem('pnp.soundboard')!).volume as number;
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(volume()).toBeCloseTo(0.82);
+    await user.keyboard('{ArrowDown}');
+    expect(volume()).toBeCloseTo(0.81);
+    expect(Number((screen.getByLabelText('Lautstärke') as HTMLInputElement).value)).toBeCloseTo(0.81);
+
+    await user.keyboard('{Alt}');
+    expect(document.activeElement).toBe(screen.getByRole('searchbox'));
+    // beim Tippen im Suchfeld sind die Tasten Text
+    const before = play.mock.calls.length;
+    await user.keyboard('0');
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('0');
+    expect(play.mock.calls.length).toBe(before);
+  });
+
+  it('schaltet die Tasten bei offenem Dialog ab', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    const dialog = document.createElement('div');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.append(dialog);
+    try {
+      await user.keyboard('1');
+      expect(tile('Glocke').getAttribute('aria-pressed')).toBe('false');
+    } finally {
+      dialog.remove();
+    }
+  });
+
+  it('merkt sich Lautstärke und Endlosschleife je Sound und wendet sie auch während der Wiedergabe an', async () => {
+    const { unmount } = render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(tile('Glocke'));
+    await waitFor(() => expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true'));
+    const audio = play.mock.contexts.at(-1) as HTMLAudioElement;
+    expect(audio.loop).toBe(false);
+
+    const loop = screen.getByRole('button', { name: 'Endlosschleife für „Glocke“' });
+    await user.click(loop);
+    expect(loop.getAttribute('aria-pressed')).toBe('true');
+    expect(audio.loop).toBe(true);
+
+    const own = screen.getByLabelText('Lautstärke von „Glocke“') as HTMLInputElement;
+    await fireEvent.input(own, { target: { value: '0.5' } });
+    expect(audio.volume).toBeCloseTo(0.4); // 0,8 gesamt × 0,5
+
+    unmount();
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    expect(screen.getByRole('button', { name: 'Endlosschleife für „Glocke“' }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Lautstärke von „Glocke“') as HTMLInputElement).value).toBe('0.5');
+    expect(screen.getByRole('button', { name: 'Endlosschleife für „Fanfare“' }).getAttribute('aria-pressed')).toBe('false');
   });
 
   it('meldet, wenn die Standard-Sounds nicht laden', async () => {
@@ -92,7 +190,7 @@ describe('Soundboard mit Login', () => {
     const link = await screen.findByRole('link', { name: 'Kontoeinstellungen' });
     expect(link.getAttribute('href')).toBe('#/settings');
     expect(screen.queryByText(/Dateien wählen/)).toBeNull();
-    expect(await screen.findByRole('button', { name: /Glocke/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Glocke' })).toBeTruthy();
   });
 
   it('zeigt die Dateien je Speicher und holt die Playback-URL erst beim Abspielen', async () => {
@@ -112,6 +210,22 @@ describe('Soundboard mit Login', () => {
     // Filter nach Quelle: nur der Speicher
     await user.selectOptions(screen.getByLabelText('Quelle'), 'Mein Bucket');
     expect(screen.queryByRole('heading', { name: 'Standard' })).toBeNull();
+  });
+
+  it('zeigt Unterordner im Speicher als Kategorien neben denen der Standard-Sounds', async () => {
+    api.storageConnections.mockResolvedValue([connection()]);
+    api.storageFiles.mockResolvedValue({ files: [file('Lose.mp3'), file('Wetter/Regen.mp3'), file('Wetter/Sturm.mp3')], nextCursor: null });
+    render(Soundboard);
+    const section = await screen.findByRole('region', { name: 'Mein Bucket' });
+    await within(section).findByRole('button', { name: 'Regen' });
+    expect(within(section).getByRole('heading', { name: 'Wetter' })).toBeTruthy();
+    const cats = screen.getByRole('group', { name: 'Kategorie' });
+    await user.click(within(cats).getByRole('button', { name: 'Wetter' }));
+    expect(within(section).getByRole('button', { name: 'Sturm' })).toBeTruthy();
+    expect(within(section).queryByRole('button', { name: 'Lose' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Glocke' })).toBeNull();
+    // Tasten zählen über alle sichtbaren Kacheln
+    expect(within(section).getByRole('button', { name: 'Regen' }).getAttribute('aria-keyshortcuts')).toBe('0');
   });
 
   it('lädt direkt zum Anbieter hoch, zeigt den Fortschritt und lädt danach die Liste neu', async () => {

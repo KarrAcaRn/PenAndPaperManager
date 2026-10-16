@@ -104,9 +104,16 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 - `#/sounds` (Link im Benutzermenü und auf der Login-Seite), `client/src/routes/Soundboard.svelte`. Ohne Login
   gibt es nur die Standard-Sounds (`GET /api/sounds/builtin` steht deshalb in `PUBLIC_API_PATHS`), mit Login
   zusätzlich je verbundenem Speicher einen Abschnitt.
-- Suche nach Titel, Filter nach Quelle (Standard / Speicher) und Kategorie (nur Standard-Sounds). Klick auf eine
-  Kachel spielt ab bzw. stoppt; Lautstärke und „mehrere gleichzeitig“ oder exklusiv merkt sich der Browser
-  (`localStorage`, `lib/soundPlayer.svelte.ts`).
+- Suche über Titel, Kategorie/Ordner und Schlagwörter (alle Wörter müssen passen; wer sucht, sucht über alle
+  Kategorien, Bereich „Suche“), Filter nach Quelle (Standard / Speicher) und Kategorie-Leiste mit ‹ ›. Kategorien
+  sind die des Manifests und die Unterordner im eigenen Speicher (S3; Google Drive nur der verbundene Ordner).
+  Klick auf eine Kachel spielt ab bzw. stoppt; Lautstärke und „mehrere gleichzeitig“ oder exklusiv merkt sich der
+  Browser (`localStorage`, `lib/soundPlayer.svelte.ts`), ebenso Lautstärke und Endlosschleife je Sound
+  (`lib/soundSettings.svelte.ts`).
+- Tastatur wie im Referenz-Soundboard (`lib/soundHotkeys.ts`): die sichtbaren Kacheln bekommen der Reihe nach
+  `0–9`, `a–z`, `A–Z`; Pfeil links/rechts wechselt die Kategorie, hoch/runter die Lautstärke, Alt springt in die
+  Suche. Beim Tippen in Feldern und bei offenem Dialog ist das aus. Vergleich mit der Referenz:
+  `docs/soundboard-feature-gap.md`.
 - Nutzer-Dateien holen ihre Playback-URL erst beim Abspielen, behalten sie bis 30 s vor Ablauf und holen bei einem
   Ladefehler einmal eine neue (`createPlaybackUrlCache` in `lib/soundboard.ts`).
 - Upload per Dateiauswahl oder Drag-and-drop in den gewählten Ziel-Speicher: Upload-URL vom Server holen, dann
