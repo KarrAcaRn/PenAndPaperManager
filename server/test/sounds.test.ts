@@ -38,6 +38,7 @@ describe('Standard-Sounds: mitgelieferte Bibliothek', () => {
       title: 'Glocke',
       url: '/sounds/default/effekte/glocke.wav',
       category: 'Effekte',
+      type: 'sfx',
       durationSec: 2,
       tags: ['Signal', 'Stadt'],
       license: expect.stringContaining('CC0'),
@@ -237,10 +238,16 @@ describe('Standard-Sounds: Manifest prüfen', () => {
 
   it('übernimmt optionale Felder und trimmt Texte', () => {
     expect(parse(entry({ title: ' Glocke ', durationSec: 2.5, tags: [' Stadt '], license: 'CC0' }))).toEqual([
-      { id: 'glocke', title: 'Glocke', category: 'Effekte', file: 'effekte/glocke.wav', durationSec: 2.5, tags: ['Stadt'], license: 'CC0' },
+      { id: 'glocke', title: 'Glocke', category: 'Effekte', file: 'effekte/glocke.wav', type: 'sfx', durationSec: 2.5, tags: ['Stadt'], license: 'CC0' },
     ]);
     expect(parse(entry({ tags: null, durationSec: null, license: null }))[0]).toMatchObject({ tags: [], durationSec: null, license: null });
     expect(parse(entry({ tags: ['Stadt', ' Stadt', 'Nacht'] }))[0].tags).toEqual(['Stadt', 'Nacht']);
+  });
+
+  it('übernimmt den Typ und macht ältere Einträge ohne Typ zu Effekten', () => {
+    expect(parse(entry({ type: 'music' }))[0].type).toBe('music');
+    expect(parse(entry())[0].type).toBe('sfx');
+    expect(parse(entry({ type: null }))[0].type).toBe('sfx');
   });
 
   it.each([
@@ -259,6 +266,7 @@ describe('Standard-Sounds: Manifest prüfen', () => {
     [{ title: 'a\tb' }, /Steuerzeichen/],
     [{ title: 'x'.repeat(121) }, /„title“ ist länger als 120/],
     [{ category: undefined }, /„category“ fehlt/],
+    [{ type: 'ambience' }, /„type“ muss sfx oder music sein/],
     [{ file: '../geheim.wav' }, /relativer Pfad/],
     [{ file: '/etc/glocke.wav' }, /relativer Pfad/],
     [{ file: 'effekte\\glocke.wav' }, /relativer Pfad/],

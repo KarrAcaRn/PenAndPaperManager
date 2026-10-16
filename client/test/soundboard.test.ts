@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
-import { MAX_STORAGE_UPLOAD_BYTES, type UploadTarget } from '@pnp/shared';
+import { MAX_STORAGE_UPLOAD_BYTES, type BuiltinSound, type UploadTarget } from '@pnp/shared';
 import { ApiFailure } from '../src/lib/api.ts';
 import {
   builtinToBoard,
@@ -12,10 +12,11 @@ import {
   fileToBoard,
   filterSounds,
   groupByCategory,
+  uploadedSound,
   type BoardSound,
 } from '../src/lib/soundboard.ts';
 import { UploadError, uploadDirect } from '../src/lib/upload.ts';
-import { createPlayer } from '../src/lib/soundPlayer.svelte.ts';
+import { DEFAULT_SETTINGS, createPlayer, createSoundTypes, loadSettings } from '../src/lib/soundPlayer.svelte.ts';
 import { FakeXhr, builtinSound } from './soundHelpers.ts';
 
 const putTarget = (over: Partial<UploadTarget> = {}): UploadTarget => ({
@@ -163,6 +164,9 @@ class FakeAudio {
   static all: FakeAudio[] = [];
   src = '';
   volume = 1;
+  loop = false;
+  /** src vor dem Stoppen, damit Tests gestoppte Elemente wiederfinden */
+  removedSrc = '';
   preload = '';
   paused = true;
   error: { code: number } | null = null;
@@ -180,19 +184,26 @@ class FakeAudio {
     this.paused = true;
   }
   removeAttribute(name: string) {
-    if (name === 'src') this.src = '';
+    if (name === 'src') [this.removedSrc, this.src] = [this.src, ''];
   }
   failLoading() {
     this.error = { code: 4 };
     this.onerror?.();
+  }
+  end() {
+    this.paused = true;
+    this.onended?.();
   }
 }
 
 describe('Player', () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
   const glocke: BoardSound = builtinToBoard(builtinSound('glocke', 'Glocke', 'Effekte'));
+  const trommel: BoardSound = builtinToBoard(builtinSound('trommel', 'Trommelwirbel', 'Effekte'));
   const fanfare: BoardSound = builtinToBoard(builtinSound('fanfare', 'Fanfare', 'Musik'));
+  const hymne: BoardSound = builtinToBoard(builtinSound('hymne', 'Hymne', 'Musik'));
   const userFile: BoardSound = fileToBoard(3, { id: 'kampf.mp3', name: 'kampf.mp3', size: 1, mimeType: null, updatedAt: null });
+  const audioOf = (sound: BoardSound) => [...FakeAudio.all].reverse().find((a) => (a.src || a.removedSrc).endsWith(`/${sound.id}.wav`))!;
 
   beforeEach(() => {
     FakeAudio.all = [];
@@ -200,9 +211,12 @@ describe('Player', () => {
   });
   afterEach(() => localStorage.clear());
 
-  const makePlayer = (resolveUrl = vi.fn(async (s: BoardSound, retry: boolean) => s.url ?? `https://signed/${s.id}?retry=${retry}`)) => ({
+  const makePlayer = (
+    resolveUrl = vi.fn(async (s: BoardSound, retry: boolean) => s.url ?? `https://signed/${s.id}?retry=${retry}`),
+    options: Partial<Parameters<typeof createPlayer>[0]> = {},
+  ) => ({
     resolveUrl,
-    player: createPlayer({ resolveUrl, createAudio: () => new FakeAudio() as unknown as HTMLAudioElement }),
+    player: createPlayer({ resolveUrl, createAudio: () => new FakeAudio() as unknown as HTMLAudioElement, ...options }),
   });
 
   it('spielt per Klick ab und stoppt beim zweiten Klick', async () => {
@@ -210,34 +224,147 @@ describe('Player', () => {
     await player.toggle(glocke);
     flushSync();
     expect(player.states[glocke.key]).toBe('playing');
-    expect(FakeAudio.all[0]).toMatchObject({ src: '/sounds/default/glocke.wav', paused: false, volume: 0.8 });
+    // Gesamt 80 % × Effekte 100 %
+    expect(FakeAudio.all[0]).toMatchObject({ src: '/sounds/default/glocke.wav', paused: false, volume: 0.8, loop: false });
     await player.toggle(glocke);
     expect(player.isActive(glocke.key)).toBe(false);
     expect(FakeAudio.all[0].paused).toBe(true);
   });
 
-  it('spielt mehrere Sounds gleichzeitig oder – exklusiv – nur einen', async () => {
+  it('spielt Musik und mehrere Effekte gleichzeitig', async () => {
     const { player } = makePlayer();
-    await player.play(glocke);
     await player.play(fanfare);
-    expect(Object.keys(player.states).sort()).toEqual([fanfare.key, glocke.key].sort());
-    player.setExclusive(true);
     await player.play(glocke);
-    expect(Object.keys(player.states)).toEqual([glocke.key]);
-    expect(JSON.parse(localStorage.getItem('pnp.soundboard')!)).toMatchObject({ exclusive: true });
+    await player.play(trommel);
+    expect(Object.keys(player.states).sort()).toEqual([fanfare.key, glocke.key, trommel.key].sort());
+    expect(player.channels).toEqual({ [fanfare.key]: 'music', [glocke.key]: 'sfx', [trommel.key]: 'sfx' });
+    expect(FakeAudio.all.every((a) => !a.paused)).toBe(true);
+    expect(player.music?.key).toBe(fanfare.key);
   });
 
-  it('setzt die Lautstärke für laufende und neue Sounds und merkt sie sich', async () => {
+  it('ein zweiter Musiktitel ersetzt den ersten, Effekte laufen weiter', async () => {
     const { player } = makePlayer();
-    await player.play(glocke);
-    player.setVolume(0.3);
-    expect(FakeAudio.all[0].volume).toBe(0.3);
     await player.play(fanfare);
-    expect(FakeAudio.all[1].volume).toBe(0.3);
-    player.setVolume(7);
-    expect(player.settings.volume).toBe(1);
+    await player.play(glocke);
+    await player.play(hymne);
+    expect(audioOf(fanfare).paused).toBe(true);
+    expect(audioOf(hymne).paused).toBe(false);
+    expect(audioOf(glocke).paused).toBe(false);
+    expect(Object.keys(player.states).sort()).toEqual([glocke.key, hymne.key].sort());
+    expect(player.music?.title).toBe('Hymne');
+  });
+
+  it('verwirft einen noch ladenden Musiktitel, wenn ein anderer startet', async () => {
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    const resolveUrl = vi.fn(async (s: BoardSound) => {
+      if (s.key === fanfare.key) await slow;
+      return s.url!;
+    });
+    const { player } = makePlayer(resolveUrl);
+    const first = player.play(fanfare);
+    expect(player.music?.key).toBe(fanfare.key);
+    await player.play(hymne);
+    release();
+    await first;
+    expect(FakeAudio.all.map((a) => a.src)).toEqual(['/sounds/default/hymne.wav']);
+    expect(player.music?.key).toBe(hymne.key);
+  });
+
+  it('nimmt den Kanal aus typeOf (Typ des Nutzers) bzw. aus den Abspiel-Optionen', async () => {
+    const { player } = makePlayer(undefined, { typeOf: (s) => (s.key === glocke.key ? 'music' : s.type) });
+    await player.play(fanfare);
+    await player.play(glocke);
+    // Glocke gilt hier als Musik und ersetzt die Fanfare
+    expect(player.isActive(fanfare.key)).toBe(false);
+    expect(player.channels[glocke.key]).toBe('music');
+    await player.play(trommel, { channel: 'music', loop: false });
+    expect(player.music?.key).toBe(trommel.key);
+    expect(audioOf(trommel).loop).toBe(false);
+  });
+
+  it('Musik läuft je nach Einstellung in Schleife, Effekte nicht; meldet das Ende', async () => {
+    const onEnded = vi.fn();
+    const { player } = makePlayer(undefined, { onEnded });
+    await player.play(fanfare);
+    await player.play(glocke);
+    expect(audioOf(fanfare).loop).toBe(true);
+    expect(audioOf(glocke).loop).toBe(false);
+    player.setMusicLoop(false);
+    expect(audioOf(fanfare).loop).toBe(false);
+    expect(audioOf(glocke).loop).toBe(false);
+
+    audioOf(fanfare).end();
+    expect(onEnded).toHaveBeenCalledWith(fanfare, 'music');
+    expect(player.music).toBeNull();
+    expect(player.isActive(glocke.key)).toBe(true);
+    // nach dem Stoppen meldet ein verspätetes ended nichts mehr
+    const glockeAudio = audioOf(glocke);
+    player.stop(glocke.key);
+    glockeAudio.end();
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('stoppt Musik, Effekte oder alles', async () => {
+    const { player } = makePlayer();
+    await player.play(fanfare);
+    await player.play(glocke);
+    await player.play(trommel);
+    expect(player.isChannelActive('music') && player.isChannelActive('sfx')).toBe(true);
+
+    player.stopChannel('sfx');
+    expect(Object.keys(player.states)).toEqual([fanfare.key]);
+    expect(audioOf(glocke).paused && audioOf(trommel).paused).toBe(true);
+    expect(player.isChannelActive('sfx')).toBe(false);
+
+    await player.play(glocke);
+    player.stopChannel('music');
+    expect(Object.keys(player.states)).toEqual([glocke.key]);
+    expect(player.music).toBeNull();
+
+    await player.play(fanfare);
+    player.stopAll();
+    expect(player.states).toEqual({});
+    expect(player.channels).toEqual({});
+    expect(FakeAudio.all.every((a) => a.paused)).toBe(true);
+  });
+
+  it('regelt Gesamt-, Musik- und Effektlautstärke unabhängig und merkt sie sich', async () => {
+    const { player } = makePlayer();
+    expect(player.settings).toEqual({ volume: 0.8, musicVolume: 0.7, sfxVolume: 1, musicLoop: true });
+    await player.play(fanfare);
+    await player.play(glocke);
+    expect(audioOf(fanfare).volume).toBeCloseTo(0.56);
+    expect(audioOf(glocke).volume).toBeCloseTo(0.8);
+
+    player.setVolume('music', 0.5);
+    expect(audioOf(fanfare).volume).toBeCloseTo(0.4);
+    expect(audioOf(glocke).volume).toBeCloseTo(0.8);
+
+    player.setVolume('sfx', 0.25);
+    expect(audioOf(fanfare).volume).toBeCloseTo(0.4);
+    expect(audioOf(glocke).volume).toBeCloseTo(0.2);
+
+    player.setVolume('master', 0.5);
+    expect(audioOf(fanfare).volume).toBeCloseTo(0.25);
+    expect(audioOf(glocke).volume).toBeCloseTo(0.125);
+    await player.play(trommel);
+    expect(audioOf(trommel).volume).toBeCloseTo(0.125);
+
+    player.setVolume('sfx', 7);
+    expect(player.settings.sfxVolume).toBe(1);
+    player.setMusicLoop(false);
     const again = makePlayer().player;
-    expect(again.settings.volume).toBe(1);
+    expect(again.settings).toEqual({ volume: 0.5, musicVolume: 0.5, sfxVolume: 1, musicLoop: false });
+  });
+
+  it('übernimmt die Lautstärke älterer Einstellungen als Gesamtlautstärke und ignoriert Unsinn', () => {
+    localStorage.setItem('pnp.soundboard', JSON.stringify({ volume: 0.3, exclusive: true }));
+    expect(loadSettings()).toEqual({ volume: 0.3, musicVolume: 0.7, sfxVolume: 1, musicLoop: true });
+    localStorage.setItem('pnp.soundboard', JSON.stringify({ volume: 3, musicVolume: 'laut', sfxVolume: -1, musicLoop: 'ja' }));
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
+    localStorage.setItem('pnp.soundboard', '[kaputt');
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
   it('holt für Nutzer-Dateien bei einem Ladefehler einmal eine frische URL', async () => {
@@ -270,5 +397,55 @@ describe('Player', () => {
       FakeAudio.prototype.play = original;
     }
     expect(blocked.errors[glocke.key]).toMatch(/blockiert/);
+  });
+});
+
+describe('Typen der Sounds', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  const glocke = builtinToBoard(builtinSound('glocke', 'Glocke', 'Effekte'));
+  const fanfare = builtinToBoard(builtinSound('fanfare', 'Fanfare', 'Musik'));
+  const datei = fileToBoard(3, { id: 'sb/Regen.mp3', name: 'Regen.mp3', size: 1, mimeType: null, updatedAt: null });
+
+  it('nimmt die Vorgabe: Manifest-Typ, ältere Manifeste und eigene Dateien als Effekt', () => {
+    expect(glocke.type).toBe('sfx');
+    expect(fanfare.type).toBe('music');
+    expect(datei.type).toBe('sfx');
+    const { type: _omitted, ...legacy } = builtinSound('alt', 'Alt', 'Musik');
+    expect(builtinToBoard(legacy as BuiltinSound).type).toBe('sfx');
+  });
+
+  it('merkt sich die Wahl des Nutzers über das Neuladen hinweg, speichert aber nur Abweichungen', () => {
+    const types = createSoundTypes();
+    types.set(datei, 'music');
+    types.set(fanfare, 'sfx');
+    types.set(glocke, 'sfx');
+    expect(types.typeOf(datei)).toBe('music');
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.types')!)).toEqual({ [datei.key]: 'music', [fanfare.key]: 'sfx' });
+
+    const reloaded = createSoundTypes();
+    expect(reloaded.typeOf(datei)).toBe('music');
+    expect(reloaded.typeOf(fanfare)).toBe('sfx');
+    expect(reloaded.typeOf(glocke)).toBe('sfx');
+    reloaded.set(fanfare, 'music');
+    reloaded.forget(datei.key);
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.types')!)).toEqual({});
+  });
+
+  it('ignoriert kaputte oder unbekannte gespeicherte Typen', () => {
+    localStorage.setItem('pnp.soundboard.types', JSON.stringify({ [datei.key]: 'ambience', [glocke.key]: 'music' }));
+    const types = createSoundTypes();
+    expect(types.typeOf(datei)).toBe('sfx');
+    expect(types.typeOf(glocke)).toBe('music');
+    localStorage.setItem('pnp.soundboard.types', 'nicht json');
+    expect(createSoundTypes().typeOf(glocke)).toBe('sfx');
+  });
+
+  it('findet die Kachel einer hochgeladenen Datei über die ID oder den Namen', () => {
+    const sounds = [datei, fileToBoard(3, { id: 'drive-123', name: 'Wind.ogg', size: 1, mimeType: null, updatedAt: null })];
+    expect(uploadedSound(sounds, { name: 'Regen.mp3', fileId: 'sb/Regen.mp3' })).toBe(datei);
+    expect(uploadedSound(sounds, { name: 'Wind.ogg', fileId: null })?.id).toBe('drive-123');
+    expect(uploadedSound(sounds, { name: 'Fehlt.mp3', fileId: null })).toBeUndefined();
   });
 });

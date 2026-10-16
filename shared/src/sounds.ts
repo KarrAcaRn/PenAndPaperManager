@@ -13,6 +13,16 @@ export const MAX_SOUND_LICENSE_LENGTH = 300;
 export const SOUND_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 /**
+ * Art eines Sounds und damit der Kanal, auf dem er läuft: `sfx` (Effekt, mehrere gleichzeitig) oder `music`
+ * (Hintergrundmusik, immer nur ein Titel). Die Referenz kennt nur diese beiden; „Ambience“ gibt es dort nicht.
+ */
+export const SOUND_TYPES = ['sfx', 'music'] as const;
+export type SoundType = (typeof SOUND_TYPES)[number];
+/** Gilt für Sounds ohne Angabe (ältere Manifeste, Dateien aus dem eigenen Speicher) */
+export const DEFAULT_SOUND_TYPE: SoundType = 'sfx';
+export const isSoundType = (value: unknown): value is SoundType => SOUND_TYPES.includes(value as SoundType);
+
+/**
  * Gemeinsame Form aller Sounds im Soundboard. `source` ist `builtin` für die Standardbibliothek,
  * für Nutzer-Dateien die Kennung des Storages. `url` fehlt, wenn sie erst geholt werden muss
  * (kurzlebige Playback-URL eines Storages).
@@ -30,6 +40,8 @@ export interface BuiltinSound extends SoundEntry {
   url: string;
   /** z.B. „Musik“ oder „Effekte“ */
   category: string;
+  /** Vorgabe des Betreibers; im Soundboard kann jeder Nutzer das für sich ändern */
+  type: SoundType;
   /** Dauer in Sekunden, null wenn im Manifest nicht angegeben */
   durationSec: number | null;
   tags: string[];

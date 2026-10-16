@@ -9,11 +9,15 @@ import {
   MAX_SOUND_TAG_LENGTH,
   MAX_SOUND_TAGS,
   MAX_SOUND_TITLE_LENGTH,
+  DEFAULT_SOUND_TYPE,
   SOUND_ID_PATTERN,
+  SOUND_TYPES,
   audioExtension,
   hasControlChars,
   hasVisibleText,
+  isSoundType,
   type BuiltinSound,
+  type SoundType,
 } from '@pnp/shared';
 
 // Standardbibliothek des Betreibers: Audio-Dateien plus Manifest `sounds.json` in einem Ordner, der nur auf dem
@@ -29,6 +33,8 @@ export interface SoundManifestEntry {
   title: string;
   category: string;
   file: string;
+  /** fehlt die Angabe im Manifest: Effekt */
+  type: SoundType;
   durationSec: number | null;
   tags: string[];
   license: string | null;
@@ -36,7 +42,7 @@ export interface SoundManifestEntry {
 
 export class SoundManifestError extends Error {}
 
-const KNOWN_FIELDS = new Set(['id', 'title', 'category', 'file', 'durationSec', 'tags', 'license']);
+const KNOWN_FIELDS = new Set(['id', 'title', 'category', 'file', 'type', 'durationSec', 'tags', 'license']);
 const RESERVED_URL_CHARS = /[;?:@&=+$,#]/;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -93,6 +99,12 @@ export function parseSoundManifest(raw: unknown, exists: (file: string) => boole
     const file = filePath(entry, where);
     if (!exists(file)) throw new SoundManifestError(`${where}: Datei ${file} nicht gefunden`);
 
+    let type: SoundType = DEFAULT_SOUND_TYPE;
+    if (entry.type !== undefined && entry.type !== null) {
+      if (!isSoundType(entry.type)) throw new SoundManifestError(`${where}: „type“ muss ${SOUND_TYPES.join(' oder ')} sein`);
+      type = entry.type;
+    }
+
     let durationSec: number | null = null;
     if (entry.durationSec !== undefined && entry.durationSec !== null) {
       if (typeof entry.durationSec !== 'number' || !Number.isFinite(entry.durationSec) || entry.durationSec <= 0) {
@@ -115,6 +127,7 @@ export function parseSoundManifest(raw: unknown, exists: (file: string) => boole
       title: text(entry, 'title', MAX_SOUND_TITLE_LENGTH, where),
       category: text(entry, 'category', MAX_SOUND_CATEGORY_LENGTH, where),
       file,
+      type,
       durationSec,
       tags,
       license,
@@ -168,6 +181,7 @@ export function toBuiltinSound(entry: SoundManifestEntry, baseUrl: string): Buil
     title: entry.title,
     url: baseUrl + entry.file.split('/').map(encodeURIComponent).join('/'),
     category: entry.category,
+    type: entry.type,
     durationSec: entry.durationSec,
     tags: entry.tags,
     license: entry.license,

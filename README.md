@@ -105,8 +105,17 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
   gibt es nur die Standard-Sounds (`GET /api/sounds/builtin` steht deshalb in `PUBLIC_API_PATHS`), mit Login
   zusätzlich je verbundenem Speicher einen Abschnitt.
 - Suche nach Titel, Filter nach Quelle (Standard / Speicher) und Kategorie (nur Standard-Sounds). Klick auf eine
-  Kachel spielt ab bzw. stoppt; Lautstärke und „mehrere gleichzeitig“ oder exklusiv merkt sich der Browser
-  (`localStorage`, `lib/soundPlayer.svelte.ts`).
+  Kachel spielt ab bzw. stoppt.
+- Zwei Kanäle wie im Referenz-Soundboard (`lib/soundPlayer.svelte.ts`): **Hintergrundmusik** – immer nur ein Titel,
+  ein neuer ersetzt den laufenden (harter Wechsel), auf Wunsch in Schleife; **Effekte** – beliebig viele
+  gleichzeitig, auch über der Musik. Regler für Gesamt-, Musik- und Effektlautstärke (Sound = Gesamt × Kanal),
+  „Musik stoppen“, „Effekte stoppen“, „Alle stoppen“ und eine Anzeige des laufenden Musiktitels. Reiter „Alle /
+  Hintergrundmusik / Effekte“ filtern die Kacheln.
+- Typ je Sound (`sfx` | `music`): Vorgabe aus dem Manifest (`type`), eigene Dateien sind zunächst Effekte. Jede
+  Kachel hat eine Typ-Auswahl, beim Upload wählt man den Typ für die neuen Dateien. Der Browser merkt sich
+  Lautstärken und Schleife (`localStorage` `pnp.soundboard`; ältere Einstellungen: `volume` gilt als
+  Gesamtlautstärke) sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe,
+  Schlüssel = Kachel-`key`).
 - Nutzer-Dateien holen ihre Playback-URL erst beim Abspielen, behalten sie bis 30 s vor Ablauf und holen bei einem
   Ladefehler einmal eine neue (`createPlaybackUrlCache` in `lib/soundboard.ts`).
 - Upload per Dateiauswahl oder Drag-and-drop in den gewählten Ziel-Speicher: Upload-URL vom Server holen, dann
@@ -231,7 +240,7 @@ Standardbibliothek lädt die Web-App nichts hoch – sie wird nur auf dem Server
   {
     "version": 1,
     "sounds": [
-      { "id": "glocke", "title": "Glocke", "category": "Effekte", "file": "effekte/glocke.wav",
+      { "id": "glocke", "title": "Glocke", "category": "Effekte", "file": "effekte/glocke.wav", "type": "sfx",
         "durationSec": 2, "tags": ["Signal"], "license": "CC0 1.0, Quelle: …" }
     ]
   }
@@ -239,7 +248,8 @@ Standardbibliothek lädt die Web-App nichts hoch – sie wird nur auf dem Server
 
   Pflicht sind `id` (eindeutig, nur `a–z`, `0–9`, `-`, `_`; nach dem Veröffentlichen nicht mehr ändern, Nutzer
   können sich darauf beziehen), `title`, `category` (z.B. „Musik“, „Effekte“) und `file` (ohne `; ? : @ & = + $ , #`
-  im Namen). Optional: `durationSec` (Sekunden), `tags` (höchstens 10) und `license` (Lizenz und Quelle – bei
+  im Namen). Optional: `type` (`sfx` = Effekt, `music` = Hintergrundmusik; ohne Angabe `sfx` – im Soundboard
+  kann jeder Nutzer das für sich umstellen), `durationSec` (Sekunden), `tags` (höchstens 10) und `license` (Lizenz und Quelle – bei
   fremden Dateien immer angeben; nur Dateien aufnehmen, die öffentlich weitergegeben werden dürfen, das Repository
   ist öffentlich).
 - Prüfung: Der Server prüft das Manifest beim Start (Aufbau, Längen, doppelte IDs, Pfade nur innerhalb des Ordners –
@@ -248,7 +258,7 @@ Standardbibliothek lädt die Web-App nichts hoch – sie wird nur auf dem Server
   nächsten Abruf; ist die neue Fassung fehlerhaft oder gelöscht, bleibt die alte Liste aktiv und der Fehler steht im
   Server-Log (der Server versucht es bei jedem Abruf erneut, eine nachgereichte Datei wirkt also sofort).
 - Auslieferung: `GET /api/sounds/builtin` liefert `{ sounds: [...] }` im gemeinsamen Soundboard-Format
-  (`source: 'builtin'`, `id`, `title`, `url`, dazu `category`, `durationSec`, `tags`, `license`, `mimeType`;
+  (`source: 'builtin'`, `id`, `title`, `url`, dazu `category`, `type`, `durationSec`, `tags`, `license`, `mimeType`;
   Typen in `shared/src/sounds.ts`). Die Dateien selbst liefert der Server unter `/sounds/default/…` statisch aus –
   nur die im Manifest eingetragenen, mit `Cache-Control: max-age` ein Tag und Teilabrufen für das Spulen. Eine Datei
   unter gleichem Namen zu ersetzen wirkt deshalb erst nach bis zu einem Tag – bei echten Änderungen lieber einen

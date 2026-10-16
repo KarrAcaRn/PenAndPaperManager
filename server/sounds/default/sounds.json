@@ -6,6 +6,7 @@
       "title": "Kurze Fanfare",
       "category": "Musik",
       "file": "musik/fanfare.wav",
+      "type": "music",
       "durationSec": 1.5,
       "tags": ["Sieg", "Auftakt"],
       "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"
@@ -15,6 +16,7 @@
       "title": "Glocke",
       "category": "Effekte",
       "file": "effekte/glocke.wav",
+      "type": "sfx",
       "durationSec": 2,
       "tags": ["Signal", "Stadt"],
       "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"
@@ -24,6 +26,7 @@
       "title": "Trommelwirbel",
       "category": "Effekte",
       "file": "effekte/trommelwirbel.wav",
+      "type": "sfx",
       "durationSec": 1.5,
       "tags": ["Spannung"],
       "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"

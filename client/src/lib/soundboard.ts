@@ -1,11 +1,13 @@
 import {
   AUDIO_EXTENSIONS,
   AUDIO_MIME_TYPES,
+  DEFAULT_SOUND_TYPE,
   MAX_STORAGE_UPLOAD_BYTES,
   audioExtension,
   uploadMatchesAudio,
   type BuiltinSound,
   type PlaybackUrl,
+  type SoundType,
   type StorageFile,
 } from '@pnp/shared';
 import { ApiFailure } from './api.ts';
@@ -24,6 +26,8 @@ export interface BoardSound {
   title: string;
   /** nur Standard-Sounds haben Kategorien */
   category: string | null;
+  /** Vorgabe für den Typ (Manifest bzw. Effekt); der Nutzer kann ihn ändern, siehe `createSoundTypes` */
+  type: SoundType;
   /** feste URL (Standard-Sounds); Nutzer-Dateien holen ihre URL erst bei Bedarf */
   url: string | null;
   /** Nutzer-Dateien dürfen gelöscht werden, Standard-Sounds nicht */
@@ -36,6 +40,7 @@ export const builtinToBoard = (sound: BuiltinSound): BoardSound => ({
   id: sound.id,
   title: sound.title,
   category: sound.category,
+  type: sound.type ?? DEFAULT_SOUND_TYPE,
   url: sound.url,
   deletable: false,
 });
@@ -52,9 +57,21 @@ export const fileToBoard = (cid: number, file: StorageFile): BoardSound => ({
   id: file.id,
   title: fileTitle(file.name),
   category: null,
+  type: DEFAULT_SOUND_TYPE,
   url: null,
   deletable: true,
 });
+
+export const SOUND_TYPE_LABELS: Record<SoundType, string> = { music: 'Musik', sfx: 'Effekt' };
+
+/**
+ * Die Kachel einer gerade hochgeladenen Datei in der neu geladenen Liste: über die Datei-ID, wenn der Anbieter sie
+ * vorab genannt hat (S3), sonst über den Dateinamen (Google Drive vergibt die ID erst beim Upload).
+ */
+export function uploadedSound(sounds: readonly BoardSound[], upload: { name: string; fileId: string | null }): BoardSound | undefined {
+  if (upload.fileId !== null) return sounds.find((s) => s.id === upload.fileId);
+  return sounds.find((s) => s.title === fileTitle(upload.name));
+}
 
 const normalize = (text: string) => text.toLocaleLowerCase('de').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 

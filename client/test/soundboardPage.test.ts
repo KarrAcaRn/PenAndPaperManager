@@ -83,6 +83,110 @@ describe('Soundboard ohne Login', () => {
   });
 });
 
+describe('Soundboard: Musik und Effekte', () => {
+  const nowPlaying = () => screen.getByRole('status');
+  const audioFor = (name: string) => [...(play.mock.contexts as HTMLAudioElement[])].reverse().find((a) => a.src.endsWith(`/${name}.wav`))!;
+
+  beforeEach(() => {
+    api.builtinSounds.mockResolvedValue({ sounds: [...BUILTIN, builtinSound('hymne', 'Hymne', 'Musik')] });
+  });
+
+  it('spielt Musik und Effekte gleichzeitig, ein zweiter Musiktitel ersetzt den ersten', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: /Glocke/ });
+    expect(nowPlaying().textContent).toMatch(/Keine Musik/);
+
+    await user.click(tile('Fanfare'));
+    await user.click(tile('Glocke'));
+    await waitFor(() => expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true'));
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('true');
+    expect(nowPlaying().textContent).toMatch(/Läuft: Fanfare/);
+
+    await user.click(tile('Hymne'));
+    await waitFor(() => expect(nowPlaying().textContent).toMatch(/Läuft: Hymne/));
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true');
+    expect(audioFor('hymne').loop).toBe(true);
+  });
+
+  it('stoppt Musik, Effekte oder alles getrennt', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: /Glocke/ });
+    const stopMusic = screen.getByRole('button', { name: 'Musik stoppen' }) as HTMLButtonElement;
+    const stopSfx = screen.getByRole('button', { name: 'Effekte stoppen' }) as HTMLButtonElement;
+    expect(stopMusic.disabled && stopSfx.disabled).toBe(true);
+
+    await user.click(tile('Fanfare'));
+    await user.click(tile('Glocke'));
+    await user.click(stopSfx);
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('false');
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('true');
+    await user.click(stopMusic);
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
+    expect(nowPlaying().textContent).toMatch(/Keine Musik/);
+
+    await user.click(tile('Fanfare'));
+    await user.click(tile('Glocke'));
+    await user.click(screen.getByRole('button', { name: 'Alle stoppen' }));
+    expect(screen.queryAllByRole('button', { pressed: true })).toHaveLength(0);
+  });
+
+  it('regelt die Kanäle unabhängig und merkt sich Lautstärken und Schleife', async () => {
+    const { unmount } = render(Soundboard);
+    await screen.findByRole('button', { name: /Glocke/ });
+    await user.click(tile('Fanfare'));
+    await user.click(tile('Glocke'));
+    const slider = (name: string) => screen.getByRole('slider', { name }) as HTMLInputElement;
+    const set = (name: string, value: string) => {
+      slider(name).value = value;
+      slider(name).dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    set('Musik', '0.5');
+    expect(audioFor('fanfare').volume).toBeCloseTo(0.4);
+    expect(audioFor('glocke').volume).toBeCloseTo(0.8);
+    set('Effekte', '0.25');
+    expect(audioFor('glocke').volume).toBeCloseTo(0.2);
+    expect(audioFor('fanfare').volume).toBeCloseTo(0.4);
+    set('Gesamt', '0.5');
+    expect(audioFor('fanfare').volume).toBeCloseTo(0.25);
+    await user.click(screen.getByRole('checkbox', { name: 'Musik wiederholen' }));
+    expect(audioFor('fanfare').loop).toBe(false);
+
+    unmount();
+    render(Soundboard);
+    await screen.findByRole('button', { name: /Glocke/ });
+    expect([slider('Gesamt').value, slider('Musik').value, slider('Effekte').value]).toEqual(['0.5', '0.5', '0.25']);
+    expect((screen.getByRole('checkbox', { name: 'Musik wiederholen' }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('zeigt Musik und Effekte getrennt und lässt den Typ eines Sounds ändern – auch nach dem Neuladen', async () => {
+    const { unmount } = render(Soundboard);
+    await screen.findByRole('button', { name: /Glocke/ });
+    expect((screen.getByRole('combobox', { name: 'Typ von „Glocke“' }) as HTMLSelectElement).value).toBe('sfx');
+    expect((screen.getByRole('combobox', { name: 'Typ von „Fanfare“' }) as HTMLSelectElement).value).toBe('music');
+
+    await user.click(screen.getByRole('tab', { name: 'Hintergrundmusik' }));
+    expect(screen.getByRole('tab', { name: 'Hintergrundmusik' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('button', { name: /Glocke/ })).toBeNull();
+    expect(tile('Fanfare')).toBeTruthy();
+    await user.click(screen.getByRole('tab', { name: 'Effekte' }));
+    expect(screen.queryByRole('button', { name: /Fanfare/ })).toBeNull();
+
+    // Glocke wird Musik: verschwindet aus den Effekten und ersetzt beim Abspielen die laufende Musik
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Typ von „Glocke“' }), 'music');
+    expect(screen.queryByRole('button', { name: /Glocke/ })).toBeNull();
+    await user.click(screen.getByRole('tab', { name: 'Alle' }));
+    await user.click(tile('Fanfare'));
+    await user.click(tile('Glocke'));
+    await waitFor(() => expect(nowPlaying().textContent).toMatch(/Läuft: Glocke/));
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
+
+    unmount();
+    render(Soundboard);
+    expect(((await screen.findByRole('combobox', { name: 'Typ von „Glocke“' })) as HTMLSelectElement).value).toBe('music');
+  });
+});
+
 describe('Soundboard mit Login', () => {
   beforeEach(() => signIn(PLAYER));
 
@@ -136,6 +240,24 @@ describe('Soundboard mit Login', () => {
     expect(await screen.findByText('hochgeladen')).toBeTruthy();
     await screen.findByRole('button', { name: 'neu' });
     expect(api.storageFiles).toHaveBeenCalledTimes(2);
+    expect((screen.getByRole('combobox', { name: 'Typ von „neu“' }) as HTMLSelectElement).value).toBe('sfx');
+  });
+
+  it('ordnet hochgeladene Dateien dem gewählten Typ zu – auch ohne vorab bekannte Datei-ID', async () => {
+    api.storageConnections.mockResolvedValue([connection()]);
+    api.storageFiles
+      .mockResolvedValueOnce({ files: [], nextCursor: null })
+      .mockResolvedValue({ files: [{ ...file('Kampfmusik.mp3'), id: 'drive-1' }], nextCursor: null });
+    api.requestUpload.mockResolvedValue({ ...target, fileId: null });
+    render(Soundboard);
+    await screen.findByText(/Noch keine Sounds/);
+    await user.selectOptions(screen.getByLabelText('Typ'), 'music');
+    await user.upload(screen.getByLabelText(/Dateien wählen/) as HTMLInputElement, new File(['abc'], 'Kampfmusik.mp3', { type: 'audio/mpeg' }));
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    FakeXhr.last!.respond(200);
+    const select = (await screen.findByRole('combobox', { name: 'Typ von „Kampfmusik“' })) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('music'));
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.types')!)).toEqual({ '3:drive-1': 'music' });
   });
 
   it('lehnt Nicht-Audiodateien vor dem Upload ab', async () => {

@@ -1,13 +1,15 @@
-import type { BuiltinSound, StorageConnection } from '@pnp/shared';
+import type { BuiltinSound, SoundType, StorageConnection } from '@pnp/shared';
 
 // Testdaten und Nachbauten fürs Soundboard
 
-export const builtinSound = (id: string, title: string, category: string): BuiltinSound => ({
+/** Typ wie im mitgelieferten Manifest: Kategorie „Musik“ ist Musik, sonst Effekt */
+export const builtinSound = (id: string, title: string, category: string, type: SoundType = category === 'Musik' ? 'music' : 'sfx'): BuiltinSound => ({
   source: 'builtin',
   id,
   title,
   url: `/sounds/default/${id}.wav`,
   category,
+  type,
   durationSec: 1,
   tags: [],
   license: 'CC0',

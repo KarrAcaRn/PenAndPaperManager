@@ -1,34 +1,107 @@
+import type { SoundType } from '@pnp/shared';
 import type { BoardSound } from './soundboard.ts';
 
-// Wiedergabe im Soundboard: je Kachel ein eigenes Audio-Element, damit mehrere Sounds gleichzeitig laufen können.
-// Im exklusiven Modus stoppt ein neuer Sound alle anderen. Lautstärke und Modus merkt sich der Browser.
+// Wiedergabe im Soundboard mit zwei Kanälen wie im Referenz-Soundboard:
+// - Musik: immer nur ein Titel; ein neuer Titel ersetzt den laufenden (harter Wechsel wie in der Referenz),
+//   auf Wunsch in Schleife.
+// - Effekte: beliebig viele gleichzeitig, auch über der Musik.
+// Je Sound ein eigenes Audio-Element; die Lautstärke eines Sounds ist Gesamt- × Kanallautstärke.
+// Lautstärken und Schleife merkt sich der Browser (localStorage), ebenso die vom Nutzer gewählten Typen der Sounds.
+
+/** Kanal = Typ des Sounds */
+export type Channel = SoundType;
+export const CHANNELS: readonly Channel[] = ['music', 'sfx'];
 
 const SETTINGS_KEY = 'pnp.soundboard';
+const TYPES_KEY = 'pnp.soundboard.types';
 
 export interface PlayerSettings {
-  /** 0…1 */
+  /** Gesamtlautstärke 0…1 (hieß schon vor den Kanälen so, alte Einstellungen gelten weiter) */
   volume: number;
-  /** true: nur ein Sound zur Zeit */
-  exclusive: boolean;
+  /** Lautstärke des Musikkanals 0…1 */
+  musicVolume: number;
+  /** Lautstärke des Effektkanals 0…1 */
+  sfxVolume: number;
+  /** Musiktitel in Schleife abspielen */
+  musicLoop: boolean;
 }
 
-const DEFAULT_SETTINGS: PlayerSettings = { volume: 0.8, exclusive: false };
+/** Vorgaben wie in der Referenz: Musik 70 %, Effekte 100 % */
+export const DEFAULT_SETTINGS: PlayerSettings = { volume: 0.8, musicVolume: 0.7, sfxVolume: 1, musicLoop: true };
 
-function loadSettings(): PlayerSettings {
+export type VolumeTarget = 'master' | Channel;
+const VOLUME_FIELD = { master: 'volume', music: 'musicVolume', sfx: 'sfxVolume' } as const;
+
+const isUnit = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= 1;
+
+function readJson(key: string): Record<string, unknown> {
   try {
-    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<PlayerSettings>;
-    return {
-      volume: typeof stored.volume === 'number' && stored.volume >= 0 && stored.volume <= 1 ? stored.volume : DEFAULT_SETTINGS.volume,
-      exclusive: typeof stored.exclusive === 'boolean' ? stored.exclusive : DEFAULT_SETTINGS.exclusive,
-    };
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? '{}');
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return {};
   }
+}
+
+function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ohne localStorage (z.B. privater Modus) gelten die Einstellungen nur bis zum Neuladen
+  }
+}
+
+/** Liest die Einstellungen; ungültige oder fehlende Werte (auch aus älteren Fassungen) bekommen die Vorgabe */
+export function loadSettings(): PlayerSettings {
+  const stored = readJson(SETTINGS_KEY);
+  return {
+    volume: isUnit(stored.volume) ? stored.volume : DEFAULT_SETTINGS.volume,
+    musicVolume: isUnit(stored.musicVolume) ? stored.musicVolume : DEFAULT_SETTINGS.musicVolume,
+    sfxVolume: isUnit(stored.sfxVolume) ? stored.sfxVolume : DEFAULT_SETTINGS.sfxVolume,
+    musicLoop: typeof stored.musicLoop === 'boolean' ? stored.musicLoop : DEFAULT_SETTINGS.musicLoop,
+  };
+}
+
+/**
+ * Typ je Sound, wie ihn der Nutzer gewählt hat (Schlüssel = `BoardSound.key`). Ohne eigene Wahl gilt die Vorgabe
+ * des Sounds (`BoardSound.type`: Manifest bzw. Effekt). Gespeichert werden nur Abweichungen von der Vorgabe.
+ */
+export function createSoundTypes() {
+  const stored = readJson(TYPES_KEY);
+  const overrides = $state<Record<string, Channel>>(
+    Object.fromEntries(Object.entries(stored).filter(([, v]) => v === 'music' || v === 'sfx')) as Record<string, Channel>,
+  );
+  return {
+    typeOf: (sound: BoardSound): Channel => overrides[sound.key] ?? sound.type,
+    set(sound: BoardSound, type: Channel): void {
+      if (type === sound.type) delete overrides[sound.key];
+      else overrides[sound.key] = type;
+      writeJson(TYPES_KEY, overrides);
+    },
+    /** z.B. nach dem Löschen einer Datei */
+    forget(key: string): void {
+      if (!(key in overrides)) return;
+      delete overrides[key];
+      writeJson(TYPES_KEY, overrides);
+    },
+  };
+}
+export type SoundTypes = ReturnType<typeof createSoundTypes>;
+
+export interface PlayOptions {
+  /** Kanal abweichend vom Typ des Sounds */
+  channel?: Channel;
+  /** Schleife abweichend von der Vorgabe (Musik: Einstellung `musicLoop`, Effekte: aus) */
+  loop?: boolean;
 }
 
 export interface PlayerOptions {
   /** URL eines Sounds; für Nutzer-Dateien wird sie bei Bedarf (neu) geholt */
   resolveUrl: (sound: BoardSound, retry: boolean) => Promise<string>;
+  /** Kanal eines Sounds (Standard: `sound.type`), z.B. mit den Typen des Nutzers */
+  typeOf?: (sound: BoardSound) => Channel;
+  /** Ein Sound ist von selbst zu Ende gelaufen (nicht bei Stopp oder Schleife) – z.B. für eine Playlist */
+  onEnded?: (sound: BoardSound, channel: Channel) => void;
   /** für Tests austauschbar */
   createAudio?: () => HTMLAudioElement;
 }
@@ -42,23 +115,29 @@ function mediaErrorMessage(audio: HTMLAudioElement): string {
     : 'Die Datei ließ sich nicht laden – sie ist nicht mehr abrufbar oder das Format wird vom Browser nicht unterstützt.';
 }
 
+const clampUnit = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
 export function createPlayer(options: PlayerOptions) {
   const createAudio = options.createAudio ?? (() => new Audio());
+  const typeOf = options.typeOf ?? ((sound: BoardSound) => sound.type);
   const settings = $state<PlayerSettings>(loadSettings());
   /** Zustand je Kachel (key): lädt, spielt oder Fehlermeldung */
   const states = $state<Record<string, 'loading' | 'playing'>>({});
   const errors = $state<Record<string, string>>({});
+  /** Kanal je laufendem oder ladendem Sound */
+  const channels = $state<Record<string, Channel>>({});
+  /** der Titel im Musikkanal (lädt oder spielt) */
+  let music = $state<BoardSound | null>(null);
   const audios = new Map<string, HTMLAudioElement>();
   /** Zählt Starts je Kachel, damit ein später fertig gewordener alter Start nichts mehr anrichtet */
   const generation = new Map<string, number>();
 
-  const save = () => {
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch {
-      // ohne localStorage (z.B. privater Modus) gelten die Einstellungen nur bis zum Neuladen
-    }
-  };
+  const save = () => writeJson(SETTINGS_KEY, settings);
+  const volumeOf = (channel: Channel) => settings.volume * (channel === 'music' ? settings.musicVolume : settings.sfxVolume);
+
+  function applyVolumes(): void {
+    for (const [key, audio] of audios) audio.volume = volumeOf(channels[key] ?? 'sfx');
+  }
 
   function stop(key: string): void {
     generation.set(key, (generation.get(key) ?? 0) + 1);
@@ -69,29 +148,46 @@ export function createPlayer(options: PlayerOptions) {
       audios.delete(key);
     }
     delete states[key];
+    delete channels[key];
+    if (music?.key === key) music = null;
+  }
+
+  const keysIn = (channel: Channel) => Object.keys(channels).filter((key) => channels[key] === channel);
+
+  function stopChannel(channel: Channel): void {
+    for (const key of keysIn(channel)) stop(key);
   }
 
   function stopAll(): void {
-    for (const key of new Set([...audios.keys(), ...Object.keys(states)])) stop(key);
+    for (const key of new Set([...audios.keys(), ...Object.keys(states), ...Object.keys(channels)])) stop(key);
   }
 
-  async function play(sound: BoardSound): Promise<void> {
-    if (settings.exclusive) stopAll();
-    else stop(sound.key);
+  async function play(sound: BoardSound, playOptions: PlayOptions = {}): Promise<void> {
+    const channel = playOptions.channel ?? typeOf(sound);
+    stop(sound.key);
+    // Musik: ein neuer Titel ersetzt den laufenden
+    if (channel === 'music') stopChannel('music');
     const gen = (generation.get(sound.key) ?? 0) + 1;
     generation.set(sound.key, gen);
     const current = () => generation.get(sound.key) === gen;
     delete errors[sound.key];
     states[sound.key] = 'loading';
+    channels[sound.key] = channel;
+    if (channel === 'music') music = sound;
 
     const start = async (retry: boolean): Promise<void> => {
       const url = await options.resolveUrl(sound, retry);
       if (!current()) return;
       const audio = createAudio();
       audios.set(sound.key, audio);
-      audio.volume = settings.volume;
+      audio.volume = volumeOf(channel);
+      audio.loop = playOptions.loop ?? (channel === 'music' ? settings.musicLoop : false);
       audio.preload = 'auto';
-      audio.onended = () => current() && stop(sound.key);
+      audio.onended = () => {
+        if (!current() || audios.get(sound.key) !== audio) return;
+        stop(sound.key);
+        options.onEnded?.(sound, channel);
+      };
       audio.onerror = () => {
         if (!current() || audios.get(sound.key) !== audio) return;
         audios.delete(sound.key);
@@ -130,24 +226,40 @@ export function createPlayer(options: PlayerOptions) {
     settings,
     states,
     errors,
+    /** Kanal je laufendem oder ladendem Sound */
+    channels,
+    /** der aktuelle Musiktitel (lädt oder spielt), sonst null */
+    get music(): BoardSound | null {
+      return music;
+    },
     isActive: (key: string) => key in states,
-    toggle(sound: BoardSound): Promise<void> {
+    /** läuft (oder lädt) etwas auf dem Kanal? */
+    isChannelActive: (channel: Channel) => Object.values(channels).includes(channel),
+    /** tatsächliche Lautstärke eines Kanals (Gesamt × Kanal) */
+    volumeOf,
+    toggle(sound: BoardSound, playOptions?: PlayOptions): Promise<void> {
       if (sound.key in states) {
         stop(sound.key);
         return Promise.resolve();
       }
-      return play(sound);
+      return play(sound, playOptions);
     },
     play,
     stop,
+    stopChannel,
     stopAll,
-    setVolume(volume: number): void {
-      settings.volume = Math.min(1, Math.max(0, volume));
-      for (const audio of audios.values()) audio.volume = settings.volume;
+    setVolume(target: VolumeTarget, volume: number): void {
+      settings[VOLUME_FIELD[target]] = clampUnit(volume);
+      applyVolumes();
       save();
     },
-    setExclusive(exclusive: boolean): void {
-      settings.exclusive = exclusive;
+    /** wirkt auch auf den laufenden Musiktitel */
+    setMusicLoop(loop: boolean): void {
+      settings.musicLoop = loop;
+      for (const key of keysIn('music')) {
+        const audio = audios.get(key);
+        if (audio) audio.loop = loop;
+      }
       save();
     },
     clearError(key: string): void {

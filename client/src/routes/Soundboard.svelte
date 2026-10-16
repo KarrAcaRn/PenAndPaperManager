@@ -5,10 +5,11 @@
   import { session } from '../lib/session.svelte.ts';
   import { createTask } from '../lib/task.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
-  import { createPlayer } from '../lib/soundPlayer.svelte.ts';
+  import { createPlayer, createSoundTypes, type Channel } from '../lib/soundPlayer.svelte.ts';
   import { UploadError, uploadDirect } from '../lib/upload.ts';
   import {
     ACCEPT_AUDIO,
+    SOUND_TYPE_LABELS,
     builtinToBoard,
     categoriesOf,
     checkUploadFile,
@@ -18,6 +19,7 @@
     filterSounds,
     formatBytes,
     groupByCategory,
+    uploadedSound,
     type BoardSound,
   } from '../lib/soundboard.ts';
 
@@ -32,6 +34,10 @@
     id: number;
     name: string;
     cid: number;
+    /** gewählter Typ; wird nach dem Neuladen der Liste der neuen Datei zugeordnet */
+    type: Channel;
+    /** ID der Datei, falls der Anbieter sie vorab nennt (S3) */
+    fileId: string | null;
     progress: number;
     error: string;
     done: boolean;
@@ -44,7 +50,10 @@
   /** '' = alle Quellen, 'builtin' oder die ID einer Verbindung */
   let source = $state('');
   let category = $state('');
+  /** Ansicht: alle Sounds oder nur Musik bzw. nur Effekte */
+  let view = $state<'' | Channel>('');
   let uploadCid = $state<number | null>(null);
+  let uploadType = $state<Channel>('sfx');
   let uploads = $state<UploadEntry[]>([]);
   let dragging = $state(false);
   let deleteError = $state('');
@@ -54,6 +63,7 @@
   const connectionsTask = createTask();
 
   const urls = createPlaybackUrlCache((cid, fileId) => api.playbackUrl(cid, fileId));
+  const types = createSoundTypes();
 
   /** 409 heißt: Verbindung getrennt oder Rechte fehlen – dann den gespeicherten Status neu laden */
   function afterStorageError(err: unknown): string {
@@ -62,6 +72,7 @@
   }
 
   const player = createPlayer({
+    typeOf: types.typeOf,
     resolveUrl: async (sound, retry) => {
       if (sound.source === 'builtin') return sound.url!;
       if (retry) urls.invalidate(sound.source, sound.id);
@@ -108,8 +119,15 @@
 
   const showsBuiltin = $derived(source === '' || source === 'builtin');
   const categories = $derived(categoriesOf(builtin));
-  const visibleBuiltin = $derived(filterSounds(builtin, query, category));
+  const ofView = (sounds: BoardSound[]) => (view === '' ? sounds : sounds.filter((s) => types.typeOf(s) === view));
+  const visibleBuiltin = $derived(ofView(filterSounds(builtin, query, category)));
   const visibleConnections = $derived(connections.filter((c) => source === '' || source === String(c.id)));
+  const noMatch = $derived(view === 'music' ? 'Keine Musik in dieser Auswahl.' : view === 'sfx' ? 'Keine Effekte in dieser Auswahl.' : 'Keine Treffer.');
+  const viewTabs: { value: '' | Channel; label: string }[] = [
+    { value: '', label: 'Alle' },
+    { value: 'music', label: 'Hintergrundmusik' },
+    { value: 'sfx', label: 'Effekte' },
+  ];
 
   async function remove(sound: BoardSound): Promise<void> {
     if (sound.source === 'builtin' || !sound.deletable) return;
@@ -119,6 +137,7 @@
     try {
       await api.deleteStorageFile(cid, sound.id);
       player.stop(sound.key);
+      types.forget(sound.key);
       urls.invalidate(cid, sound.id);
       files[cid].sounds = files[cid].sounds.filter((s) => s.key !== sound.key);
     } catch (err) {
@@ -126,8 +145,8 @@
     }
   }
 
-  async function uploadOne(file: File, cid: number): Promise<void> {
-    const entry: UploadEntry = { id: nextUploadId++, name: file.name, cid, progress: 0, error: '', done: false };
+  async function uploadOne(file: File, cid: number, type: Channel): Promise<void> {
+    const entry: UploadEntry = { id: nextUploadId++, name: file.name, cid, type, fileId: null, progress: 0, error: '', done: false };
     uploads.push(entry);
     const live = uploads.find((u) => u.id === entry.id)!;
     const checked = checkUploadFile(file);
@@ -139,6 +158,7 @@
     try {
       for (let attempt = 0; ; attempt++) {
         const target = await api.requestUpload(cid, request);
+        live.fileId = target.fileId;
         try {
           await uploadDirect(target, file, checked.contentType, { onProgress: (p) => (live.progress = p) });
           break;
@@ -156,11 +176,20 @@
 
   async function uploadFiles(list: FileList | File[] | null): Promise<void> {
     const cid = uploadCid;
+    const type = uploadType;
     if (!list || cid === null) return;
     const selected = [...list];
     if (selected.length === 0) return;
-    await Promise.all(selected.map((file) => uploadOne(file, cid)));
-    if (uploads.some((u) => u.cid === cid && u.done)) await loadFiles(cid);
+    const started = nextUploadId;
+    await Promise.all(selected.map((file) => uploadOne(file, cid, type)));
+    const finished = uploads.filter((u) => u.id >= started && u.cid === cid && u.done);
+    if (finished.length === 0) return;
+    await loadFiles(cid);
+    // gewählten Typ den neuen Dateien zuordnen
+    for (const u of finished) {
+      const sound = uploadedSound(files[cid]?.sounds ?? [], u);
+      if (sound) types.set(sound, u.type);
+    }
   }
 
   function onDrop(event: DragEvent): void {
@@ -179,11 +208,22 @@
 
 {#snippet tile(sound: BoardSound)}
   {@const state = player.states[sound.key]}
-  <li class="tile" class:playing={state === 'playing'} class:loading={state === 'loading'}>
+  {@const type = types.typeOf(sound)}
+  <li class="tile" class:music={type === 'music'} class:playing={state === 'playing'} class:loading={state === 'loading'}>
     <button class="play" aria-pressed={state !== undefined} onclick={() => player.toggle(sound)} title={state ? 'Stoppen' : 'Abspielen'}>
-      <span class="icon" aria-hidden="true">{state === 'playing' ? '■' : state === 'loading' ? '…' : '▶'}</span>
+      <span class="icon" aria-hidden="true">{state === 'playing' ? '■' : state === 'loading' ? '…' : type === 'music' ? '♪' : '▶'}</span>
       <span class="name">{sound.title}</span>
     </button>
+    <select
+      class="type"
+      aria-label="Typ von „{sound.title}“"
+      title="Typ: Musik läuft allein und ersetzt die laufende Musik, Effekte laufen gleichzeitig"
+      value={type}
+      onchange={(e) => types.set(sound, (e.currentTarget as HTMLSelectElement).value as Channel)}
+    >
+      <option value="sfx">{SOUND_TYPE_LABELS.sfx}</option>
+      <option value="music">{SOUND_TYPE_LABELS.music}</option>
+    </select>
     {#if sound.deletable}
       <button class="delete danger" aria-label="„{sound.title}“ löschen" title="Löschen" onclick={() => remove(sound)}>✕</button>
     {/if}
@@ -227,22 +267,52 @@
         </select>
       </label>
     {/if}
-    <label>
-      Lautstärke
+  </div>
+
+  {#snippet volume(target: 'master' | Channel, label: string)}
+    <label class="volume">
+      {label}
       <input
         type="range"
         min="0"
         max="1"
         step="0.05"
-        value={player.settings.volume}
-        oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
+        value={target === 'master' ? player.settings.volume : target === 'music' ? player.settings.musicVolume : player.settings.sfxVolume}
+        oninput={(e) => player.setVolume(target, Number((e.currentTarget as HTMLInputElement).value))}
       />
     </label>
-    <label class="inline">
-      <input type="checkbox" checked={!player.settings.exclusive} onchange={(e) => player.setExclusive(!(e.currentTarget as HTMLInputElement).checked)} />
-      Mehrere Sounds gleichzeitig
-    </label>
-    <button onclick={() => player.stopAll()} disabled={Object.keys(player.states).length === 0}>Alle stoppen</button>
+  {/snippet}
+
+  <section class="mixer card" aria-label="Wiedergabe">
+    <div class="row">
+      {@render volume('master', 'Gesamt')}
+      {@render volume('music', 'Musik')}
+      {@render volume('sfx', 'Effekte')}
+      <label class="inline">
+        <input type="checkbox" checked={player.settings.musicLoop} onchange={(e) => player.setMusicLoop((e.currentTarget as HTMLInputElement).checked)} />
+        Musik wiederholen
+      </label>
+    </div>
+    <div class="row">
+      <p class="now-playing" role="status">
+        {#if player.music}
+          <span aria-hidden="true">♪</span>
+          {player.states[player.music.key] === 'loading' ? 'Lädt' : 'Läuft'}: <strong>{player.music.title}</strong>
+        {:else}
+          <span class="muted">Keine Musik</span>
+        {/if}
+      </p>
+      <span class="spacer"></span>
+      <button onclick={() => player.stopChannel('music')} disabled={!player.isChannelActive('music')}>Musik stoppen</button>
+      <button onclick={() => player.stopChannel('sfx')} disabled={!player.isChannelActive('sfx')}>Effekte stoppen</button>
+      <button onclick={() => player.stopAll()} disabled={Object.keys(player.states).length === 0}>Alle stoppen</button>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Art der Sounds">
+    {#each viewTabs as tab (tab.value)}
+      <button role="tab" class:active={view === tab.value} aria-selected={view === tab.value} onclick={() => (view = tab.value)}>{tab.label}</button>
+    {/each}
   </div>
 
   {#if !session.user}
@@ -273,6 +343,13 @@
             {#each connections as c (c.id)}
               <option value={c.id} disabled={c.status === 'disconnected'}>{c.displayName} ({STORAGE_PROVIDER_LABELS[c.providerType]})</option>
             {/each}
+          </select>
+        </label>
+        <label>
+          Typ
+          <select bind:value={uploadType}>
+            <option value="sfx">{SOUND_TYPE_LABELS.sfx}</option>
+            <option value="music">{SOUND_TYPE_LABELS.music}</option>
           </select>
         </label>
         <label class="button primary file">
@@ -314,7 +391,7 @@
       {:else if builtinTask.busy}
         <p class="muted">Lade …</p>
       {:else if visibleBuiltin.length === 0}
-        <p class="muted">{builtin.length === 0 ? 'Keine Standard-Sounds vorhanden.' : 'Keine Treffer.'}</p>
+        <p class="muted">{builtin.length === 0 ? 'Keine Standard-Sounds vorhanden.' : noMatch}</p>
       {:else}
         {#each groupByCategory(visibleBuiltin) as group (group.category)}
           <h3>{group.category}</h3>
@@ -328,7 +405,7 @@
 
   {#each visibleConnections as c (c.id)}
     {@const list = files[c.id]}
-    {@const visible = filterSounds(list?.sounds ?? [], query)}
+    {@const visible = ofView(filterSounds(list?.sounds ?? [], query))}
     <section aria-labelledby="sb-{c.id}">
       <div class="row">
         <h2 id="sb-{c.id}">{c.displayName}</h2>
@@ -349,7 +426,7 @@
       {#if !list || (list.loading && list.sounds.length === 0)}
         <p class="muted">Lade …</p>
       {:else if visible.length === 0 && !list.error}
-        <p class="muted">{list.sounds.length === 0 ? 'Noch keine Sounds in diesem Speicher.' : 'Keine Treffer.'}</p>
+        <p class="muted">{list.sounds.length === 0 ? 'Noch keine Sounds in diesem Speicher.' : noMatch}</p>
       {:else}
         <ul class="tiles">
           {#each visible as sound (sound.key)}{@render tile(sound)}{/each}
@@ -387,4 +464,12 @@
   .tile .name { font-weight: 600; overflow-wrap: anywhere; }
   .tile .delete { position: absolute; top: 0.25rem; right: 0.25rem; padding: 0.1rem 0.4rem; font-size: 0.8em; }
   .tile .error { font-size: 0.85em; }
+  .tile .type { width: 100%; margin: 0.25rem 0 0; padding: 0.1rem 0.3rem; font-size: 0.8em; }
+  .tile.music:not(.playing) .play { background: var(--color-surface-muted); }
+  .mixer { margin-bottom: 1rem; }
+  .mixer label { margin-bottom: 0; }
+  .mixer .volume { flex: 1; min-width: 8rem; }
+  .now-playing { margin: 0; }
+  .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .tabs button.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
 </style>
