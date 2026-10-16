@@ -1,6 +1,7 @@
 import { STORAGE_PROVIDER_LABELS, type StorageConfig, type StorageProviderInfo, type StorageProviderType } from '@pnp/shared';
 import { badRequest } from '../errors.ts';
 import type { StorageProviderDefinition } from './provider.ts';
+import { s3Provider } from './s3.ts';
 
 /** Liefert zu einem providerType die Implementierung. */
 export class StorageProviderRegistry {
@@ -33,9 +34,9 @@ export class StorageProviderRegistry {
 }
 
 /**
- * Die Anbieter dieses Servers. S3 und Google Drive werden hier eingetragen, sobald ihre Adapter existieren
- * (z.B. `registry.register(s3Provider)`); bis dahin ist die Liste leer.
+ * Die Anbieter dieses Servers. Google Drive wird hier eingetragen, sobald sein Adapter existiert.
+ * `S3_ALLOW_PRIVATE_ENDPOINTS=1` erlaubt S3-Endpoints im lokalen Netz (selbst gehostetes MinIO).
  */
-export function defaultStorageProviders(): StorageProviderRegistry {
-  return new StorageProviderRegistry();
+export function defaultStorageProviders(env: NodeJS.ProcessEnv = process.env): StorageProviderRegistry {
+  return new StorageProviderRegistry().register(s3Provider({ allowPrivateEndpoints: env.S3_ALLOW_PRIVATE_ENDPOINTS === '1' }));
 }

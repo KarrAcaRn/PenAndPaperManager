@@ -21,7 +21,8 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
 `ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen),
 `APP_SECRET_KEY` (32 Bytes Base64 zum Verschlüsseln gespeicherter Zugangsdaten; fehlt er, wird `data/secret.key`
-angelegt – zusammen mit der Datenbank, aber getrennt von ihr sichern).
+angelegt – zusammen mit der Datenbank, aber getrennt von ihr sichern),
+`S3_ALLOW_PRIVATE_ENDPOINTS=1` (S3-Endpoints im lokalen Netz und per http erlauben, z.B. eigenes MinIO; sonst gesperrt).
 
 ## Regeln
 

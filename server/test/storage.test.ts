@@ -96,8 +96,8 @@ describe('Speicher-Verbindungen', () => {
 
   it('listet die verfügbaren Anbieter', async () => {
     expect((await alice.get('/api/storage/providers')).body).toEqual([{ type: 's3', label: 'S3 (oder kompatibel)', manualSetup: true }]);
-    // Noch sind keine echten Adapter eingetragen
-    expect(defaultStorageProviders().list()).toEqual([]);
+    // Eingebaut ist bisher der S3-Adapter
+    expect(defaultStorageProviders({}).list()).toEqual([{ type: 's3', label: 'S3 (oder kompatibel)', manualSetup: true }]);
   });
 
   it('legt eine Verbindung nach erfolgreicher Prüfung an und liefert nie die Zugangsdaten', async () => {

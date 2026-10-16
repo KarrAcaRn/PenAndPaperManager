@@ -1,6 +1,6 @@
 # Soundboard: externe Speicher der Nutzer
 
-Stand: Fundament (Interface, Datenmodell, Registry, API). Die Adapter für S3 und Google Drive sowie die
+Stand: Fundament (Interface, Datenmodell, Registry, API) und S3-Adapter. Der Google-Drive-Adapter und die
 Oberfläche bauen darauf auf.
 
 ## Ziel
@@ -22,6 +22,7 @@ Browser ──(3) GET/PUT direkt mit der signierten URL────────�
 | `shared/src/storage.ts` | API-Typen (`StorageConnection`, `StorageFile`, `PlaybackUrl`, `UploadTarget`, …), Anbieter-Typen, Audio-Endungen/MIME-Types, Limits |
 | `server/src/storage/provider.ts` | Interface `StorageProvider`, Bauplan `StorageProviderDefinition`, `StorageProviderError` |
 | `server/src/storage/registry.ts` | `StorageProviderRegistry` (providerType → Implementierung), `defaultStorageProviders()` |
+| `server/src/storage/s3.ts` | S3-Adapter (`s3Provider`, `S3StorageProvider`), siehe [S3](#s3-und-kompatible-dienste) |
 | `server/src/storage/connections.ts` | Datenmodell UserStorageConnection: anlegen (`connect`/`createConnection`), lesen, löschen, Status, `withProvider` |
 | `server/src/secrets.ts` | Verschlüsselung der Zugangsdaten (AES-256-GCM) und Schlüsselverwaltung |
 | `server/src/routes/storage.ts` | HTTP-Endpunkte |
@@ -124,21 +125,7 @@ Ablauf Wiedergabe: Playback-URL holen, `<audio src>` setzen, nach `expiresAt` (b
   Drive: Scope `drive.file`).
 - **Kein Ausbruch aus dem Ordner:** Ordner-Parameter prüft der Server, Datei-IDs prüft der Anbieter (s.o.).
 - **CORS beim Anbieter:** Weil der Browser direkt mit dem Anbieter spricht, muss der Bucket Anfragen von unserer
-  Seite erlauben. Für S3 (Beispiel, Origin anpassen; Details liefert der S3-Adapter):
-
-  ```json
-  [
-    {
-      "AllowedOrigins": ["https://pnp.example.org"],
-      "AllowedMethods": ["GET", "HEAD", "PUT", "POST"],
-      "AllowedHeaders": ["Content-Type", "Content-Length"],
-      "ExposeHeaders": ["ETag"],
-      "MaxAgeSeconds": 3600
-    }
-  ]
-  ```
-
-  Reines Abspielen über `<audio src>` braucht kein CORS; Fortschrittsanzeige beim Upload und `fetch` schon.
+  Seite erlauben. Für S3 siehe [CORS-Konfiguration](#cors-konfiguration-des-buckets).
   Google Drive erlaubt Resumable-Uploads aus dem Browser, wenn die Session mit passendem `Origin` angelegt wurde.
 - **Content-Security-Policy:** Falls die Seite später eine CSP bekommt, müssen `media-src` und `connect-src` die
   Anbieter-Domains erlauben.
@@ -157,5 +144,113 @@ Die ursprüngliche Aufgabenbeschreibung war abgeschnitten; getroffene Annahmen:
 6. Die Standardbibliothek des Betreibers ist nicht Teil dieses Modells (eigener Manifest-Endpunkt).
 7. Eine Datei zählt als Audio, wenn Endung **oder** MIME-Type passt (Drive-Dateien haben nicht immer eine Endung);
    beim Upload müssen beide passen.
-8. Solange kein echter Adapter registriert ist, liefert `GET /api/storage/providers` eine leere Liste und das
-   Anlegen antwortet mit „Anbieter … ist auf diesem Server nicht verfügbar“.
+8. Solange kein Google-Drive-Adapter registriert ist, liefert `GET /api/storage/providers` nur S3, und Drive-Verbindungen
+   antworten mit „Anbieter … ist auf diesem Server nicht verfügbar“.
+
+## S3 und kompatible Dienste
+
+Adapter: `server/src/storage/s3.ts`, registriert unter `s3`. Funktioniert mit AWS S3 und S3-kompatiblen Diensten
+(MinIO, Wasabi, Cloudflare R2, Backblaze B2, …). Tests: `server/test/s3.test.ts` (gemockter Client),
+`server/test/s3.minio.test.ts` (gegen echten Dienst, nur mit `S3_TEST_ENDPOINT`, Anleitung im Kopf der Datei).
+
+### Eingaben
+
+| Feld | Wo | Bedeutung |
+| --- | --- | --- |
+| `config.bucket` | config | Bucket-Name (3–63 Zeichen, Kleinbuchstaben, Ziffern, `.`, `-`) |
+| `config.region` | config | z.B. `eu-central-1`; leer = `us-east-1`; Cloudflare R2: `auto` |
+| `config.endpoint` | config | optional, nur für kompatible Dienste, z.B. `https://<konto>.r2.cloudflarestorage.com`, `https://s3.eu-central-1.wasabisys.com`. Nur Protokoll + Host (+ Port), Bucket nicht in die URL. Mit Endpoint wird Pfad-Adressierung (`<endpoint>/<bucket>/<key>`) genutzt. |
+| `config.prefix` | config | optional, Ordner im Bucket (z.B. `soundboard`); `/` am Rand wird entfernt |
+| `credentials.accessKeyId` | credentials (verschlüsselt) | Access Key ID |
+| `credentials.secretAccessKey` | credentials (verschlüsselt) | Secret Access Key |
+
+Endpoints im lokalen/privaten Netz (`localhost`, `10.x`, `192.168.x`, `169.254.x`, einteilige Hostnamen, …) und
+`http://` lehnt der Server ab, damit niemand über ihn interne Dienste ansprechen kann (SSRF). Wer ein eigenes MinIO
+im LAN nutzen will, startet den Server mit `S3_ALLOW_PRIVATE_ENDPOINTS=1`. Hostnamen, die per DNS auf private
+Adressen zeigen, erkennt die Prüfung nicht – auf öffentlich erreichbaren Servern ausgehenden Verkehr ins LAN
+zusätzlich per Firewall sperren.
+
+### Verhalten
+
+- **validate:** `ListObjectsV2` auf das Prefix (Auflisten, erkennt auch falschen Bucket, falsche Region und
+  ungültige Schlüssel), dann Testdatei `<prefix>/.pnp-zugriffstest-<zufall>.txt` schreiben (`PutObject`),
+  lesen (`HeadObject`) und wieder löschen (`DeleteObject`). Die Meldung nennt die fehlende Berechtigung,
+  z.B. „Zugriff verweigert: Die Zugangsdaten dürfen Dateien hochladen (s3:PutObject) nicht“.
+  Bewusst kein `HeadBucket`: es braucht `s3:ListBucket` ohne Prefix-Bedingung und scheitert daher bei
+  (empfohlenen) Zugangsdaten, die nur für ein Prefix gelten.
+- **listFiles:** alle Audiodateien (Endung mp3/wav/ogg/m4a) unter Prefix/Ordner, **einschließlich Unterordnern**;
+  `name` ist der Pfad relativ zum gelisteten Ordner (`kampf/schwert.ogg`), `id` der volle Objektschlüssel.
+  Cursor ist der zuletzt gelieferte Schlüssel (`StartAfter`), daher haben Seiten genau `limit` Einträge, auch
+  wenn Nicht-Audio-Dateien übersprungen werden. Nach höchstens 5 S3-Anfragen kommt ggf. eine kürzere (auch leere)
+  Seite mit `nextCursor` – der Client lädt dann einfach weiter.
+- **getPlaybackUrl:** prüft per `HeadObject`, dass die Datei existiert, und liefert eine presigned GET-URL,
+  15 Minuten gültig.
+- **upload:** presigned **PUT** (nicht POST – Cloudflare R2 kennt kein presigned POST), 15 Minuten gültig, Ziel
+  `<prefix>/<Dateiname>`. `Content-Type` und `Content-Length` sind mitsigniert: Der Browser muss genau den
+  angemeldeten Typ schicken (Header `Content-Type` aus `headers`), und die Datei muss genau die angemeldete Größe
+  haben (höchstens 50 MB); sonst lehnt S3 den Upload ab. Vorhandene Dateien werden nicht überschrieben (Fehler
+  „gibt es dort schon“ – erst löschen oder umbenennen).
+- **delete:** prüft per `HeadObject` (S3 meldet beim Löschen fehlender Objekte sonst Erfolg) und löscht.
+- **Datei-IDs:** müssen mit dem Prefix beginnen, eine Audio-Endung haben und dürfen keine leeren, `.`- oder
+  `..`-Segmente enthalten; sonst „Datei nicht gefunden“, ohne S3 überhaupt zu fragen.
+- **Zugangsdaten:** werden nur an den S3-Client übergeben (nie Umgebungsvariablen oder `~/.aws` des Servers),
+  nicht geloggt und in keiner Fehlermeldung genannt (SDK-Meldungen werden durch eigene Texte ersetzt).
+  Hinweis für Nutzer: Die **Access Key ID** steht wie bei S3 üblich in jeder signierten URL
+  (`X-Amz-Credential`); der Secret Key nie.
+- Das SDK hängt an PUTs standardmäßig CRC32-Prüfsummen an, die der Browser nicht liefert; der Adapter schaltet
+  das ab (`requestChecksumCalculation: 'WHEN_REQUIRED'`), sonst scheitern Uploads bei R2/MinIO.
+
+### Empfohlene Rechte (AWS IAM)
+
+Eigene Zugangsdaten nur für diesen Zweck anlegen (Bucket `mein-bucket`, Prefix `soundboard`):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::mein-bucket",
+      "Condition": { "StringLike": { "s3:prefix": ["soundboard/*"] } }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::mein-bucket/soundboard/*"
+    }
+  ]
+}
+```
+
+Bei R2 entspricht das einem API-Token „Object Read & Write“, beschränkt auf den Bucket.
+
+### CORS-Konfiguration des Buckets
+
+Der Browser lädt direkt in den Bucket hoch und spielt direkt daraus ab. Damit Uploads (`fetch`/XHR mit `PUT`) und
+Wiedergabe mit Web-Audio funktionieren, muss der Bucket Anfragen von der Adresse unserer Seite erlauben.
+`AllowedOrigins` auf die eigene Adresse setzen (ohne `/` am Ende, mehrere möglich, z.B. auch
+`http://localhost:5173` für die Entwicklung):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://pnp.example.org"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["content-type"],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+- **AWS S3:** Bucket → Berechtigungen → „Cross-Origin Resource Sharing (CORS)“ → JSON einfügen, oder
+  `aws s3api put-bucket-cors --bucket mein-bucket --cors-configuration '{"CORSRules": <obiges Array>}'`.
+- **Cloudflare R2:** Bucket → Einstellungen → CORS-Richtlinie → dasselbe JSON.
+- **Wasabi / Backblaze B2 (S3-API):** per `aws s3api put-bucket-cors … --endpoint-url <Endpoint>`.
+- **MinIO:** kennt keine CORS-Regeln je Bucket; erlaubte Origins serverweit setzen
+  (`MINIO_API_CORS_ALLOW_ORIGIN=https://pnp.example.org`).
+
+Reines Abspielen über `<audio src>` braucht kein CORS; Uploads und `fetch` schon. Fehlt CORS, meldet der Browser
+den Upload nur als „Netzwerkfehler“ – der Verbindungstest auf unserem Server kann das nicht erkennen, weil er
+S3 serverseitig anspricht.

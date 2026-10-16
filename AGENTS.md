@@ -32,7 +32,8 @@ npm run check          # tsc (Server) + svelte-check (Client) – muss fehlerfre
 npm run build && npm start
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`), `APP_SECRET_KEY` (sonst `data/secret.key`).
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`), `APP_SECRET_KEY` (sonst `data/secret.key`),
+`S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben).
 
 ## Konventionen
 
