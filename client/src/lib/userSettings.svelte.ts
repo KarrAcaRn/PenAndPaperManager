@@ -39,19 +39,34 @@ export function setUserSettings(settings: UserSettings): void {
   applyTheme(settings.theme);
 }
 
-export async function loadUserSettings(): Promise<UserSettings> {
-  const settings = await api.settings();
+/**
+ * Jeder Lade-/Speichervorgang bekommt eine laufende Nummer. Eine Antwort wird nur übernommen, wenn seit ihrem
+ * Start nichts Neueres übernommen bzw. zurückgesetzt wurde - sonst setzt z.B. eine späte Antwort nach dem Logout
+ * das Theme des alten Benutzers wieder oder ein früher gestartetes Laden überschreibt gerade Gespeichertes.
+ * Fehlgeschlagene Vorgänge zählen nicht.
+ */
+let counter = 0;
+let applied = 0;
+
+async function fetchAndApply(request: () => Promise<UserSettings>): Promise<UserSettings> {
+  const own = ++counter;
+  const settings = await request();
+  if (own < applied) return userSettings.value;
+  applied = own;
   setUserSettings(settings);
   return settings;
 }
 
-export async function saveUserSettings(changes: Partial<UserSettings>): Promise<UserSettings> {
-  const settings = await api.updateSettings(changes);
-  setUserSettings(settings);
-  return settings;
+export function loadUserSettings(): Promise<UserSettings> {
+  return fetchAndApply(() => api.settings());
 }
 
-/** Nach dem Logout: nichts vom vorherigen Benutzer stehen lassen */
+export function saveUserSettings(changes: Partial<UserSettings>): Promise<UserSettings> {
+  return fetchAndApply(() => api.updateSettings(changes));
+}
+
+/** Nach dem Logout bzw. ohne Session: nichts vom vorherigen Benutzer stehen lassen */
 export function resetUserSettings(): void {
+  applied = ++counter;
   setUserSettings({ ...DEFAULT_USER_SETTINGS });
 }

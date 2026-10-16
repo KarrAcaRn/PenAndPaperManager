@@ -167,4 +167,59 @@ describe('Theme beim Start', () => {
     expect(localStorage.getItem('pnp-theme')).toBeNull();
     expect(userSettings.value).toEqual(DEFAULT_USER_SETTINGS);
   });
+
+  it('übernimmt keine späte Antwort mehr nach dem Logout', async () => {
+    let resolve!: (value: unknown) => void;
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([]);
+    api.settings.mockReturnValue(new Promise((r) => (resolve = r)));
+    await loadSession();
+    api.logout.mockResolvedValue({});
+    await logout();
+    resolve({ theme: 'dark' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem('pnp-theme')).toBeNull();
+    expect(userSettings.value).toEqual(DEFAULT_USER_SETTINGS);
+  });
+
+  it('lässt sich nicht von einem früher gestarteten Laden überschreiben', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([]);
+    api.settings.mockReturnValueOnce(new Promise((r) => (resolveFirst = r))).mockResolvedValue({ theme: 'system' });
+    api.updateSettings.mockResolvedValue({ theme: 'dark' });
+    await loadSession(); // erstes Laden hängt noch
+    render(Settings);
+    await user.click(await screen.findByRole('radio', { name: 'Dunkel' }));
+    await user.click(saveButton());
+    await screen.findByText('Einstellungen gespeichert.');
+    resolveFirst({ theme: 'system' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.dataset.theme).toBe('dark');
+    expect(userSettings.value.theme).toBe('dark');
+  });
+
+  it('übernimmt ein älteres Laden, wenn ein neueres fehlschlägt', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([]);
+    api.settings
+      .mockReturnValueOnce(new Promise((r) => (resolveFirst = r)))
+      .mockRejectedValueOnce(new ApiFailure(500, 'Interner Fehler'));
+    await loadSession();
+    render(Settings);
+    await screen.findByRole('alert');
+    resolveFirst({ theme: 'dark' });
+    await waitFor(() => expect(root.dataset.theme).toBe('dark'));
+  });
+
+  it('setzt das Theme zurück, wenn keine Session mehr besteht', async () => {
+    localStorage.setItem('pnp-theme', 'dark');
+    applyStoredTheme();
+    api.me.mockResolvedValue({ user: null });
+    await loadSession();
+    expect(root.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem('pnp-theme')).toBeNull();
+  });
 });

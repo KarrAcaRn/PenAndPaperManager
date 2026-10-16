@@ -24,8 +24,10 @@ onAuthError((status) => {
 
 export async function loadSession(): Promise<void> {
   session.user = (await api.me()).user;
-  // Nicht abwarten: Fehlen die Einstellungen, läuft die App mit den Vorgaben (bzw. dem zuletzt gespeicherten Theme)
+  // Nicht abwarten: Fehlen die Einstellungen, läuft die App mit den Vorgaben (bzw. dem zuletzt gespeicherten Theme).
+  // Ohne Session (z.B. abgelaufenes Cookie) nichts vom vorherigen Benutzer stehen lassen.
   if (session.user) loadUserSettings().catch(() => {});
+  else resetUserSettings();
   session.groups = session.user ? await api.groups() : [];
   session.ready = true;
 }

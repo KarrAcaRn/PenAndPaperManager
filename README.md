@@ -90,5 +90,6 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
     `400 { "error": "Ungültige Eingabe: …" }`.
 - Oberfläche: Seite `#/settings` (Zahnrad rechts oben), gespeichert wird per Button. Das Theme wirkt sofort über
   `data-theme` an `<html>` (ohne Attribut entscheidet `prefers-color-scheme`); es wird zusätzlich in `localStorage`
-  gemerkt, damit es beim nächsten Aufruf schon vor dem Laden der Einstellungen greift. Beim Logout gilt wieder die
-  Vorgabe. Neue Felder bekommen in `client/src/routes/Settings.svelte` einen Eintrag in `sections`.
+  gemerkt und per Inline-Skript in `client/index.html` vor dem ersten Zeichnen gesetzt, damit nichts aufblitzt.
+  Beim Logout (bzw. ohne gültige Session) gilt wieder die Vorgabe. Neue Felder bekommen in
+  `client/src/routes/Settings.svelte` einen Eintrag in `sections`.
