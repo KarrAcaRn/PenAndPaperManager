@@ -121,6 +121,13 @@ export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Themes (Liste und einzelne) sind öffentlich: auch die Anmeldeseite ist gestaltet, Gäste wählen ihr Design selbst.
+ * Bewusst eng: nur die Liste und genau ein Pfadsegment darunter (also nie z.B. /api/themes/x/../…).
+ */
+const PUBLIC_THEME_PATH = /^\/api\/themes(\/[^/]*)?$/;
+const isPublicApiPrefix = (path: string) => PUBLIC_THEME_PATH.test(path);
+
+/**
  * Guard als preHandler-Hook: API-Aufrufe (/api/…) ohne gültige Session bekommen 401,
  * Seitenaufrufe werden auf die Login-Seite umgeleitet.
  */
@@ -152,7 +159,7 @@ export function apiPath(req: FastifyRequest): string {
 export function requireAuthForApi(db: Db): preValidationHookHandler {
   return async (req) => {
     const path = apiPath(req);
-    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) return;
+    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path) || isPublicApiPrefix(path)) return;
     if (!getCurrentUser(db, req)) throw unauthorized();
   };
 }

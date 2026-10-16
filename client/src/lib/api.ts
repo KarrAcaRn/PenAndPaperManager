@@ -19,6 +19,7 @@ import type {
   SkillInput,
   SkillPreset,
   SkillPresetInput,
+  ThemeInfo,
   UserSettings,
 } from '@pnp/shared';
 
@@ -128,6 +129,8 @@ export const api = {
   rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
   searchRules: (q: string, rulebookId?: number) =>
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
+  themes: () => request<{ themes: ThemeInfo[]; defaultTheme: string }>('GET', '/themes'),
+  theme: (id: string) => request<{ theme: ThemeInfo }>('GET', `/themes/${encodeURIComponent(id)}`),
 };
 
 /**

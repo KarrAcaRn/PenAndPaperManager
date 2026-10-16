@@ -7,7 +7,8 @@ export default defineConfig({
   // Der Editor (TipTap/ProseMirror, ~500 kB) ist ein eigener, erst beim Bearbeiten nachgeladener Chunk
   build: { chunkSizeWarningLimit: 600 },
   server: {
-    proxy: { '/api': 'http://127.0.0.1:3000' },
+    // Themes (Stylesheets und Grafiken) liefert ebenfalls der Server
+    proxy: { '/api': 'http://127.0.0.1:3000', '/themes': 'http://127.0.0.1:3000' },
   },
   test: {
     environment: 'jsdom',

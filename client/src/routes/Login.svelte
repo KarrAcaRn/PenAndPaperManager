@@ -2,6 +2,7 @@
   import { LOGIN_CODE_LENGTH, MAX_EMAIL_LENGTH } from '@pnp/shared';
   import { ApiFailure, api } from '../lib/api.ts';
   import { verifyLoginCode } from '../lib/session.svelte.ts';
+  import GuestThemePicker from '../lib/GuestThemePicker.svelte';
 
   /** Sekunden, bis ein neuer Code angefordert werden kann */
   const RESEND_COOLDOWN = 60;
@@ -149,6 +150,7 @@
       </div>
     </form>
   {/if}
+  <GuestThemePicker />
 </main>
 
 <style>

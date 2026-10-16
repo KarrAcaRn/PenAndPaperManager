@@ -19,7 +19,9 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
-`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen), dazu der Mailversand für die
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen),
+`THEMES_DIR` (eigene Themes, Vorgabe `themes/` neben der Datenbank, also `data/themes`),
+`DEFAULT_THEME` (Theme-ID für alle ohne eigene Wahl, Vorgabe `default`), dazu der Mailversand für die
 Login-Codes: `MAIL_TRANSPORT` (`smtp` oder `log`), `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_SECURE`, `SMTP_USER`,
 `SMTP_PASS`, `MAIL_FROM` – Beispiel in `.env.example` (wird nicht automatisch geladen). Ohne SMTP-Konfiguration
 schreibt der Server die Codes außerhalb von `NODE_ENV=production` nur ins Log; in Produktion schlägt der Versand
@@ -42,7 +44,8 @@ Passwortlos per E-Mail-Code (`server/src/routes/login-codes.ts`, Seite `#/login`
 3. `GET /api/auth/me` liefert den Nutzer (ohne Login 401), `POST /api/auth/logout` beendet die Session.
 
 Alle anderen `/api`-Routen verlangen eine Session (globaler Guard `requireAuthForApi` in `auth.ts`, dazu
-`requireUser` in den Routen). Den früheren Test-Login `POST /api/auth/login` (nur E-Mail, ohne Code) gibt es
+`requireUser` in den Routen); ausgenommen sind nur `GET /api/themes` und `GET /api/themes/:id` (auch die
+Anmeldeseite ist gestaltet). Den früheren Test-Login `POST /api/auth/login` (nur E-Mail, ohne Code) gibt es
 nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 
 ## Regeln
@@ -104,17 +107,53 @@ nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 
 - Jeder Login hat eigene Einstellungen, gruppenübergreifend. Gespeichert als JSON-Objekt in `user_settings` (eine
   Zeile je Benutzer, wird beim ersten Speichern angelegt); fehlt sie oder ein Feld, gelten die Vorgaben.
-- Felder, erlaubte Werte und Vorgaben stehen in `shared/src/settings.ts` (`USER_SETTING_OPTIONS`, erster Wert =
-  Vorgabe). Neue Einstellung: dort eintragen – Validierung und Vorgaben ziehen mit, keine Migration nötig.
-  Gespeicherte Werte, die nicht (mehr) erlaubt sind, werden beim Lesen durch die Vorgabe ersetzt.
-- Derzeit: `theme` – `"system"` (Vorgabe, folgt dem Browser), `"light"`, `"dark"`.
+- Felder, Vorgaben, JSON-Schema und Prüfung stehen in `shared/src/settings.ts` (`USER_SETTINGS`). Neue Einstellung:
+  dort eintragen – Validierung und Vorgaben ziehen mit, keine Migration nötig. Gespeicherte Werte, die nicht (mehr)
+  erlaubt sind, werden beim Lesen durch die Vorgabe ersetzt.
+- Derzeit:
+  - `colorScheme` – `"system"` (Vorgabe, folgt dem Browser), `"light"`, `"dark"`. Bis Migration
+    `006_settings_color_scheme.sql` hieß dieses Feld `theme`.
+  - `theme` – ID des gewählten Themes oder `null` (Vorgabe der Seite, siehe `DEFAULT_THEME`).
 - API (nur eingeloggt, sonst 401; immer nur die eigenen Einstellungen, eine Benutzer-ID gibt es in der Route nicht):
-  - `GET /api/me/settings` → `200 { "theme": "system" }` – alle Einstellungen, mit Vorgaben aufgefüllt.
-  - `PATCH /api/me/settings` mit z.B. `{ "theme": "dark" }` → `200` mit allen Einstellungen nach dem Speichern.
+  - `GET /api/me/settings` → `200 { "colorScheme": "system", "theme": null }` – alle Einstellungen, mit Vorgaben
+    aufgefüllt. Ein gespeichertes Theme, das es nicht mehr gibt, kommt als `null`; gespeichert bleibt es (legt der
+    Seitenbetreiber es zurück, greift es wieder).
+  - `PATCH /api/me/settings` mit z.B. `{ "theme": "wald" }` → `200` mit allen Einstellungen nach dem Speichern.
     Nur die gesendeten Felder ändern sich; unbekannte Felder werden ignoriert, ungültige Werte geben
-    `400 { "error": "Ungültige Eingabe: …" }`.
-- Oberfläche: Seite `#/settings` (Zahnrad rechts oben), gespeichert wird per Button. Das Theme wirkt sofort über
-  `data-theme` an `<html>` (ohne Attribut entscheidet `prefers-color-scheme`); es wird zusätzlich in `localStorage`
-  gemerkt und per Inline-Skript in `client/index.html` vor dem ersten Zeichnen gesetzt, damit nichts aufblitzt.
-  Beim Logout (bzw. ohne gültige Session) gilt wieder die Vorgabe. Neue Felder bekommen in
-  `client/src/routes/Settings.svelte` einen Eintrag in `sections`.
+    `400 { "error": "Ungültige Eingabe: …" }`, ein unbekanntes Theme `400 { "error": "Das Theme „…“ gibt es nicht." }`.
+- Oberfläche: Seite `#/settings` (Zahnrad rechts oben). Abschnitt „Design“ zeigt alle Themes (`GET /api/themes`) als
+  Radiogruppe mit Name, Autor, Beschreibung und Vorschau (Vorschaubild aus dem Manifest, sonst eine Mini-Seite aus
+  den Farb-Tokens, bei dunkler Variante zweimal). Auswahl (auch per Pfeiltasten) wirkt sofort als Vorschau,
+  „Speichern“ übernimmt sie, „Verwerfen“ oder Verlassen der Seite ohne Speichern nimmt die Vorschau zurück.
+  Neue einfache Felder bekommen in `client/src/routes/Settings.svelte` einen Eintrag in `sections`.
+- Anwenden (`client/src/lib/userSettings.svelte.ts`): Farbschema als `data-color-scheme` an `<html>` (ohne Attribut
+  entscheidet `prefers-color-scheme`), Theme per `applyTheme`. Fehlt das gewählte Theme oder lädt es nicht, gilt
+  das Vorgabe-Theme der Seite, danach `default` – ohne Fehlermeldung.
+- Ohne Aufblitzen: Das zuletzt angewendete Theme und Farbschema liegen in `localStorage` (`pnp-theme-id`,
+  `pnp-color-scheme`). `client/index.html` lädt das Basis-Theme immer per `<link>` und schreibt per Inline-Skript
+  vor dem ersten Zeichnen den Link des gemerkten Themes (blockiert das Rendern wie ein normaler Link). Fehlt dieses
+  Theme inzwischen, entfernt sich der Link und das Basis-Theme bleibt, bis die App die Vorgabe anwendet.
+- Gäste (ohne Login): Auf der Anmeldeseite wählt eine Auswahlliste „Design“ das Theme, gespeichert nur im Browser
+  (`pnp-guest-theme`). Beim Logout (bzw. ohne gültige Session) gilt wieder diese Gast-Wahl bzw. die Vorgabe.
+
+## Themes
+
+- Farben, Rahmen, Schatten, Zierrahmen-Grafiken und Schriften der ganzen Oberfläche kommen aus Design-Tokens
+  (CSS Custom Properties). Liste und Bedeutung aller Tokens: `THEME_TOKENS` in `shared/src/theme.ts`.
+- Ein Theme ist ein Ordner mit `theme.json` (Schema: `themes/theme.schema.json`, erzeugt per
+  `npm run theme:schema -w server`) und optional Zusatz-CSS, Grafiken und Schriften. Die ID im Manifest muss dem
+  Ordnernamen entsprechen; Ordner, die mit `_` oder `.` beginnen, werden übersprungen (Vorlagen).
+- Mitgelieferte Themes liegen in `themes/`, eigene legt der Seitenbetreiber in `THEMES_DIR` (`data/themes`) ab –
+  ohne Codeänderung und ohne Neustart. Ungültige Manifeste werden mit Begründung im Server-Log abgelehnt, doppelte
+  IDs ebenso.
+- Basis-Theme ist `default` (das bisherige Aussehen, hell/dunkel). Es setzt jedes Token; fehlende Tokens anderer
+  Themes werden daraus ergänzt. `darkTokens` (Abweichungen bei dunklem Farbschema) werden nicht ergänzt, sonst
+  mischten sich fremde Farben ein.
+- Vorgabe-Theme für alle ohne eigene Wahl: `DEFAULT_THEME` (Theme-ID); fehlt es, gilt `default` (Warnung im Log
+  beim Start). `GET /api/themes` liefert `{ themes, defaultTheme }`, bei jedem Aufruf neu bestimmt.
+- Der Server erzeugt je Theme `/themes/<id>/theme.css` (Tokens auf `:root`, danach `darkTokens` – bei dunklem
+  System-Farbschema, außer `data-color-scheme="light"`, und immer bei `data-color-scheme="dark"` –, danach das
+  Zusatz-CSS) und liefert Theme-Dateien unter `/themes/<id>/…` aus (nur Grafiken, Schriften, CSS).
+  Relative `url(…)` in Token-Werten werden dabei absolut gemacht. API: `GET /api/themes`, `GET /api/themes/:id`.
+- Im Client (`client/src/lib/theme.ts`): `listThemes()`, `themeCatalog()`, `getTheme(id)`, `applyTheme(id)` – tauscht
+  das Stylesheet zur Laufzeit und setzt `data-theme` am `<html>`-Element.

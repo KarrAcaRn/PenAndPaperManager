@@ -32,12 +32,12 @@
   .settings {
     width: 2.25rem; height: 2.25rem; padding: 0.35rem; flex: none;
     display: flex; align-items: center; justify-content: center;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--surface); color: var(--text);
+    border: var(--border); border-radius: var(--border-radius);
+    background: var(--color-surface); color: var(--color-text);
   }
-  .settings:hover { border-color: var(--accent); color: var(--accent); }
-  .settings:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .settings.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .settings:hover { border-color: var(--color-accent); color: var(--color-accent); }
+  .settings:focus-visible { outline: var(--outline-width) solid var(--color-accent); outline-offset: 2px; }
+  .settings.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
   svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; }
   .rim { stroke-width: 2.2; }
   .teeth { stroke-width: 2.6; }

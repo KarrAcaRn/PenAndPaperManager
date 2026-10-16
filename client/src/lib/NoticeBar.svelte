@@ -11,5 +11,5 @@
 {/if}
 
 <style>
-  .notice { max-width: 60rem; margin: 1rem auto 0; padding: 0.5rem 0.75rem; border-color: var(--accent); }
+  .notice { max-width: 60rem; margin: 1rem auto 0; padding: 0.5rem 0.75rem; border-color: var(--color-accent); }
 </style>
