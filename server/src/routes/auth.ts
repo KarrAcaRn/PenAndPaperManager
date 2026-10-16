@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db.ts';
-import { currentUser, login, logout, toSessionUser, type AdminEmails } from '../auth.ts';
+import { destroySession, login, requireUser, toSessionUser, type AdminEmails } from '../auth.ts';
 import { emailBody } from '../schemas.ts';
 
 export function authRoutes(app: FastifyInstance, db: Db, admins: AdminEmails): void {
@@ -9,12 +9,10 @@ export function authRoutes(app: FastifyInstance, db: Db, admins: AdminEmails): v
   );
 
   app.post('/api/auth/logout', (req, reply) => {
-    logout(db, req, reply);
+    destroySession(db, req, reply);
     return { ok: true };
   });
 
-  app.get('/api/auth/me', (req) => {
-    const user = currentUser(db, req);
-    return { user: user && toSessionUser(user, admins) };
-  });
+  // Nicht eingeloggt (kein, unbekanntes oder abgelaufenes Cookie): 401
+  app.get('/api/auth/me', (req) => ({ user: toSessionUser(requireUser(db, req), admins) }));
 }

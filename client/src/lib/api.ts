@@ -57,7 +57,12 @@ const qs = (params: Record<string, string | undefined>) =>
   new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined)).toString();
 
 export const api = {
-  me: () => request<{ user: SessionUser | null }>('GET', '/auth/me'),
+  /** 401 heißt hier nur "nicht eingeloggt" und wird zu `user: null` */
+  me: () =>
+    request<{ user: SessionUser }>('GET', '/auth/me').catch((err: unknown): { user: SessionUser | null } => {
+      if (err instanceof ApiFailure && err.status === 401) return { user: null };
+      throw err;
+    }),
   login: (email: string) => request<SessionUser>('POST', '/auth/login', { email }),
   logout: () => request<unknown>('POST', '/auth/logout'),
 

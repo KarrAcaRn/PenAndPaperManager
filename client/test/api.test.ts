@@ -56,6 +56,13 @@ describe('api', () => {
     onAuthError(() => {});
   });
 
+  it('wertet 401 bei me als "nicht eingeloggt", andere Fehler nicht', async () => {
+    mockFetch(401, { error: 'Nicht eingeloggt' });
+    expect(await api.me()).toEqual({ user: null });
+    mockFetch(500, { error: 'Interner Fehler' });
+    await expect(api.me()).rejects.toMatchObject({ status: 500 });
+  });
+
   it('sendet bei DELETE weder Body noch Content-Type', async () => {
     const fetch = mockFetch(200, { ok: true });
     await api.deleteArticle(1, 2);

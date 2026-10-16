@@ -1,11 +1,12 @@
-import { randomBytes } from 'node:crypto';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createHash, randomBytes } from 'node:crypto';
+import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { canAccessSection, type Role, type Section, type SessionUser, type User } from '@pnp/shared';
 import { getRow, run, type Db } from './db.ts';
 import { adminOnly, forbidden, gmOnly, unauthorized } from './errors.ts';
 
 export const SESSION_COOKIE = 'sid';
-const SESSION_DAYS = 30;
+export const SESSION_DAYS = 30;
+export const SESSION_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 
 /** Seitenweite Admins stehen in der Konfiguration (ADMIN_EMAILS, kommagetrennt), nicht in der Datenbank. */
 export type AdminEmails = ReadonlySet<string>;
@@ -34,50 +35,102 @@ export function findOrCreateUser(db: Db, email: string): User {
 
 /**
  * Testphase: Login nur per E-Mail, ohne Passwort.
- * Passwort bzw. Einmal-Codes per E-Mail werden später hier ergänzt.
+ * Wird durch den Login per E-Mail-Code ersetzt, der nach erfolgreicher Prüfung createSession aufruft.
  */
 export function login(db: Db, reply: FastifyReply, email: string): User {
   const user = findOrCreateUser(db, email);
+  createSession(db, user.id, reply);
+  return user;
+}
+
+// --- Sessions ---------------------------------------------------------------------------------------------------
+// Serverseitig gespeichert (nur der Hash des Tokens), damit Logout und Widerruf wirken.
+// Ablauf absolut SESSION_DAYS nach dem Login, ohne Verlängerung bei Benutzung.
+
+/** Zeitstempel im Format von SQLites datetime() (UTC), damit Vergleiche in SQL als Text funktionieren */
+const sqlTime = (ms: number): string => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+
+const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
+/** Nur Tokens in dem Format, das createSession erzeugt, gehen überhaupt an die Datenbank */
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
+function readToken(req: FastifyRequest): string | null {
+  const token = req.cookies[SESSION_COOKIE];
+  return token && TOKEN_PATTERN.test(token) ? token : null;
+}
+
+/** Legt eine neue Session an und setzt das Cookie. Räumt dabei abgelaufene Sessions auf. */
+export function createSession(db: Db, userId: number, reply: FastifyReply): void {
   const token = randomBytes(32).toString('hex');
+  const now = Date.now();
+  deleteExpiredSessions(db, now);
   run(
     db,
-    `INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', ?))`,
-    token,
-    user.id,
-    `+${SESSION_DAYS} days`,
+    'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+    hashToken(token),
+    userId,
+    sqlTime(now),
+    sqlTime(now + SESSION_MS),
   );
   reply.setCookie(SESSION_COOKIE, token, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: SESSION_DAYS * 24 * 60 * 60,
+    maxAge: SESSION_MS / 1000,
   });
-  return user;
 }
 
-export function logout(db: Db, req: FastifyRequest, reply: FastifyReply): void {
-  const token = req.cookies[SESSION_COOKIE];
-  if (token) run(db, 'DELETE FROM sessions WHERE token = ?', token);
+/** Beendet die aktuelle Session (andere Geräte bleiben eingeloggt) und löscht das Cookie. */
+export function destroySession(db: Db, req: FastifyRequest, reply: FastifyReply): void {
+  const token = readToken(req);
+  if (token) run(db, 'DELETE FROM sessions WHERE token_hash = ?', hashToken(token));
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
-export function currentUser(db: Db, req: FastifyRequest): User | null {
-  const token = req.cookies[SESSION_COOKIE];
+/** Widerruft alle Sessions eines Nutzers (z.B. nach Missbrauchsverdacht). */
+export function destroyAllSessions(db: Db, userId: number): number {
+  return run(db, 'DELETE FROM sessions WHERE user_id = ?', userId);
+}
+
+/** Löscht abgelaufene Sessions; geprüft wird der Ablauf ohnehin bei jedem Zugriff. */
+export function deleteExpiredSessions(db: Db, now = Date.now()): number {
+  return run(db, 'DELETE FROM sessions WHERE expires_at <= ?', sqlTime(now));
+}
+
+/** Der eingeloggte Nutzer oder null bei fehlendem, unbekanntem oder abgelaufenem Cookie. */
+export function getCurrentUser(db: Db, req: FastifyRequest): User | null {
+  const token = readToken(req);
   if (!token) return null;
   const user = getRow<User>(
     db,
     `SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token = ? AND s.expires_at > datetime('now')`,
-    token,
+     WHERE s.token_hash = ? AND s.expires_at > ?`,
+    hashToken(token),
+    sqlTime(Date.now()),
   );
   return user ?? null;
 }
 
 export function requireUser(db: Db, req: FastifyRequest): User {
-  const user = currentUser(db, req);
+  const user = getCurrentUser(db, req);
   if (!user) throw unauthorized();
   return user;
+}
+
+export const LOGIN_PAGE = '/login';
+
+/**
+ * Guard als preHandler-Hook: API-Aufrufe (/api/…) ohne gültige Session bekommen 401,
+ * Seitenaufrufe werden auf die Login-Seite umgeleitet.
+ */
+export function requireAuth(db: Db): preHandlerHookHandler {
+  return async (req, reply) => {
+    if (getCurrentUser(db, req)) return;
+    if (req.url.startsWith('/api/')) throw unauthorized();
+    return reply.redirect(`${LOGIN_PAGE}?next=${encodeURIComponent(req.url)}`);
+  };
 }
 
 export function getRole(db: Db, groupId: number, userId: number): Role | null {

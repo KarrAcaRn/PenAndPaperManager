@@ -44,13 +44,13 @@ describe('Datenbank', () => {
 });
 
 describe('Sessions', () => {
-  it('me liefert den Nutzer, nach Logout null', async () => {
+  it('me liefert den Nutzer, ohne bzw. nach Logout 401', async () => {
     const app = makeApp();
-    expect((await app.inject({ url: '/api/auth/me' })).json()).toEqual({ user: null });
+    expect((await app.inject({ url: '/api/auth/me' })).statusCode).toBe(401);
     const client = await loginAs(app, 'a@test.de');
     expect((await client.get('/api/auth/me')).body.user.email).toBe('a@test.de');
     expect((await client.post('/api/auth/logout')).status).toBe(200);
-    expect((await client.get('/api/auth/me')).body).toEqual({ user: null });
+    expect((await client.get('/api/auth/me')).status).toBe(401);
     expect((await client.get('/api/groups')).status).toBe(401);
   });
 

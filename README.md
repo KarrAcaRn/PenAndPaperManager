@@ -25,6 +25,8 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 
 - Login per E-Mail, in der Testphase ohne Passwort (`server/src/auth.ts`). Damit kann sich jeder als jede Adresse
   anmelden – auch als Admin aus `ADMIN_EMAILS`. Vor einem öffentlichen Betrieb muss eine echte Anmeldung her.
+- Ein Login gilt höchstens 30 Tage (absolute Ablaufzeit, Benutzung verlängert nichts). Sessions liegen serverseitig
+  in der Tabelle `sessions` (nur SHA-256-Hash des Tokens), Logout beendet nur die Session des aktuellen Geräts.
 - Wer eine Gruppe anlegt, ist Spielleiter; Eingeladene sind Spieler. Es gibt immer mindestens einen Spielleiter.
 - Bereiche: Charaktere, Notizen, Spielleiter. Der Bereich Spielleiter ist für Spieler unsichtbar.
 - Neue Gruppen bekommen in Notizen und Spielleiter die Ordner „NPCs“, „Orte“ und „Sessions“
