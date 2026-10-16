@@ -1,7 +1,8 @@
 import nodemailer from 'nodemailer';
+import { LOGIN_CODE_MINUTES } from './login-codes.ts';
 
 /** Wie lange ein Login-Code gültig ist (Minuten) – steht so auch in der E-Mail. */
-export const LOGIN_CODE_VALID_MINUTES = 10;
+export const LOGIN_CODE_VALID_MINUTES = LOGIN_CODE_MINUTES;
 
 export interface MailMessage {
   to: string;

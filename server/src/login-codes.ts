@@ -8,24 +8,24 @@ export const LOGIN_CODE_MINUTES = 10;
 /** Nach so vielen falschen Eingaben ist ein Code verbrannt */
 export const MAX_FAILED_ATTEMPTS = 5;
 
+export interface LoginRateLimits {
+  emailPerMinute: number;
+  emailPerHour: number;
+  ipPerHour: number;
+}
+
 /** Rate-Limits für das Anfordern von Codes */
-export const RATE_LIMITS = {
+export const RATE_LIMITS: Readonly<LoginRateLimits> = {
   emailPerMinute: 1,
   emailPerHour: 5,
   ipPerHour: 20,
-} as const;
+};
 
 /**
- * Verschickt den Code an die Adresse. Die echte Implementierung (SMTP bzw. Konsole im Dev-Betrieb) kommt aus einem
- * eigenen Modul und wird über `buildApp(db, { sendLoginCodeEmail })` eingehängt; bis dahin gilt der Stub unten.
+ * Verschickt den Code an die Adresse. Standard ist `sendLoginCodeEmail` aus `mail.ts` (SMTP bzw. Log im
+ * Dev-Betrieb); Tests hängen über `buildApp(db, { sendLoginCodeEmail })` eine eigene Funktion ein.
  */
 export type SendLoginCodeEmail = (email: string, code: string) => Promise<void>;
-
-/** Stub: im Dev-Betrieb Code auf die Konsole, in Produktion Fehler (der Versand ist dort noch nicht eingerichtet). */
-export const stubSendLoginCodeEmail: SendLoginCodeEmail = async (email, code) => {
-  if (process.env.NODE_ENV === 'production') throw new Error('Mailversand für Login-Codes ist nicht eingerichtet');
-  console.info(`[Login-Code] ${email}: ${code}`);
-};
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
@@ -41,7 +41,7 @@ const hashCode = (code: string, salt: string): Buffer => scryptSync(code, Buffer
  * Prüft die Rate-Limits und legt einen neuen Code an; ältere offene Codes der Adresse werden ungültig.
  * Liefert den Klartext-Code zum Versand – er wird nirgends gespeichert.
  */
-export function issueLoginCode(db: Db, rawEmail: string, ip: string): string {
+export function issueLoginCode(db: Db, rawEmail: string, ip: string, limits: LoginRateLimits = RATE_LIMITS): string {
   const email = normalizeEmail(rawEmail);
   const code = generateCode();
   const salt = randomBytes(16).toString('hex');
@@ -51,11 +51,11 @@ export function issueLoginCode(db: Db, rawEmail: string, ip: string): string {
     run(db, `DELETE FROM login_codes WHERE created_at < datetime('now', '-1 day')`);
     const count = (where: string, value: string, window: string) =>
       getRow<{ n: number }>(db, `SELECT COUNT(*) AS n FROM login_codes WHERE ${where} = ? AND created_at > datetime('now', ?)`, value, window)!.n;
-    if (count('email', email, '-60 seconds') >= RATE_LIMITS.emailPerMinute) {
+    if (count('email', email, '-60 seconds') >= limits.emailPerMinute) {
       throw tooManyRequests('Bitte warte eine Minute, bevor du einen neuen Code anforderst');
     }
-    if (count('email', email, '-1 hour') >= RATE_LIMITS.emailPerHour) throw tooManyRequests();
-    if (count('ip', ip, '-1 hour') >= RATE_LIMITS.ipPerHour) throw tooManyRequests();
+    if (count('email', email, '-1 hour') >= limits.emailPerHour) throw tooManyRequests();
+    if (count('ip', ip, '-1 hour') >= limits.ipPerHour) throw tooManyRequests();
 
     run(
       db,

@@ -5,7 +5,7 @@ describe('Login und Gruppen', () => {
   it('verlangt einen Login', async () => {
     const app = makeApp();
     expect((await app.inject({ url: '/api/groups' })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'kaputt' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/request-code', payload: { email: 'kaputt' } })).statusCode).toBe(400);
   });
 
   it('behandelt E-Mails unabhängig von Groß-/Kleinschreibung', async () => {

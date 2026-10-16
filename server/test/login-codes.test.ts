@@ -67,14 +67,16 @@ describe('Login per E-Mail-Code', () => {
     expect([unknown.statusCode, unknown.body]).toEqual([204, '']);
   });
 
-  it('antwortet auch bei Fehlern im Mailversand mit 204', async () => {
+  it('meldet Fehler im Mailversand mit 503, ohne den Code preiszugeben', async () => {
     const app = buildApp(openDb(':memory:'), {
       sendLoginCodeEmail: async () => {
         throw new Error('SMTP kaputt');
       },
     });
     const res = await app.inject({ method: 'POST', url: '/api/auth/request-code', payload: { email: 'a@test.de' } });
-    expect(res.statusCode).toBe(204);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toMatch(/konnte nicht verschickt werden/);
+    expect(res.body).not.toMatch(/\d{6}/);
   });
 
   it('lehnt ungültige Adressen ab', async () => {

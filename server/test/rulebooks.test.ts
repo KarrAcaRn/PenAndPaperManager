@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { openDb, type Db } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
 import { SESSION_COOKIE } from '../src/auth.ts';
 import { cleanPageText, extractRulebook, ftsQuery, importRulebook, rulebookFile } from '../src/rulebooks.ts';
-import { loginAs } from './helpers.ts';
+import { loginAs, loginWithCode, sidOf, testApp } from './helpers.ts';
 import { makePdf } from './pdf.ts';
 
 const BOOK = makePdf(
@@ -77,7 +76,7 @@ describe('Regelwerk-API', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'pnp-rules-'));
     db = openDb(':memory:');
-    app = buildApp(db, { rulebookDir: dir });
+    app = testApp(db, { rulebookDir: dir });
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -108,8 +107,7 @@ describe('Regelwerk-API', () => {
     expect(list.body).toEqual([expect.objectContaining({ id: book.id, title: 'Fate Kompakt (2022)', pageCount: 3 })]);
     expect(list.body[0].chapters).toHaveLength(3);
 
-    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'alice@test.de' } });
-    const sid = login.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
+    const sid = sidOf(await loginWithCode(app, 'alice@test.de'));
     // Cache-Parameter ?v= wird ignoriert
     const pdf = await app.inject({ url: `/api/rulebooks/${book.id}/pdf?v=x`, cookies: { [SESSION_COOKIE]: sid } });
     expect(pdf.statusCode).toBe(200);

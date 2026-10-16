@@ -1,31 +1,29 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
-import { LOGIN_CODE_LENGTH, type User } from '@pnp/shared';
-import { getRow, type Db } from '../db.ts';
-import { findOrCreateUser, login, toSessionUser, type AdminEmails } from '../auth.ts';
-import { unauthorized } from '../errors.ts';
-import { consumeLoginCode, issueLoginCode, normalizeEmail, type SendLoginCodeEmail } from '../login-codes.ts';
+import type { FastifyInstance } from 'fastify';
+import { LOGIN_CODE_LENGTH } from '@pnp/shared';
+import type { Db } from '../db.ts';
+import { createSession, findOrCreateUser, toSessionUser, type AdminEmails } from '../auth.ts';
+import { serviceUnavailable, unauthorized } from '../errors.ts';
+import { consumeLoginCode, issueLoginCode, normalizeEmail, type LoginRateLimits, type SendLoginCodeEmail } from '../login-codes.ts';
 import { emailBody, objectOf } from '../schemas.ts';
-
-/**
- * Stub für createSession(userId, reply) aus dem Session-Task: bis dahin erzeugt der bisherige login() die Session
- * samt Cookie.
- */
-function createSession(db: Db, userId: number, reply: FastifyReply): void {
-  const user = getRow<User>(db, 'SELECT id, email FROM users WHERE id = ?', userId)!;
-  login(db, reply, user.email);
-}
 
 const INVALID_CODE = 'Code ungültig oder abgelaufen';
 
-export function loginCodeRoutes(app: FastifyInstance, db: Db, admins: AdminEmails, sendLoginCodeEmail: SendLoginCodeEmail): void {
+export interface LoginCodeOptions {
+  sendLoginCodeEmail: SendLoginCodeEmail;
+  rateLimits: LoginRateLimits;
+}
+
+export function loginCodeRoutes(app: FastifyInstance, db: Db, admins: AdminEmails, opts: LoginCodeOptions): void {
   // Antwortet für jede Adresse gleich (204), damit sich nicht herausfinden lässt, welche Adressen es gibt.
   app.post('/api/auth/request-code', { schema: { body: emailBody } }, async (req, reply) => {
     const { email } = req.body as { email: string };
-    const code = issueLoginCode(db, email, req.ip);
+    const code = issueLoginCode(db, email, req.ip, opts.rateLimits);
     try {
-      await sendLoginCodeEmail(normalizeEmail(email), code);
+      await opts.sendLoginCodeEmail(normalizeEmail(email), code);
     } catch (err) {
+      // Der Versand hängt nicht davon ab, ob es die Adresse gibt – die Meldung verrät also nichts.
       req.log.error(err, 'Login-Code konnte nicht verschickt werden');
+      throw serviceUnavailable('Die E-Mail mit dem Code konnte nicht verschickt werden. Bitte versuche es später erneut.');
     }
     return reply.code(204).send();
   });

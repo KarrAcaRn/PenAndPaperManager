@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
+import type { FastifyReply, FastifyRequest, preHandlerHookHandler, preValidationHookHandler } from 'fastify';
 import { canAccessSection, type Role, type Section, type SessionUser, type User } from '@pnp/shared';
 import { getRow, run, type Db } from './db.ts';
 import { adminOnly, forbidden, gmOnly, unauthorized } from './errors.ts';
@@ -31,16 +31,6 @@ export function findOrCreateUser(db: Db, email: string): User {
   const normalized = email.trim().toLowerCase();
   run(db, 'INSERT INTO users (email) VALUES (?) ON CONFLICT (email) DO NOTHING', normalized);
   return getRow<User>(db, 'SELECT id, email FROM users WHERE email = ?', normalized)!;
-}
-
-/**
- * Testphase: Login nur per E-Mail, ohne Passwort.
- * Wird durch den Login per E-Mail-Code ersetzt, der nach erfolgreicher Prüfung createSession aufruft.
- */
-export function login(db: Db, reply: FastifyReply, email: string): User {
-  const user = findOrCreateUser(db, email);
-  createSession(db, user.id, reply);
-  return user;
 }
 
 // --- Sessions ---------------------------------------------------------------------------------------------------
@@ -119,7 +109,16 @@ export function requireUser(db: Db, req: FastifyRequest): User {
   return user;
 }
 
-export const LOGIN_PAGE = '/login';
+/** Login-Seite der SPA (Hash-Router); das Ziel nach dem Login merkt sich der Client selbst */
+export const LOGIN_PAGE = '/#/login';
+
+/** API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout) */
+export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
+  '/api/auth/request-code',
+  '/api/auth/verify-code',
+  '/api/auth/me',
+  '/api/auth/logout',
+]);
 
 /**
  * Guard als preHandler-Hook: API-Aufrufe (/api/…) ohne gültige Session bekommen 401,
@@ -129,7 +128,19 @@ export function requireAuth(db: Db): preHandlerHookHandler {
   return async (req, reply) => {
     if (getCurrentUser(db, req)) return;
     if (req.url.startsWith('/api/')) throw unauthorized();
-    return reply.redirect(`${LOGIN_PAGE}?next=${encodeURIComponent(req.url)}`);
+    return reply.redirect(LOGIN_PAGE);
+  };
+}
+
+/**
+ * App-weiter Guard (als preValidation-Hook, damit ohne Login nicht erst die Eingaben geprüft werden):
+ * jede API-Route außer PUBLIC_API_PATHS verlangt eine gültige Session.
+ */
+export function requireAuthForApi(db: Db): preValidationHookHandler {
+  return async (req) => {
+    const path = req.url.split('?')[0];
+    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) return;
+    if (!getCurrentUser(db, req)) throw unauthorized();
   };
 }
 

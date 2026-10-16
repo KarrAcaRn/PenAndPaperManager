@@ -2,25 +2,23 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { allRows, openDb, run, type Db } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
 import { createSession, deleteExpiredSessions, destroyAllSessions, getCurrentUser, requireAuth, SESSION_COOKIE, SESSION_DAYS } from '../src/auth.ts';
 import { HttpError } from '../src/errors.ts';
-import { loginAs } from './helpers.ts';
+import { loginAs, loginWithCode, sidOf, testApp } from './helpers.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 const LOGIN_TIME = new Date('2026-01-01T12:00:00Z');
 
 function setup() {
   const db = openDb(':memory:');
-  return { db, app: buildApp(db) };
+  return { db, app: testApp(db) };
 }
 
-const me = (app: ReturnType<typeof buildApp>, sid?: string) =>
+const me = (app: ReturnType<typeof testApp>, sid?: string) =>
   app.inject({ url: '/api/auth/me', ...(sid === undefined ? {} : { cookies: { [SESSION_COOKIE]: sid } }) });
 
-async function loginSid(app: ReturnType<typeof buildApp>, email = 'a@test.de'): Promise<string> {
-  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email } });
-  return res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
+async function loginSid(app: ReturnType<typeof testApp>, email = 'a@test.de'): Promise<string> {
+  return sidOf(await loginWithCode(app, email));
 }
 
 afterEach(() => vi.useRealTimers());
@@ -36,7 +34,7 @@ describe('Sessions mit 30 Tagen Laufzeit', () => {
 
   it('setzt das Cookie mit HttpOnly, SameSite=Lax und Max-Age 30 Tage', async () => {
     const { app } = setup();
-    const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'a@test.de' } });
+    const res = await loginWithCode(app, 'a@test.de');
     const c = res.cookies.find((x) => x.name === SESSION_COOKIE)!;
     expect(c).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSION_DAYS * 24 * 60 * 60 });
     expect(c.secure).toBeFalsy(); // nur in Produktion
@@ -46,7 +44,7 @@ describe('Sessions mit 30 Tagen Laufzeit', () => {
     vi.stubEnv('NODE_ENV', 'production');
     try {
       const { app } = setup();
-      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'a@test.de' } });
+      const res = await loginWithCode(app, 'a@test.de');
       expect(res.cookies.find((x) => x.name === SESSION_COOKIE)!.secure).toBe(true);
     } finally {
       vi.unstubAllEnvs();
@@ -165,7 +163,7 @@ describe('createSession und requireAuth', () => {
     return app;
   }
 
-  it('lässt eingeloggte Nutzer durch und weist andere ab bzw. leitet auf /login um', async () => {
+  it('lässt eingeloggte Nutzer durch und weist andere ab bzw. leitet auf die Login-Seite um', async () => {
     const db = openDb(':memory:');
     run(db, `INSERT INTO users (id, email) VALUES (1, 'a@test.de')`);
     const app = guardedApp(db);
@@ -173,7 +171,7 @@ describe('createSession und requireAuth', () => {
     expect((await app.inject({ url: '/api/secret' })).statusCode).toBe(401);
     const page = await app.inject({ url: '/seite?x=1' });
     expect(page.statusCode).toBe(302);
-    expect(page.headers.location).toBe('/login?next=%2Fseite%3Fx%3D1');
+    expect(page.headers.location).toBe('/#/login');
 
     const login = await app.inject({ method: 'POST', url: '/api/verify' });
     const sid = login.cookies.find((c) => c.name === SESSION_COOKIE)!.value;

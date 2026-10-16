@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
-import { ADMIN_EMAIL, article, loginAs, makeApp, setupGroup } from './helpers.ts';
+import { ADMIN_EMAIL, article, loginAs, makeApp, setupGroup, testApp } from './helpers.ts';
 
 const names = (res: { body: { name: string }[] }) => res.body.map((s) => s.name);
 
@@ -307,7 +306,7 @@ describe('FATE-Bogen', () => {
 
   it('übersteht kaputte Daten in der Datenbank', async () => {
     const db = openDb(':memory:');
-    const app = buildApp(db, { adminEmails: ADMIN_EMAIL });
+    const app = testApp(db, { adminEmails: ADMIN_EMAIL });
     const { base, alice } = await setupGroup(app);
     const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
     const sheetUrl = `${base}/articles/${id}/sheet`;
@@ -327,7 +326,7 @@ describe('FATE-Bogen', () => {
 
   it('wendet beschädigte oder leere Varianten nicht an', async () => {
     const db = openDb(':memory:');
-    const app = buildApp(db, { adminEmails: ADMIN_EMAIL });
+    const app = testApp(db, { adminEmails: ADMIN_EMAIL });
     const { base, gm } = await setupGroup(app);
     const [skill] = (await gm.put(`${base}/skills`, { skills: [{ name: 'Bleibt' }] })).body;
     for (const broken of ['kaputt', '{"a":1}', '[1,2]', '[]']) {

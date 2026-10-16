@@ -3,9 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb, transaction } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
 import { SESSION_COOKIE } from '../src/auth.ts';
-import { loginAs, makeApp } from './helpers.ts';
+import { loginAs, loginWithCode, makeApp, testApp } from './helpers.ts';
 
 describe('Datenbank', () => {
   let dir: string | undefined;
@@ -56,7 +55,7 @@ describe('Sessions', () => {
 
   it('ignoriert abgelaufene und unbekannte Sessions', async () => {
     const db = openDb(':memory:');
-    const app = buildApp(db);
+    const app = testApp(db);
     const client = await loginAs(app, 'a@test.de');
     db.exec(`UPDATE sessions SET expires_at = datetime('now', '-1 second')`);
     expect((await client.get('/api/groups')).status).toBe(401);
@@ -73,7 +72,7 @@ describe('Sessions', () => {
   });
 
   it('setzt ein httpOnly-Cookie', async () => {
-    const res = await makeApp().inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'a@test.de' } });
+    const res = await loginWithCode(makeApp(), 'a@test.de');
     const cookie = res.cookies.find((c) => c.name === SESSION_COOKIE)!;
     expect(cookie.httpOnly).toBe(true);
     expect(cookie.sameSite).toBe('Lax');
@@ -82,17 +81,18 @@ describe('Sessions', () => {
 });
 
 describe('Fehlerbehandlung', () => {
-  it('antwortet auf unbekannte API-Routen mit JSON-404', async () => {
-    const res = await makeApp().inject({ url: '/api/gibtsnicht' });
-    expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: 'Nicht gefunden' });
+  it('antwortet auf unbekannte API-Routen mit JSON-404 (ohne Login mit 401)', async () => {
+    const app = makeApp();
+    expect((await app.inject({ url: '/api/gibtsnicht' })).statusCode).toBe(401);
+    const client = await loginAs(app, 'a@test.de');
+    expect(await client.get('/api/gibtsnicht')).toEqual({ status: 404, body: { error: 'Nicht gefunden' } });
   });
 
   it('meldet kaputtes JSON und ungültige IDs als 400', async () => {
     const app = makeApp();
     const broken = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/auth/request-code',
       headers: { 'content-type': 'application/json' },
       payload: '{kaputt',
     });
@@ -103,7 +103,7 @@ describe('Fehlerbehandlung', () => {
 
   it('versteckt interne Fehler', async () => {
     const db = openDb(':memory:');
-    const app = buildApp(db);
+    const app = testApp(db);
     const client = await loginAs(app, 'a@test.de');
     db.exec('DROP TABLE memberships');
     const res = await client.get('/api/groups');

@@ -14,4 +14,5 @@ export const adminOnly = () => forbidden('Nur für Administratoren');
 export const notFound = (msg = 'Nicht gefunden') => new HttpError(404, msg);
 export const conflict = (msg: string) => new HttpError(409, msg);
 export const badRequest = (msg: string) => new HttpError(400, msg);
+export const serviceUnavailable = (msg: string) => new HttpError(503, msg);
 export const tooManyRequests = (msg = 'Zu viele Anfragen, bitte später erneut versuchen') => new HttpError(429, msg);
