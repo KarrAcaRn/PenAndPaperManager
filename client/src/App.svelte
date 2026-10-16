@@ -6,6 +6,7 @@
   import GroupSelect from './routes/GroupSelect.svelte';
   import GroupLayout from './routes/GroupLayout.svelte';
   import Admin from './routes/Admin.svelte';
+  import Settings from './routes/Settings.svelte';
   import NoticeBar from './lib/NoticeBar.svelte';
 
   const loading = createTask();
@@ -25,6 +26,8 @@
     <GroupSelect />
   {:else if router.route.name === 'admin'}
     <Admin />
+  {:else if router.route.name === 'settings'}
+    <Settings />
   {:else}
     <GroupLayout route={router.route} />
   {/if}

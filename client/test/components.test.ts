@@ -96,6 +96,44 @@ describe('App', () => {
     render(App);
     expect(await screen.findByText(/Server nicht erreichbar/)).toBeTruthy();
   });
+
+  it('führt über das Zahnrad zu den Einstellungen und hebt es dort hervor', async () => {
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([gmGroup]);
+    render(App);
+    const gear = await screen.findByRole('link', { name: 'Einstellungen' });
+    expect(gear.getAttribute('href')).toBe('#/settings');
+    expect(gear.getAttribute('aria-current')).toBeNull();
+    gear.focus();
+    expect(document.activeElement).toBe(gear);
+    await user.click(gear);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByRole('heading', { name: 'Einstellungen' })).toBeTruthy();
+    const active = screen.getByRole('link', { name: 'Einstellungen' });
+    expect(active.getAttribute('aria-current')).toBe('page');
+    expect(active.classList.contains('active')).toBe(true);
+  });
+
+  it('zeigt das Zahnrad auch in der Gruppennavigation', async () => {
+    router.route = parseHash('#/g/7/notes');
+    api.me.mockResolvedValue({ user: PLAYER });
+    api.groups.mockResolvedValue([playerGroup]);
+    mockEmptyFolder(api);
+    render(App);
+    const header = (await screen.findByRole('link', { name: 'Testrunde' })).closest('header')!;
+    expect(within(header).getByRole('link', { name: 'Einstellungen' }).getAttribute('href')).toBe('#/settings');
+  });
+
+  it('verlangt für die Einstellungen einen Login und zeigt sie danach', async () => {
+    router.route = parseHash('#/settings');
+    api.me.mockResolvedValue({ user: null });
+    render(App);
+    expect(await screen.findByLabelText('E-Mail-Adresse')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Einstellungen' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Einstellungen' })).toBeNull();
+    signIn(PLAYER);
+    expect(await screen.findByRole('heading', { name: 'Einstellungen' })).toBeTruthy();
+  });
 });
 
 describe('Login', () => {
@@ -161,12 +199,12 @@ describe('GroupLayout', () => {
     api.members.mockResolvedValue([]);
   });
 
-  const nav = () => within(screen.getByRole('banner')).getAllByRole('link').map((a) => a.textContent);
+  const nav = () => within(screen.getByRole('banner')).getAllByRole('link').map((a) => a.getAttribute('aria-label') ?? a.textContent);
 
   it('versteckt den Bereich Spielleiter vor Spielern', () => {
     signIn(PLAYER, [playerGroup]);
     renderLayout('#/g/7/notes');
-    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk']);
+    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk', 'Einstellungen']);
   });
 
   it('zeigt das Regelwerk allen Mitgliedern, ohne Ordnerbaum und SL-Unterpunkte', async () => {

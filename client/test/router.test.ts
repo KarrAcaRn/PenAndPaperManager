@@ -36,6 +36,8 @@ describe('parseHash', () => {
     expect(parseHash(href.skills(3))).toEqual({ name: 'skills', gid: 3 });
     expect(parseHash(href.rules(3))).toEqual({ name: 'rules', gid: 3 });
     expect(parseHash(href.admin())).toEqual({ name: 'admin' });
+    expect(parseHash('#/settings')).toEqual({ name: 'settings' });
+    expect(parseHash(href.settings())).toEqual({ name: 'settings' });
   });
 });
 
