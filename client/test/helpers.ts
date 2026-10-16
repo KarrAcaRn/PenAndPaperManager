@@ -88,8 +88,9 @@ export function mockEmptyFolder(api: ReturnType<typeof mockApi>): void {
 /** Ersetzt alle api-Funktionen durch Mocks; ungemockte Aufrufe schlagen sichtbar fehl. */
 export function mockApi(): { [K in keyof typeof api]: ReturnType<typeof vi.fn> } {
   const mocks = {} as Record<string, ReturnType<typeof vi.fn>>;
-  for (const key of Object.keys(api) as (keyof typeof api)[]) {
-    mocks[key] = vi.spyOn(api, key).mockRejectedValue(new Error(`api.${key} nicht gemockt`)) as never;
+  const target = api as unknown as Record<string, (...args: unknown[]) => unknown>;
+  for (const key of Object.keys(target)) {
+    mocks[key] = vi.spyOn(target, key).mockRejectedValue(new Error(`api.${key} nicht gemockt`)) as never;
   }
   return mocks as never;
 }

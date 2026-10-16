@@ -22,6 +22,7 @@ npm-Workspaces, alles TypeScript (ESM, Imports mit `.ts`-Endung):
 - `client/` – Svelte 5 (Runes, `*.svelte.ts` für reaktiven Zustand), Vite, eigener Router (`lib/router.svelte.ts`),
   API-Zugriff nur über `lib/api.ts`. Markdown-Anzeige via `marked` + `DOMPurify` (`lib/markdown.ts`), Bearbeiten im WYSIWYG-Editor TipTap
   (`lib/MarkdownEditor.svelte`, speichert Markdown, wird per dynamischem Import nachgeladen).
+  Texte neuer Bereiche als Katalog über `createTranslator` (`lib/i18n.ts`, Beispiel `lib/storage/messages.ts`).
 
 ## Befehle
 

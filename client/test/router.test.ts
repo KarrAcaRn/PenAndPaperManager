@@ -40,6 +40,18 @@ describe('parseHash', () => {
     expect(parseHash(href.settings())).toEqual({ name: 'settings' });
   });
 
+  it('liest die Rückkehr aus der Google-Anmeldung in den Einstellungen und verwirft Unbrauchbares', () => {
+    expect(parseHash('#/settings?storageConnected=12')).toEqual({ name: 'settings', storageConnected: 12 });
+    expect(parseHash('#/settings?storageError=Abgebrochen%20%E2%80%93%20bitte%20erneut')).toEqual({
+      name: 'settings',
+      storageError: 'Abgebrochen – bitte erneut',
+    });
+    expect(parseHash('#/settings?storageConnected=abc&storageError=')).toEqual({ name: 'settings' });
+    expect(parseHash('#/settings?storageConnected=-1')).toEqual({ name: 'settings' });
+    expect(parseHash('#/settings/')).toEqual({ name: 'settings' });
+    expect(parseHash('#/settingsx')).toEqual({ name: 'groups' });
+  });
+
   it('erkennt den Login samt Ziel und lässt nur Ziele innerhalb der App zu', () => {
     expect(parseHash('#/login')).toEqual({ name: 'login', next: '#/' });
     expect(parseHash(href.login('#/g/3/notes/f/Über uns'))).toEqual({ name: 'login', next: '#/g/3/notes/f/Über uns' });

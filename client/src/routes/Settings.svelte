@@ -1,7 +1,8 @@
 <script lang="ts">
   import { THEME_LABELS, USER_SETTING_KEYS, USER_SETTING_OPTIONS, type UserSettings } from '@pnp/shared';
   import { ApiFailure } from '../lib/api.ts';
-  import { href } from '../lib/router.svelte.ts';
+  import { href, router, type Route } from '../lib/router.svelte.ts';
+  import StorageSettings from '../lib/storage/StorageSettings.svelte';
   import { createTask } from '../lib/task.svelte.ts';
   import { loadUserSettings, saveUserSettings } from '../lib/userSettings.svelte.ts';
   import UserMenu from '../lib/UserMenu.svelte';
@@ -41,6 +42,15 @@
 
   const loading = createTask();
   const saving = createTask();
+
+  /** Rückkehr aus der Google-Anmeldung (#/settings?storageConnected=…); einmal beim Öffnen der Seite gelesen */
+  const storageReturn: Extract<Route, { name: 'settings' }> = router.route.name === 'settings' ? { ...router.route } : { name: 'settings' };
+
+  /** Parameter aus der Adresse nehmen, damit Neuladen oder Lesezeichen den Ablauf nicht wiederholen */
+  function clearStorageParams() {
+    if (location.hash !== href.settings()) history.replaceState(history.state, '', href.settings());
+    router.route = { name: 'settings' };
+  }
 
   const dirty = $derived(!!draft && !!saved && USER_SETTING_KEYS.some((key) => draft![key] !== saved![key]));
 
@@ -155,6 +165,10 @@
       {/if}
     </form>
   {/if}
+
+  <div class="storage-section">
+    <StorageSettings connectedId={storageReturn.storageConnected} oauthError={storageReturn.storageError} onParamsHandled={clearStorageParams} />
+  </div>
 </main>
 
 <style>
@@ -185,4 +199,5 @@
   }
 
   .success { color: var(--accent); font-weight: 600; }
+  .storage-section { margin-top: 1.5rem; }
 </style>

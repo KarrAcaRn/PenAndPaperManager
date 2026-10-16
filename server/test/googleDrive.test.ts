@@ -110,6 +110,16 @@ describe('Google Drive', () => {
   });
 
   describe('OAuth', () => {
+    it('leitet einen Callback ohne Login mit Hinweis zurück in die Einstellungen, statt nur 401 zu zeigen', async () => {
+      const res = await app.inject({ url: `${DRIVE}/oauth/callback?code=x&state=y` });
+      expect(res.statusCode).toBe(302);
+      const target = res.headers.location as string;
+      expect(target.startsWith('/#/settings?')).toBe(true);
+      expect(new URLSearchParams(target.slice(target.indexOf('?') + 1)).get('storageError')).toContain('zuerst anmelden');
+      // Andere Drive-Endpunkte bleiben hinter dem Login
+      expect((await app.inject({ url: `${DRIVE}/connections/1/folders` })).statusCode).toBe(401);
+    });
+
     it('Start verlangt einen Login und leitet mit drive.file, PKCE und state zu Google', async () => {
       expect((await app.inject({ url: `${DRIVE}/oauth/start` })).statusCode).toBe(401);
       const { location, cookie } = await startOAuth(await login());

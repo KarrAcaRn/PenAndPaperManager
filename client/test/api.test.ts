@@ -53,6 +53,29 @@ describe('api', () => {
     ]);
   });
 
+  it('spricht die Speicher-Endpunkte an', async () => {
+    const fetch = mockFetch(200, {});
+    await api.storageProviders();
+    await api.storageConnections();
+    await api.createStorageConnection({ providerType: 's3', displayName: 'x', config: { bucket: 'b' }, credentials: { secretAccessKey: 's' } });
+    await api.testStorageConnection(4);
+    await api.deleteStorageConnection(4);
+    await api.driveFolders(5);
+    await api.driveFolders(5, 'n 1');
+    await api.chooseDriveFolder(5, { name: 'Soundboard' });
+    expect(fetch.mock.calls.map((c) => `${c[1]?.method} ${c[0]}`)).toEqual([
+      'GET /api/storage/providers',
+      'GET /api/storage/connections',
+      'POST /api/storage/connections',
+      'POST /api/storage/connections/4/test',
+      'DELETE /api/storage/connections/4',
+      'GET /api/storage/google-drive/connections/5/folders',
+      'GET /api/storage/google-drive/connections/5/folders?cursor=n+1',
+      'PUT /api/storage/google-drive/connections/5/folder',
+    ]);
+    expect(fetch.mock.calls[7][1]?.body).toBe('{"name":"Soundboard"}');
+  });
+
   it('wirft ApiFailure mit der Server-Meldung', async () => {
     mockFetch(409, { error: 'Ordner ist nicht leer' });
     const err = await api.deleteFolder(1, 'notes', 'a').catch((e) => e);

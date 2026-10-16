@@ -64,6 +64,17 @@ export interface StorageFilePage {
   nextCursor: string | null;
 }
 
+/** Ordner zur Auswahl beim Verbinden (Google Drive: GET /api/storage/google-drive/connections/:cid/folders) */
+export interface StorageFolder {
+  id: string;
+  name: string;
+}
+
+export interface StorageFolderPage {
+  folders: StorageFolder[];
+  nextCursor: string | null;
+}
+
 /** Kurzlebige URL, die der Browser direkt beim Anbieter abruft */
 export interface PlaybackUrl {
   url: string;

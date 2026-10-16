@@ -14,6 +14,9 @@ const root = document.documentElement;
 
 beforeEach(() => {
   api = mockApi();
+  // Speicher-Bereich (eigene Tests in storage.test.ts): leer, damit er keine Fehler meldet
+  api.storageProviders.mockResolvedValue([]);
+  api.storageConnections.mockResolvedValue([]);
   localStorage.clear();
   delete root.dataset.theme;
   userSettings.value = { ...DEFAULT_USER_SETTINGS };

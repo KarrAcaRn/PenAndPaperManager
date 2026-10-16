@@ -1,7 +1,7 @@
 # Soundboard: externe Speicher der Nutzer
 
 Stand: Fundament (Interface, Datenmodell, Registry, API), S3- und Google-Drive-Adapter sowie die Oberfläche in den
-Kontoeinstellungen (`client/src/lib/StorageSettings.svelte`); das Soundboard selbst baut darauf auf.
+Kontoeinstellungen (`client/src/lib/storage/`, Abschnitt „Oberfläche“); das Soundboard selbst baut darauf auf.
 
 ## Ziel
 
@@ -133,6 +133,28 @@ Ablauf Wiedergabe: Playback-URL holen, `<audio src>` setzen, nach `expiresAt` (b
   Google Drive erlaubt Resumable-Uploads aus dem Browser, wenn die Session mit passendem `Origin` angelegt wurde.
 - **Content-Security-Policy:** Falls die Seite später eine CSP bekommt, müssen `media-src` und `connect-src` die
   Anbieter-Domains erlauben.
+
+## Oberfläche
+
+Bereich „Speicher“ auf der Einstellungsseite (`#/settings`), Code in `client/src/lib/storage/`
+(`StorageSettings.svelte`, `S3ConnectionForm.svelte`, `DriveFolderPicker.svelte`), Tests in `client/test/storage.test.ts`.
+
+- **Liste:** Name, Typ, Status (Verbunden/Fehler/Getrennt samt Meldung) und die nicht geheimen Angaben aus `config`.
+  Zugangsdaten zeigt die Oberfläche nur als `••••••••` – die API liefert sie nie. Aktionen: „Testen“
+  (`POST …/:cid/test`, danach wird die Liste mit dem neuen Status aufgefrischt) und „Entfernen“ (mit Bestätigung).
+- **S3:** Formular (Name optional, Vorgabe „S3: <Bucket>“; Access Key ID, Secret, Bucket, Region, optional Endpoint
+  und Prefix). „Verbindung testen und speichern“ schickt alles an `POST /api/storage/connections`; der Server prüft
+  die Verbindung und speichert nur bei Erfolg. Schlägt die Prüfung fehl, bleiben die Eingaben zum Korrigieren stehen.
+  Ein aufklappbarer Hinweis zeigt die CORS-Konfiguration mit der Adresse der aktuellen Seite und verlinkt diese Anleitung.
+- **Google Drive:** „Mit Google verbinden“ navigiert auf `/api/storage/google-drive/oauth/start` (optional mit
+  `displayName`). Der Callback leitet auf `#/settings?storageConnected=<id>` bzw. `?storageError=<Meldung>`; die Seite
+  öffnet dann die Ordnerauswahl (neuer Ordner „Soundboard“ empfohlen oder ein vorhandener) bzw. zeigt den Fehler und
+  entfernt die Parameter aus der Adresse. Drive-Verbindungen ohne Ordner haben in der Liste „Ordner wählen“.
+  Der Callback und der Stream-Endpunkt sind vom globalen API-Login-Guard ausgenommen (`PUBLIC_API_PATHS` in
+  `auth.ts`), weil sie selbst prüfen: der Callback leitet ohne Login mit Hinweis zurück, statt ein rohes 401 zu zeigen.
+- **Texte:** Katalog `client/src/lib/storage/messages.ts` über `createTranslator` (`client/src/lib/i18n.ts`). Deutsch
+  ist Pflicht und Vorgabe; weitere Sprachen als eigener Katalog, fehlende Texte fallen auf Deutsch zurück, die Sprache
+  kommt aus `<html lang>`.
 
 ## Annahmen
 

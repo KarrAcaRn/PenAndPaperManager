@@ -9,7 +9,8 @@ export type Route =
   | { name: 'skills'; gid: number }
   | { name: 'rules'; gid: number }
   | { name: 'admin' }
-  | { name: 'settings' }
+  /** storageConnected/storageError: Rückkehr aus der Google-Anmeldung (#/settings?storageConnected=<id>) */
+  | { name: 'settings'; storageConnected?: number; storageError?: string }
   /** next: Seite (Hash), zu der es nach dem Login weitergeht */
   | { name: 'login'; next: string };
 
@@ -32,14 +33,25 @@ function loginTarget(next: string | undefined): string {
   return next?.startsWith('#/') && !next.startsWith('#/login') ? next : '#/';
 }
 
+/** Einstellungen; die Parameter setzt nur der Server nach der Google-Anmeldung, Unbrauchbares fällt weg */
+function settingsRoute(params: URLSearchParams): Route {
+  const route: Extract<Route, { name: 'settings' }> = { name: 'settings' };
+  const connected = Number(params.get('storageConnected'));
+  if (params.has('storageConnected') && Number.isInteger(connected) && connected > 0) route.storageConnected = connected;
+  const error = params.get('storageError')?.trim();
+  if (error) route.storageError = error.slice(0, 300);
+  return route;
+}
+
 export function parseHash(hash: string): Route {
+  const settings = /^#?\/?settings\/?(?:\?(.*))?$/.exec(hash);
+  if (settings) return settingsRoute(new URLSearchParams(settings[1] ?? ''));
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(safeDecode);
   const [g, gidRaw, rawSection, kind, ...rest] = parts;
   const legacyFolder = rawSection === undefined ? undefined : LEGACY_SECTIONS[rawSection];
   const section = legacyFolder === undefined ? rawSection : 'notes';
   const subPath = (path: string) => (legacyFolder === undefined || path === '' ? (legacyFolder ?? path) : joinPath(legacyFolder, path));
   if (g === 'admin') return { name: 'admin' };
-  if (g === 'settings') return { name: 'settings' };
   if (g === 'login') return { name: 'login', next: loginTarget(gidRaw) };
   const gid = Number(gidRaw);
   if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };

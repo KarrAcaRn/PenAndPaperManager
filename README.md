@@ -84,6 +84,9 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
   und Anbieter. Verbindungen sieht und nutzt nur ihr Besitzer.
 - Zugangsdaten liegen verschlüsselt in `user_storage_connections` und erscheinen in keiner API-Antwort.
 - Architektur, API, Sicherheit (CORS) und Annahmen: `docs/soundboard-storage.md`.
+- Oberfläche: Bereich „Speicher“ auf der Einstellungsseite `#/settings` – Verbindungen ansehen, testen, entfernen und
+  neue anlegen (S3 per Formular mit Verbindungstest vor dem Speichern, Google Drive per „Mit Google verbinden“ und
+  anschließender Ordnerauswahl). Zugangsdaten erscheinen nach dem Speichern nur noch maskiert.
 
 ## FATE-Bogen und Fertigkeiten
 
