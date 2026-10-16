@@ -23,6 +23,13 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 `APP_SECRET_KEY` (32 Bytes Base64 zum Verschlüsseln gespeicherter Zugangsdaten; fehlt er, wird `data/secret.key`
 angelegt – zusammen mit der Datenbank, aber getrennt von ihr sichern).
 
+Google Drive als Soundboard-Speicher (optional; ohne diese drei Variablen bietet der Server Drive nicht an):
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth-Client vom Typ „Webanwendung“ aus der Google Cloud Console) und
+`GOOGLE_REDIRECT_URI` – exakt so in der Console eingetragen, z.B. lokal
+`http://localhost:5173/api/storage/google-drive/oauth/callback` (Vite) bzw. `http://localhost:3000/…` (`npm start`),
+in Produktion `https://<domain>/api/storage/google-drive/oauth/callback`. Optional `GOOGLE_APP_ORIGIN`, falls die
+Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs/soundboard-storage.md`.
+
 ## Regeln
 
 - Login per E-Mail, in der Testphase ohne Passwort (`server/src/auth.ts`). Damit kann sich jeder als jede Adresse

@@ -109,6 +109,13 @@ export async function connect(ctx: StorageContext, userId: number, input: NewCon
   return createConnection(ctx, userId, { ...input, credentials });
 }
 
+/** Ändert die (nicht geheimen) Einstellungen, z.B. den gewählten Drive-Ordner. */
+export function updateConnectionConfig(db: Db, userId: number, id: number, config: StorageConfig): StorageConnection {
+  loadConnection(db, userId, id);
+  run(db, `UPDATE user_storage_connections SET config = ?, updated_at = datetime('now') WHERE id = ?`, JSON.stringify(config), id);
+  return getConnection(db, userId, id);
+}
+
 /** Entfernt nur die Verknüpfung; die Dateien beim Anbieter bleiben unangetastet. */
 export function deleteConnection(db: Db, userId: number, id: number): void {
   if (!run(db, 'DELETE FROM user_storage_connections WHERE id = ? AND user_id = ?', id, userId)) {

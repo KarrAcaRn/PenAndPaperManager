@@ -96,8 +96,8 @@ describe('Speicher-Verbindungen', () => {
 
   it('listet die verfügbaren Anbieter', async () => {
     expect((await alice.get('/api/storage/providers')).body).toEqual([{ type: 's3', label: 'S3 (oder kompatibel)', manualSetup: true }]);
-    // Noch sind keine echten Adapter eingetragen
-    expect(defaultStorageProviders().list()).toEqual([]);
+    // Ohne Konfiguration (Google-Env-Variablen) ist kein eingebauter Anbieter verfügbar
+    expect(defaultStorageProviders({}).list()).toEqual([]);
   });
 
   it('legt eine Verbindung nach erfolgreicher Prüfung an und liefert nie die Zugangsdaten', async () => {

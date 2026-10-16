@@ -1,5 +1,6 @@
 import { STORAGE_PROVIDER_LABELS, type StorageConfig, type StorageProviderInfo, type StorageProviderType } from '@pnp/shared';
 import { badRequest } from '../errors.ts';
+import { googleDriveOptionsFromEnv, googleDriveProvider } from './googleDrive.ts';
 import type { StorageProviderDefinition } from './provider.ts';
 
 /** Liefert zu einem providerType die Implementierung. */
@@ -33,9 +34,13 @@ export class StorageProviderRegistry {
 }
 
 /**
- * Die Anbieter dieses Servers. S3 und Google Drive werden hier eingetragen, sobald ihre Adapter existieren
- * (z.B. `registry.register(s3Provider)`); bis dahin ist die Liste leer.
+ * Die Anbieter dieses Servers. Google Drive ist nur verfügbar, wenn GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET und
+ * GOOGLE_REDIRECT_URI gesetzt sind (sonst böte die Oberfläche einen Anbieter an, dessen Anmeldung scheitert).
+ * S3 wird hier eingetragen, sobald sein Adapter existiert.
  */
-export function defaultStorageProviders(): StorageProviderRegistry {
-  return new StorageProviderRegistry();
+export function defaultStorageProviders(env: NodeJS.ProcessEnv = process.env): StorageProviderRegistry {
+  const registry = new StorageProviderRegistry();
+  const drive = googleDriveOptionsFromEnv(env);
+  if (drive) registry.register(googleDriveProvider(drive));
+  return registry;
 }
