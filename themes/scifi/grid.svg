@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Feines Raster für den Seitenhintergrund „SciFi“, nahtlos kachelnd. Selbst erstellt, MIT-Lizenz. -->
+  <path d="M0 0.5 H48 M0.5 0 V48" stroke="#00e5ff" stroke-opacity="0.06" stroke-width="1" fill="none" />
+  <path d="M23.5 22 V26 M21.5 24 H25.5" stroke="#00e5ff" stroke-opacity="0.08" stroke-width="1" />
+</svg>

@@ -86,6 +86,10 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 - Mitgelieferte Themes liegen in `themes/`, eigene legt der Seitenbetreiber in `THEMES_DIR` (`data/themes`) ab –
   ohne Codeänderung und ohne Neustart. Ungültige Manifeste werden mit Begründung im Server-Log abgelehnt, doppelte
   IDs ebenso.
+- Mitgeliefert: `default`, `fantasy` (Pergament, Holzrahmen mit Gold, Zierschrift), `clean` (minimalistisch, hell)
+  und `scifi` (dunkel, Neon, abgeschrägte Ecken). Sie nutzen nur Tokens und Zusatz-CSS und dienen als Beispiele
+  für eigene Themes; Grafiken sind selbst erstellt, Schriften stehen unter der SIL Open Font License
+  (`fonts/OFL-*.txt`). `fantasy`, `clean` und `scifi` haben ein festes Farbschema (kein `darkTokens`).
 - Basis-Theme ist `default` (das bisherige Aussehen, hell/dunkel nach System). Es setzt jedes Token; fehlende
   Tokens anderer Themes werden daraus ergänzt. `darkTokens` (Abweichungen bei dunklem System-Farbschema) werden
   nicht ergänzt, sonst mischten sich fremde Farben ein.
