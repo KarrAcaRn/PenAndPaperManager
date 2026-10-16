@@ -13,7 +13,8 @@ npm-Workspaces, alles TypeScript (ESM, Imports mit `.ts`-Endung):
   - `app.ts` baut die App (`buildApp(db)`), `index.ts` startet sie.
   - `routes/*.ts` – je Ressource eine Funktion `xxxRoutes(app, db)`.
   - `access.ts` – Sichtbarkeits-/Bearbeitungsregeln, dazu die SQL-Entsprechung (`VISIBLE_ARTICLE_SQL`).
-  - `auth.ts` – Login per E-Mail ohne Passwort (Testphase), Session-Cookie, `requireMember`/`requireGm`.
+  - `auth.ts` – Sessions (30 Tage, `createSession`/`destroySession`), globaler API-Guard `requireAuthForApi`,
+    `requireUser`/`requireMember`/`requireGm`. Login per E-Mail-Code in `login-codes.ts` + `routes/login-codes.ts`.
   - `schemas.ts` – JSON-Schema-Bausteine für die Fastify-Validierung.
   - `migrations/NNN_name.sql` – werden beim Start automatisch in Dateinamen-Reihenfolge angewendet.
 - `client/` – Svelte 5 (Runes, `*.svelte.ts` für reaktiven Zustand), Vite, eigener Router (`lib/router.svelte.ts`),
@@ -30,7 +31,8 @@ npm run check          # tsc (Server) + svelte-check (Client) – muss fehlerfre
 npm run build && npm start
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`).
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`); Mailversand (`server/src/mail.ts`)
+über `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM` – siehe `.env.example`. Ohne SMTP wird außerhalb von Produktion nur geloggt.
 
 ## Konventionen
 
@@ -51,7 +53,8 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
 ## Tests
 
 - Jede Verhaltensänderung bekommt einen Test. Server-Tests laufen gegen `buildApp(openDb(':memory:'))` per
-  `app.inject` – Helfer in `server/test/helpers.ts` (`makeApp`, `loginAs`, `setupGroup`, `article`).
+  `app.inject` – Helfer in `server/test/helpers.ts` (`makeApp`/`testApp` mit abgefangenem Mailversand und ohne
+  Rate-Limits, `loginAs`/`loginWithCode` über den echten Code-Login, `setupGroup`, `article`).
 - Client-Tests mit `@testing-library/svelte` in jsdom; Hilfen in `client/test/helpers.ts`.
 - Vor jedem Commit: `npm test` und `npm run check` grün.
 

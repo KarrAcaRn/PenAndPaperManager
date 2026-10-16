@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSkillNames } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
 import { parseAdminEmails } from '../src/auth.ts';
 import { DEFAULT_PRESETS } from '../src/presets/defaults.ts';
-import { ADMIN_EMAIL, loginAs, makeApp } from './helpers.ts';
+import { ADMIN_EMAIL, loginAs, loginWithCode, makeApp, testApp } from './helpers.ts';
 
 const preset = (extra: object = {}) => ({ name: 'Testspiel', description: 'Quelle', skills: ['Laufen', 'Reden'], ...extra });
 
@@ -25,10 +24,10 @@ describe('Admins', () => {
     expect(parseAdminEmails(undefined).size).toBe(0);
   });
 
-  it('sind in login und me markiert', async () => {
+  it('sind in verify-code und me markiert', async () => {
     const app = makeApp();
-    const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: ADMIN_EMAIL.toUpperCase() } });
-    expect(res.json().isAdmin).toBe(true);
+    const res = await loginWithCode(app, ADMIN_EMAIL.toUpperCase());
+    expect(res.json().user.isAdmin).toBe(true);
     const admin = await loginAs(app, ADMIN_EMAIL);
     expect((await admin.get('/api/auth/me')).body.user.isAdmin).toBe(true);
     const normal = await loginAs(app, 'normal@test.de');
@@ -39,12 +38,12 @@ describe('Admins', () => {
 describe('Varianten', () => {
   it('werden genau einmal eingespielt - gelöschte kommen nicht zurück', async () => {
     const db = openDb(':memory:');
-    const admin = await loginAs(buildApp(db, { adminEmails: ADMIN_EMAIL }), ADMIN_EMAIL);
+    const admin = await loginAs(testApp(db, { adminEmails: ADMIN_EMAIL }), ADMIN_EMAIL);
     const seeded = (await admin.get('/api/presets')).body;
     expect(seeded.map((p: any) => p.name).sort()).toEqual(DEFAULT_PRESETS.map((p) => p.name).sort());
     for (const p of seeded) await admin.del(`/api/presets/${p.id}`);
 
-    const restarted = await loginAs(buildApp(db, { adminEmails: ADMIN_EMAIL }), ADMIN_EMAIL);
+    const restarted = await loginAs(testApp(db, { adminEmails: ADMIN_EMAIL }), ADMIN_EMAIL);
     expect((await restarted.get('/api/presets')).body).toEqual([]);
   });
 

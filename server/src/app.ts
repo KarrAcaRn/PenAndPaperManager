@@ -6,6 +6,9 @@ import fastifyStatic from '@fastify/static';
 import type { Db } from './db.ts';
 import { HttpError } from './errors.ts';
 import { authRoutes } from './routes/auth.ts';
+import { loginCodeRoutes } from './routes/login-codes.ts';
+import { RATE_LIMITS, type LoginRateLimits, type SendLoginCodeEmail } from './login-codes.ts';
+import { sendLoginCodeEmail } from './mail.ts';
 import { groupRoutes } from './routes/groups.ts';
 import { memberRoutes } from './routes/members.ts';
 import { articleRoutes } from './routes/articles.ts';
@@ -15,7 +18,7 @@ import { skillRoutes } from './routes/skills.ts';
 import { sheetRoutes } from './routes/sheets.ts';
 import { rulebookRoutes } from './routes/rulebooks.ts';
 import { settingsRoutes } from './routes/settings.ts';
-import { parseAdminEmails } from './auth.ts';
+import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
 import { seedPresets } from './presets.ts';
 import { dbPath, rulebookDir } from './paths.ts';
 
@@ -27,6 +30,10 @@ export interface AppOptions {
   adminEmails?: string;
   /** Ordner mit den PDF-Dateien der Regelwerke; Vorgabe ist data/rulebooks neben der Datenbank */
   rulebookDir?: string;
+  /** Versand der Login-Codes; Vorgabe ist `sendLoginCodeEmail` aus mail.ts, Tests fangen die Codes hier ab */
+  sendLoginCodeEmail?: SendLoginCodeEmail;
+  /** Rate-Limits für das Anfordern von Login-Codes; Vorgabe RATE_LIMITS (Tests mit vielen Logins lockern sie) */
+  loginRateLimits?: LoginRateLimits;
 }
 
 export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
@@ -43,7 +50,14 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
     return reply.code(500).send({ error: 'Interner Fehler' });
   });
 
+  // Alle API-Routen außer Login/Logout/Status verlangen eine Session (zusätzlich zu requireUser in den Routen).
+  app.addHook('preValidation', requireAuthForApi(db));
+
   authRoutes(app, db, admins);
+  loginCodeRoutes(app, db, admins, {
+    sendLoginCodeEmail: opts.sendLoginCodeEmail ?? sendLoginCodeEmail,
+    rateLimits: opts.loginRateLimits ?? RATE_LIMITS,
+  });
   groupRoutes(app, db);
   memberRoutes(app, db);
   articleRoutes(app, db);
@@ -59,7 +73,7 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
     app.register(fastifyStatic, { root: CLIENT_DIST });
   }
   app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Nicht gefunden' });
+    if (apiPath(req).startsWith('/api/')) return reply.code(404).send({ error: 'Nicht gefunden' });
     if (existsSync(CLIENT_DIST)) return reply.sendFile('index.html');
     return reply.code(404).send({ error: 'Frontend nicht gebaut (npm run build)' });
   });

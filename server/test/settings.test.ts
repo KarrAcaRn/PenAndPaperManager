@@ -4,12 +4,11 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.ts';
-import { buildApp } from '../src/app.ts';
 import { getUserSettings, updateUserSettings } from '../src/settings.ts';
-import { loginAs, makeApp } from './helpers.ts';
+import { loginAs, makeApp, testApp } from './helpers.ts';
 
 const MIGRATIONS = join(import.meta.dirname, '../src/migrations');
-const SETTINGS_MIGRATION = '003_user_settings.sql';
+const SETTINGS_MIGRATION = '005_user_settings.sql';
 
 describe('Benutzereinstellungen (Modell)', () => {
   const userIn = (db: ReturnType<typeof openDb>, email: string) =>
@@ -53,7 +52,7 @@ describe('Benutzereinstellungen (Modell)', () => {
   });
 });
 
-describe('Migration 003_user_settings', () => {
+describe('Migration 005_user_settings', () => {
   let dir: string | undefined;
   afterEach(() => dir && rmSync(dir, { recursive: true, force: true }));
 
@@ -72,7 +71,7 @@ describe('Migration 003_user_settings', () => {
 
     const db = openDb(file);
     expect(db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(SETTINGS_MIGRATION)).toBeDefined();
-    const client = await loginAs(buildApp(db), 'alt@test.de');
+    const client = await loginAs(testApp(db), 'alt@test.de');
     expect((await client.get('/api/me/settings')).body).toEqual({ theme: 'system' });
     db.close();
   });

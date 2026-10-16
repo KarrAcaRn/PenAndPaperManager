@@ -1,6 +1,6 @@
 <script lang="ts">
   import { loadSession, session } from './lib/session.svelte.ts';
-  import { router } from './lib/router.svelte.ts';
+  import { href, navigate, router } from './lib/router.svelte.ts';
   import { createTask } from './lib/task.svelte.ts';
   import Login from './routes/Login.svelte';
   import GroupSelect from './routes/GroupSelect.svelte';
@@ -11,6 +11,14 @@
 
   const loading = createTask();
   loading.run(loadSession);
+
+  // Ohne Login geht es zu #/login (die URL merkt sich die angefragte Seite), nach dem Login dorthin zurück.
+  $effect(() => {
+    if (!session.ready) return;
+    const route = router.route;
+    if (!session.user && route.name !== 'login') navigate(href.login(location.hash));
+    else if (session.user && route.name === 'login') navigate(route.next);
+  });
 </script>
 
 {#if loading.error}
@@ -19,6 +27,8 @@
   <main><p class="muted">Lade …</p></main>
 {:else if !session.user}
   <Login />
+{:else if router.route.name === 'login'}
+  <main><p class="muted">Lade …</p></main>
 {:else}
   <!-- Hinweise überleben Seitenwechsel, daher hier statt in den einzelnen Seiten -->
   <NoticeBar />

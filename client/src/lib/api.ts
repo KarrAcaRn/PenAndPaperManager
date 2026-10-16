@@ -58,8 +58,19 @@ const qs = (params: Record<string, string | undefined>) =>
   new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined)).toString();
 
 export const api = {
-  me: () => request<{ user: SessionUser | null }>('GET', '/auth/me'),
-  login: (email: string) => request<SessionUser>('POST', '/auth/login', { email }),
+  /** Ohne Login antwortet der Server mit 401 (ältere Versionen mit { user: null }) - beides heißt "nicht eingeloggt". */
+  me: async (): Promise<{ user: SessionUser | null }> => {
+    try {
+      return await request<{ user: SessionUser | null }>('GET', '/auth/me');
+    } catch (err) {
+      if (err instanceof ApiFailure && err.status === 401) return { user: null };
+      throw err;
+    }
+  },
+  /** Schickt einen Login-Code an die E-Mail-Adresse (Antwort 204 ohne Inhalt) */
+  requestCode: (email: string) => request<unknown>('POST', '/auth/request-code', { email }),
+  /** Prüft den Code; bei Erfolg setzt der Server das Session-Cookie */
+  verifyCode: (email: string, code: string) => request<{ user: SessionUser }>('POST', '/auth/verify-code', { email, code }),
   logout: () => request<unknown>('POST', '/auth/logout'),
 
   settings: () => request<UserSettings>('GET', '/me/settings'),

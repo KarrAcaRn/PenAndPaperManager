@@ -19,12 +19,37 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
-`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen).
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen), dazu der Mailversand für die
+Login-Codes: `MAIL_TRANSPORT` (`smtp` oder `log`), `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_SECURE`, `SMTP_USER`,
+`SMTP_PASS`, `MAIL_FROM` – Beispiel in `.env.example` (wird nicht automatisch geladen). Ohne SMTP-Konfiguration
+schreibt der Server die Codes außerhalb von `NODE_ENV=production` nur ins Log; in Produktion schlägt der Versand
+dann fehl (`MAIL_TRANSPORT=log` erzwingt das Log, z.B. für einen lokalen Testserver mit `NODE_ENV=production`).
+
+Migrationen (`server/src/migrations/NNN_*.sql`) laufen beim Start automatisch; für den Login sind das
+`003_session_token_hash.sql` (Sessions mit Token-Hash und Ablaufzeit – bestehende Logins werden dabei verworfen)
+und `004_login_codes.sql` (Login-Codes).
+
+## Login
+
+Passwortlos per E-Mail-Code (`server/src/routes/login-codes.ts`, Seite `#/login`):
+
+1. E-Mail eingeben → `POST /api/auth/request-code`. Der Server erzeugt einen 6-stelligen Code (10 Minuten gültig,
+   gespeichert nur als scrypt-Hash) und verschickt ihn per `sendLoginCodeEmail` (`server/src/mail.ts`). Die Antwort
+   ist für jede Adresse gleich (204), nur Rate-Limits (429) und Versandfehler (503) melden sich.
+2. Code eingeben → `POST /api/auth/verify-code`. Richtig: Nutzer wird bei Bedarf angelegt, `createSession` setzt das
+   Session-Cookie. Ein Code gilt einmal; nach 5 Fehlversuchen ist er verbrannt. Pro Adresse sind höchstens 10 Fehlversuche
+   in 24 Stunden möglich (über alle Codes), danach ist der Login für diese Adresse bis zum Ablauf gesperrt.
+3. `GET /api/auth/me` liefert den Nutzer (ohne Login 401), `POST /api/auth/logout` beendet die Session.
+
+Alle anderen `/api`-Routen verlangen eine Session (globaler Guard `requireAuthForApi` in `auth.ts`, dazu
+`requireUser` in den Routen). Den früheren Test-Login `POST /api/auth/login` (nur E-Mail, ohne Code) gibt es
+nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 
 ## Regeln
 
-- Login per E-Mail, in der Testphase ohne Passwort (`server/src/auth.ts`). Damit kann sich jeder als jede Adresse
-  anmelden – auch als Admin aus `ADMIN_EMAILS`. Vor einem öffentlichen Betrieb muss eine echte Anmeldung her.
+- Login per E-Mail-Code (siehe „Login“). Admins sind die Adressen aus `ADMIN_EMAILS`.
+- Ein Login gilt höchstens 30 Tage (absolute Ablaufzeit, Benutzung verlängert nichts). Sessions liegen serverseitig
+  in der Tabelle `sessions` (nur SHA-256-Hash des Tokens), Logout beendet nur die Session des aktuellen Geräts.
 - Wer eine Gruppe anlegt, ist Spielleiter; Eingeladene sind Spieler. Es gibt immer mindestens einen Spielleiter.
 - Bereiche: Charaktere, Notizen, Spielleiter. Der Bereich Spielleiter ist für Spieler unsichtbar.
 - Neue Gruppen bekommen in Notizen und Spielleiter die Ordner „NPCs“, „Orte“ und „Sessions“

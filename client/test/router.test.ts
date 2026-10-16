@@ -39,6 +39,18 @@ describe('parseHash', () => {
     expect(parseHash('#/settings')).toEqual({ name: 'settings' });
     expect(parseHash(href.settings())).toEqual({ name: 'settings' });
   });
+
+  it('erkennt den Login samt Ziel und lässt nur Ziele innerhalb der App zu', () => {
+    expect(parseHash('#/login')).toEqual({ name: 'login', next: '#/' });
+    expect(parseHash(href.login('#/g/3/notes/f/Über uns'))).toEqual({ name: 'login', next: '#/g/3/notes/f/Über uns' });
+    expect(parseHash(href.login(href.folder(3, 'notes', 'a/50%')))).toEqual({ name: 'login', next: '#/g/3/notes/f/a/50%25' });
+    expect(href.login()).toBe('#/login');
+    expect(href.login('#/')).toBe('#/login');
+    expect(href.login('')).toBe('#/login');
+    expect(href.login('#/login/x')).toBe('#/login');
+    expect(parseHash(`#/login/${encodeURIComponent('https://evil.example')}`)).toEqual({ name: 'login', next: '#/' });
+    expect(parseHash(`#/login/${encodeURIComponent('#/login')}`)).toEqual({ name: 'login', next: '#/' });
+  });
 });
 
 describe('href', () => {

@@ -1,20 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db.ts';
-import { currentUser, login, logout, toSessionUser, type AdminEmails } from '../auth.ts';
-import { emailBody } from '../schemas.ts';
+import { destroySession, requireUser, toSessionUser, type AdminEmails } from '../auth.ts';
 
+// Angemeldet wird per E-Mail-Code (routes/login-codes.ts); den früheren Login nur per E-Mail ohne Code gibt es nicht mehr.
 export function authRoutes(app: FastifyInstance, db: Db, admins: AdminEmails): void {
-  app.post('/api/auth/login', { schema: { body: emailBody } }, (req, reply) =>
-    toSessionUser(login(db, reply, (req.body as { email: string }).email), admins),
-  );
-
   app.post('/api/auth/logout', (req, reply) => {
-    logout(db, req, reply);
+    destroySession(db, req, reply);
     return { ok: true };
   });
 
-  app.get('/api/auth/me', (req) => {
-    const user = currentUser(db, req);
-    return { user: user && toSessionUser(user, admins) };
-  });
+  // Nicht eingeloggt (kein, unbekanntes oder abgelaufenes Cookie): 401
+  app.get('/api/auth/me', (req) => ({ user: toSessionUser(requireUser(db, req), admins) }));
 }

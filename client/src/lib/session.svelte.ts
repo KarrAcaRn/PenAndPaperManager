@@ -32,9 +32,13 @@ export async function loadSession(): Promise<void> {
   session.ready = true;
 }
 
-export async function login(email: string): Promise<void> {
-  await api.login(email);
-  await loadSession();
+/** Prüft den Code aus der E-Mail; bei Erfolg ist man eingeloggt und die Gruppen sind geladen. */
+export async function verifyLoginCode(email: string, code: string): Promise<void> {
+  const { user } = await api.verifyCode(email, code);
+  session.groups = await api.groups();
+  session.user = user;
+  session.ready = true;
+  loadUserSettings().catch(() => {});
 }
 
 export async function logout(): Promise<void> {
@@ -44,7 +48,7 @@ export async function logout(): Promise<void> {
     // Auch wenn der Server nicht erreichbar ist, soll der Logout lokal wirken.
   } finally {
     clear();
-    navigate(href.groups());
+    navigate(href.login());
   }
 }
 
