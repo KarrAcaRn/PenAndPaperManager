@@ -1,9 +1,70 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EFFECT_LIST_KEY, MAX_EFFECT_ENTRIES, createEffectList, entryIdOf, entryKey, loadEffectList } from '../src/lib/effectList.svelte.ts';
+import { EFFECT_LIST_KEY, MAX_EFFECT_ENTRIES, createEffectList, createEffectListPlayer, entryIdOf, entryKey, loadEffectList } from '../src/lib/effectList.svelte.ts';
+import { createPlayer } from '../src/lib/soundPlayer.svelte.ts';
 import { builtinToBoard } from '../src/lib/soundboard.ts';
-import { builtinSound } from './soundHelpers.ts';
+import { FakeAudio, builtinSound } from './soundHelpers.ts';
 
 const glocke = builtinToBoard(builtinSound('glocke', 'Glocke', 'Effekte'));
+
+describe('Wiedergabe der Effekt-Liste', () => {
+  let resolvers: (() => void)[] = [];
+
+  beforeEach(() => {
+    localStorage.clear();
+    FakeAudio.all = [];
+    resolvers = [];
+  });
+
+  /** Player mit FakeAudio; URLs kommen erst, wenn der Test `resolvers` aufruft */
+  function setup() {
+    const list = createEffectList();
+    let effects: ReturnType<typeof createEffectListPlayer>;
+    const player = createPlayer({
+      resolveUrl: (sound) => new Promise((resolve) => resolvers.push(() => resolve(sound.url!))),
+      createAudio: () => new FakeAudio() as unknown as HTMLAudioElement,
+      soundOptions: (key) => effects.soundOptions(key) ?? { volume: 1, loop: false },
+    });
+    effects = createEffectListPlayer({ player, list, findSound: (key) => (key === glocke.key ? glocke : undefined) });
+    return { list, player, effects };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('entfernt einen noch ladenden Eintrag, ohne dass er danach doch noch startet', async () => {
+    const { effects, player } = setup();
+    const entry = effects.add(glocke)!;
+    expect(effects.state(entry.id)).toBe('loading');
+    effects.remove(entry.id);
+    resolvers.forEach((r) => r());
+    await settle();
+    expect(FakeAudio.all).toHaveLength(0);
+    expect(player.isChannelActive('sfx')).toBe(false);
+    expect(effects.error(entry.id)).toBeUndefined();
+  });
+
+  it('ohne Schleife gilt der Eintrag nach dem Ende als gestoppt; Ladefehler verschwinden mit dem Eintrag', async () => {
+    const { effects, list } = setup();
+    const entry = effects.add(glocke)!;
+    effects.setLoop(entry.id, false);
+    resolvers.shift()!();
+    await settle();
+    const audio = FakeAudio.all[0];
+    expect(audio.loop).toBe(false);
+    expect(audio.volume).toBe(0);
+    expect(effects.state(entry.id)).toBe('playing');
+    audio.end();
+    expect(effects.isPlaying(entry.id)).toBe(false);
+    expect(list.entries).toHaveLength(1);
+
+    effects.play(entry.id);
+    resolvers.shift()!();
+    await settle();
+    FakeAudio.all[1].failLoading();
+    // Standard-Sounds bekommen keinen zweiten Versuch
+    expect(effects.error(entry.id)).toMatch(/ließ sich nicht laden/);
+    effects.remove(entry.id);
+    expect(effects.error(entry.id)).toBeUndefined();
+  });
+});
 
 describe('Effekt-Liste speichern', () => {
   beforeEach(() => localStorage.clear());

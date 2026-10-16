@@ -82,7 +82,8 @@
 
   const player = createPlayer({
     typeOf: types.typeOf,
-    // Einträge der Effekt-Liste haben eigene Regler und Schleife
+    // Einträge der Effekt-Liste haben eigene Regler und Schleife (`effects` entsteht weiter unten; der Player fragt
+    // erst beim Abspielen nach, nicht schon beim Anlegen)
     soundOptions: (key) => effects.soundOptions(key) ?? soundSettings.get(key),
     // Titelende: die Playlist schaltet weiter
     onEnded: (sound, channel) => playlistPlayer.ended(sound, channel),
@@ -143,13 +144,7 @@
   const effectList = createEffectList();
   const effects = createEffectListPlayer({ player, list: effectList, findSound: (key) => soundsByKey.get(key) });
   let playlistError = $state('');
-  let effectError = $state('');
   const selectedPlaylist = $derived(playlists.selected);
-
-  /** „+“ an einer Effekt-Kachel: wie in der Referenz sofort in Schleife, aber bei Lautstärke 0 */
-  function addToEffects(sound: BoardSound): void {
-    effectError = effects.add(sound) ? '' : 'Die Effekt-Liste ist voll.';
-  }
 
   function addToPlaylist(sound: BoardSound): void {
     playlistError = '';
@@ -396,7 +391,7 @@
           aria-label="„{sound.title}“ zur Effekt-Liste hinzufügen"
           title="Zur Effekt-Liste hinzufügen (startet bei Lautstärke 0 in Schleife)"
           disabled={effectList.full}
-          onclick={() => addToEffects(sound)}>+</button
+          onclick={() => effects.add(sound)}>+</button
         >
       {/if}
       <input
@@ -489,7 +484,7 @@
   <div class="layout">
     <aside class="side">
       <PlaylistPanel {player} {playlists} {playlistPlayer} {soundsByKey} error={playlistError} />
-      <EffectListPanel list={effectList} {effects} {soundsByKey} error={effectError} />
+      <EffectListPanel list={effectList} {effects} {soundsByKey} />
     </aside>
 
     <div class="library">

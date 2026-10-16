@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { EffectList, EffectListPlayer } from '../effectList.svelte.ts';
+  import { MAX_EFFECT_ENTRIES, type EffectList, type EffectListPlayer } from '../effectList.svelte.ts';
   import type { BoardSound } from '../soundboard.ts';
 
   // Effekt-Liste („Szene“) wie in der Referenz: Einträge starten bei Lautstärke 0 in Schleife und werden per Regler
@@ -12,59 +12,64 @@
     effects: EffectListPlayer;
     /** alle bekannten Sounds nach key – die Liste speichert nur den key */
     soundsByKey: ReadonlyMap<string, BoardSound>;
-    /** Meldung vom Hinzufügen per „+“ an einer Kachel */
-    error: string;
   }
 
-  let { list, effects, soundsByKey, error }: Props = $props();
+  let { list, effects, soundsByKey }: Props = $props();
 
   /** Zeile, deren Griff gedrückt ist – nur sie ist ziehbar */
   let armed = $state<string | null>(null);
-  /** Index des Eintrags, der gerade gezogen wird */
-  let dragFrom = $state<number | null>(null);
+  /** ID des Eintrags, der gerade gezogen wird (nicht der Index: die Liste kann sich währenddessen ändern) */
+  let dragId = $state<string | null>(null);
   let listEl = $state<HTMLOListElement | null>(null);
 
   /** eigener Typ beim Ziehen, damit Textfelder, die Upload-Fläche und die Playlisten die Zeile nicht annehmen */
   const DRAG_TYPE = 'application/x-pnp-effect-entry';
+  const indexOf = (id: string) => list.entries.findIndex((e) => e.id === id);
 
-  function onDragStart(event: DragEvent, index: number, id: string): void {
+  /** verschiebt einen Eintrag an die Stelle eines anderen (Referenz `movePlaylistItem` mit IDs) */
+  function moveTo(fromId: string, toIndex: number): void {
+    const from = indexOf(fromId);
+    if (from === -1 || toIndex < 0 || toIndex >= list.entries.length) return;
+    effects.move(from, toIndex);
+  }
+
+  function onDragStart(event: DragEvent, id: string): void {
     // nur am Griff: ein Ziehen, das woanders in der Zeile beginnt (Regler, Text), verschiebt nichts
     if (armed !== id) return;
-    dragFrom = index;
+    dragId = id;
     if (!event.dataTransfer) return;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData(DRAG_TYPE, id);
   }
 
   function onDragOver(event: DragEvent): void {
-    if (dragFrom === null) return;
+    if (dragId === null) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
   }
 
-  function onDrop(event: DragEvent, index: number): void {
-    if (dragFrom === null) return;
+  function onDrop(event: DragEvent, targetId: string): void {
+    if (dragId === null) return;
     event.preventDefault();
-    effects.move(dragFrom, index);
+    moveTo(dragId, indexOf(targetId));
     endDrag();
   }
 
   function endDrag(): void {
-    dragFrom = null;
+    dragId = null;
     armed = null;
   }
 
   /** Pfeil hoch/runter auf dem Griff verschiebt den Eintrag; der Griff behält den Fokus */
-  async function onHandleKeydown(event: KeyboardEvent, index: number, id: string): Promise<void> {
-    const to = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : null;
-    if (to === null) return;
+  async function onHandleKeydown(event: KeyboardEvent, id: string): Promise<void> {
+    const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+    if (step === 0) return;
     // nicht zusätzlich die Musik-Lautstärke (Pfeiltasten des Soundboards) ändern
     event.preventDefault();
     event.stopPropagation();
-    if (to < 0 || to >= list.entries.length) return;
-    effects.move(index, to);
+    moveTo(id, indexOf(id) + step);
     await tick();
-    listEl?.querySelector<HTMLButtonElement>(`li[data-id="${id}"] .handle`)?.focus();
+    [...(listEl?.querySelectorAll<HTMLLIElement>('li') ?? [])].find((li) => li.dataset.id === id)?.querySelector<HTMLElement>('.handle')?.focus();
   }
 </script>
 
@@ -77,13 +82,13 @@
     <span class="muted">{list.entries.length > 0 ? `${list.entries.length} Effekt${list.entries.length === 1 ? '' : 'e'}` : ''}</span>
   </div>
 
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if list.full}<p class="muted">Die Effekt-Liste ist voll (höchstens {MAX_EFFECT_ENTRIES} Effekte).</p>{/if}
 
   {#if list.entries.length === 0}
     <p class="muted">Noch keine Effekte. Füge sie über „+“ auf einer Effekt-Kachel hinzu – sie starten bei Lautstärke 0 in Schleife, mit dem Regler blendest du sie ein.</p>
   {:else}
     <ol class="entries" aria-label="Effekte der Effekt-Liste" bind:this={listEl}>
-      {#each list.entries as entry, i (entry.id)}
+      {#each list.entries as entry (entry.id)}
         {@const sound = soundsByKey.get(entry.sound)}
         {@const title = sound?.title ?? entry.title}
         {@const state = effects.state(entry.id)}
@@ -91,24 +96,28 @@
         <li
           data-id={entry.id}
           class:playing={state === 'playing'}
-          class:dragging={dragFrom === i}
+          class:dragging={dragId === entry.id}
           draggable={armed === entry.id ? 'true' : 'false'}
-          ondragstart={(e) => onDragStart(e, i, entry.id)}
+          ondragstart={(e) => onDragStart(e, entry.id)}
           ondragover={onDragOver}
-          ondrop={(e) => onDrop(e, i)}
+          ondrop={(e) => onDrop(e, entry.id)}
           ondragend={endDrag}
         >
           <div class="line">
-            <button
-              class="handle small"
+            <!-- kein <button>: aus Knöpfen heraus beginnt manch ein Browser (Firefox) kein Ziehen der Zeile -->
+            <span
+              class="handle"
+              role="button"
+              tabindex="0"
               aria-label="„{title}“ verschieben"
+              aria-keyshortcuts="ArrowUp ArrowDown"
               title="Zum Verschieben ziehen oder Pfeil hoch/runter"
               onmousedown={() => (armed = entry.id)}
-              onkeydown={(e) => onHandleKeydown(e, i, entry.id)}>⠿</button
+              onkeydown={(e) => onHandleKeydown(e, entry.id)}>⠿</span
             >
             <button
               class="small"
-              aria-pressed={state !== undefined}
+              class:active={state !== undefined}
               aria-label="„{title}“ in der Effekt-Liste {state ? 'stoppen' : 'abspielen'}"
               title={state ? 'Stoppen' : 'Abspielen'}
               disabled={!sound && !state}
@@ -153,8 +162,8 @@
   .line { display: flex; gap: 0.4rem; align-items: center; }
   .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   button.small { padding: 0.05rem 0.4rem; font-size: 0.85em; }
-  button[aria-pressed='true'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
-  .handle { cursor: grab; color: var(--color-text-muted); }
+  button[aria-pressed='true'], button.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+  .handle { cursor: grab; color: var(--color-text-muted); padding: 0.05rem 0.4rem; border: var(--border); border-radius: var(--border-radius-small); user-select: none; }
   input[type='range'] { width: 100%; margin: 0.25rem 0 0; padding: 0; }
   .error { margin: 0.25rem 0 0; font-size: 0.85em; }
 </style>

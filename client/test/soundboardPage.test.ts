@@ -623,6 +623,22 @@ describe('Soundboard: Effekt-Liste', () => {
     expect(names()).toEqual(['Trommelwirbel', 'Glocke']);
     expect((screen.getByLabelText('Musik') as HTMLInputElement).value).toBe(music);
   });
+
+  it('verschiebt beim Ziehen den gezogenen Eintrag, auch wenn sich die Liste währenddessen ändert', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    for (const t of ['Glocke', 'Trommelwirbel', 'Glocke']) await user.click(screen.getByRole('button', { name: `„${t}“ zur Effekt-Liste hinzufügen` }));
+    const names = () => entries().map((li) => li.querySelector('.name')!.textContent);
+    const dataTransfer = { types: ['application/x-pnp-effect-entry'], setData: () => {}, effectAllowed: '', dropEffect: '' };
+    const dragged = entries()[1];
+    await fireEvent.mouseDown(within(dragged).getByRole('button', { name: '„Trommelwirbel“ verschieben' }));
+    await fireEvent.dragStart(dragged, { dataTransfer });
+    // währenddessen verschwindet der erste Eintrag
+    await fireEvent.click(within(entries()[0]).getByRole('button', { name: '„Glocke“ aus der Effekt-Liste entfernen' }));
+    expect(names()).toEqual(['Trommelwirbel', 'Glocke']);
+    await fireEvent.drop(entries()[1], { dataTransfer });
+    expect(names()).toEqual(['Glocke', 'Trommelwirbel']);
+  });
 });
 
 describe('Soundboard mit Login', () => {
