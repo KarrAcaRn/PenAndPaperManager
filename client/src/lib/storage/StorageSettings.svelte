@@ -289,14 +289,14 @@
   .storage > p { margin: 0; }
   .notice:empty { display: none; }
   .connections { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
-  .connection { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; display: grid; gap: 0.4rem; }
+  .connection { border: var(--border); border-radius: var(--border-radius); padding: 0.75rem; display: grid; gap: 0.4rem; }
   .connection p { margin: 0; }
   .head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .badge { font-size: 0.8em; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid currentColor; }
-  .status-connected { color: var(--accent); }
-  .status-error, .status-disconnected { color: var(--danger); }
+  .badge { font-size: 0.8em; padding: 0.1rem 0.5rem; border-radius: var(--radius-pill); border: var(--border-width) var(--border-style) currentColor; }
+  .status-connected { color: var(--color-accent); }
+  .status-error, .status-disconnected { color: var(--color-danger); }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.75rem; margin: 0; font-size: 0.9em; }
-  dt { color: var(--muted); }
+  dt { color: var(--color-text-muted); }
   dd { margin: 0; overflow-wrap: anywhere; }
   .actions { gap: 0.5rem; flex-wrap: wrap; }
   .add { display: grid; gap: 0.75rem; }
@@ -309,5 +309,5 @@
   .drive p { margin: 0; }
   .drive label { display: grid; gap: 0.2rem; margin: 0; }
   .hint { font-weight: 400; }
-  .success { color: var(--accent); font-weight: 600; }
+  .success { color: var(--color-accent); font-weight: 600; }
 </style>

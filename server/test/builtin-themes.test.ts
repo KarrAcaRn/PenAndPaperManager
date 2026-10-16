@@ -71,7 +71,7 @@ describe('mitgelieferte Themes', () => {
     }
   });
 
-  it.each(BUILTIN)('%s: Textkontrast erfüllt WCAG AA (4.5:1)', (id) => {
+  it.each(['default', ...BUILTIN])('%s: Textkontrast erfüllt WCAG AA (4.5:1)', (id) => {
     const theme = registry.getTheme(id)!;
     const failures = PAIRS.map(([fg, bg]) => ({ fg, bg, ratio: contrast(color(theme, fg), color(theme, bg)) }))
       .filter((p) => p.ratio < 4.5)

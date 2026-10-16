@@ -13,6 +13,8 @@
   line-height: 1.5;
   color: var(--color-text);
   background: var(--bg-image) var(--color-bg);
+  /* Häkchen, Radioknöpfe, Schieberegler und Fortschrittsbalken in der Akzentfarbe des Themes */
+  accent-color: var(--color-accent);
 }
 
 * { box-sizing: border-box; }

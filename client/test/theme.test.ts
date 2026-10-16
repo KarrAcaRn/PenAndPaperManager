@@ -78,4 +78,11 @@ describe('Gestaltung nur über Tokens', () => {
   it('enthält außerhalb des FATE-Bogens keine festen Rahmenlinien', () => {
     expect(find(/\b\d+(\.\d+)?(px|pt) (solid|dashed|dotted|double)\b/g, (f) => f.endsWith('CharacterSheet.svelte'))).toEqual([]);
   });
+
+  it('nutzt keine Variablennamen aus der Zeit vor den Themes', () => {
+    // der FATE-Bogen setzt eigene, lokale Kurznamen aus den sheet-Tokens
+    expect(
+      find(/var\(--(bg|surface|text|muted|accent|accent-text|danger|radius|vine-[a-z]+)\)/g, (f) => f.endsWith('CharacterSheet.svelte')),
+    ).toEqual([]);
+  });
 });

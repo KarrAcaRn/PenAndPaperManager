@@ -238,7 +238,7 @@ describe('Theme-Wahl in den Einstellungen', () => {
     const res = await a.inject({ url: '/api/themes' });
     expect(res.statusCode).toBe(200);
     expect(res.json().defaultTheme).toBe('default');
-    expect(res.json().themes.map((t: { id: string }) => t.id).sort()).toEqual(['default', 'nacht', 'wald']);
+    expect(res.json().themes.map((t: { id: string }) => t.id).sort()).toEqual(['clean', 'default', 'fantasy', 'nacht', 'scifi', 'wald']);
     expect((await a.inject({ url: '/api/themes/wald' })).statusCode).toBe(200);
     expect((await a.inject({ url: '/themes/wald/theme.css' })).statusCode).toBe(200);
     // der öffentliche Bereich reicht nicht tiefer

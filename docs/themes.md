@@ -88,12 +88,16 @@ Ab jetzt reicht nach jeder Änderung an den Theme-Dateien ein Neuladen der Seite
   }
 
   @media (prefers-color-scheme: dark) {
-    :root { --color-bg: #141b19; … }   /* darkTokens */
+    :root:where(:not([data-color-scheme='light'])) { --color-bg: #141b19; … }   /* darkTokens */
   }
+  :root:where([data-color-scheme='dark']) { --color-bg: #141b19; … }           /* darkTokens */
 
   /* Zusatz-CSS des Themes */
   …                                    /* Inhalt der css-Datei */
   ```
+
+  `darkTokens` gelten also bei dunklem System-Farbschema und immer, wenn jemand in den Einstellungen fest „Dunkel“
+  gewählt hat; bei fester Wahl „Hell“ nie. Diese Wahl steht als `data-color-scheme` am `<html>`-Element.
 
 - **Basis-Theme** ist `themes/default`. Es setzt jedes Token. Fehlende Tokens anderer Themes werden aus seinen
   hellen Werten ergänzt. Seine `darkTokens` werden *nicht* übernommen – sonst mischten sich fremde Farben in ein
@@ -210,7 +214,7 @@ Tabelle vollständig ist.
 | `color-surface-muted` | zurückgenommene Flächen: Hover im Ordnerbaum, Codeblöcke, Werkzeugleiste des Editors | `var(--color-bg)` | `#e3eae7` |
 | `color-border` | Rahmen- und Trennlinien von Karten, Feldern, Knöpfen, Listen, Tabellen | `#ddd3c0` | `#b9c9c2` |
 | `color-text` | Fließtext, Beschriftungen, Text in Knöpfen und Feldern | `#2b2620` | `#1f2a27` |
-| `color-text-muted` | Nebentext: Hinweise, Zitate, Abzeichen, Seitenzahlen | `#7a6f60` | `#4f605a` |
+| `color-text-muted` | Nebentext: Hinweise, Zitate, Abzeichen, Seitenzahlen | `#766b5c` | `#4f605a` |
 | `color-link` | Links und Link-Knöpfe („Abbrechen“, „Bearbeiten“) | `var(--color-accent)` | `#0b5f8a` |
 | `color-accent` | Akzent: Hauptknöpfe („Speichern“), aktiver Reiter, gewählter Ordner, Rahmen beim Überfahren von Knöpfen, Spielleiter-Abzeichen | `#8a3b12` | `#1d6b5a` |
 | `color-accent-text` | Text und Symbole auf Akzentflächen (Hauptknöpfe, aktiver Reiter) | `#fff` | `#ffffff` |
@@ -336,8 +340,9 @@ Regeln:
 - **Farben über Tokens.** Im Zusatz-CSS `var(--color-accent)` statt `#1d6b5a` schreiben, dann stimmt auch das
   dunkle Farbschema.
 - **Dunkle Varianten über `darkTokens`**, nicht über `@media (prefers-color-scheme: dark)` im Zusatz-CSS:
-  `darkTokens` sind die eine Stelle, an der das Theme das dunkle Farbschema beschreibt – so bleibt es auch dann
-  stimmig, wenn die App das Farbschema anders als über die Systemeinstellung bestimmt.
+  `darkTokens` sind die eine Stelle, an der das Theme das dunkle Farbschema beschreibt – nur sie greifen auch, wenn
+  jemand in den Einstellungen fest „Hell“ oder „Dunkel“ gewählt hat; eine Media Query im Zusatz-CSS folgte dagegen
+  stur der Systemeinstellung.
 - **Bewegung zurückhaltend** und nur innerhalb von `@media (prefers-reduced-motion: no-preference) { … }`.
 - **Dateien relativ einbinden** (`url('img/holz.webp')`). Sie müssen im Theme-Ordner liegen und einen erlaubten
   Typ haben – der Validator prüft jede `url(…)`, auch in Kommentaren. Externe Schriften (z.B. Google Fonts per
@@ -401,10 +406,10 @@ gewähltes Theme gelöscht wurde.
 
 - Ohne Einstellung ist es das Basis-Theme `default`.
 - Der Seitenbetreiber legt es mit der Umgebungsvariable `DEFAULT_THEME` fest, z.B.
-  `DEFAULT_THEME=nachtwald npm start`. Gibt es das Theme nicht (mehr), gilt wieder `default`.
-
-> Hinweis: `DEFAULT_THEME` kommt zusammen mit der Theme-Auswahl in den Benutzereinstellungen. Solange sie fehlt,
-> ist immer `default` das Default-Theme.
+  `DEFAULT_THEME=nachtwald npm start`. Gibt es das Theme nicht (mehr), gilt wieder `default` (Warnung im
+  Server-Log). Die Variable wird beim Start gelesen, eine Änderung braucht also einen Neustart.
+- Gäste wählen ihr Theme auf der Anmeldeseite (nur in diesem Browser gespeichert), angemeldete Benutzer unter
+  Einstellungen (Zahnrad rechts oben) → Design (pro Login, auf allen Geräten).
 
 Das Basis-Theme `default` selbst bleibt unabhängig davon die Quelle für fehlende Tokens; es sollte nicht verändert
 werden – ein eigenes Theme ist der bessere Weg.
@@ -574,10 +579,18 @@ Im dunklen Schema werden nur die Farben getauscht. Der Akzent wird heller (auf d
 Helligkeit für denselben Kontrast), und deshalb wird der Text auf Akzentflächen dunkel. Die Zweig-Grafik wechselt
 ihre Farben selbst per `@media (prefers-color-scheme: dark)` im SVG.
 
-Ein eigenes Theme im Stil „Fantasy“ würde hier ansetzen: Pergament-Textur über `surface-image`, eine
-Ornament-Grafik in `frame-image`, Gold als `color-accent` (Kontrast prüfen – Gold auf Pergament ist meist zu
-hell, dunkles Altgold oder Braun funktionieren) und eine Serifenschrift in `font-heading`. Die Vorlage
-`themes/_template` zeigt dasselbe Prinzip mit Doppellinien-Rahmen, Punkt-Textur und Serifen-Überschriften.
+Mitgeliefert sind außerdem drei vollständige Beispiele, die nur Tokens und Zusatz-CSS nutzen:
+
+- `themes/fantasy` – Pergament-Textur (`parchment.svg`) in `bg-image` und `surface-image`, ein Holzrahmen mit
+  Goldeinlagen und Rosetten als `frame-image` (`frame-line` ist `0 0 transparent`, die Grafik ersetzt die Linie),
+  dunkles Braun statt Gold als `color-accent` (Gold auf Pergament wäre zu hell) und eigene Schriften (Cinzel für
+  Überschriften, EB Garamond für Text) per `@font-face` in `style.css`. Fest hell: `color-scheme` `light`, keine
+  `darkTokens`.
+- `themes/clean` – schlicht und hell, ohne Zierrahmen und Texturen; zeigt, wie wenig ein Theme setzen muss.
+- `themes/scifi` – fest dunkel, Neon-Akzent und abgeschrägte Ecken per `clip-path` im Zusatz-CSS.
+
+Die Vorlage `themes/_template` zeigt dasselbe Prinzip mit Doppellinien-Rahmen, Punkt-Textur und
+Serifen-Überschriften.
 
 ---
 

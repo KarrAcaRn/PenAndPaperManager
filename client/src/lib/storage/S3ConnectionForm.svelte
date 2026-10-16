@@ -126,7 +126,7 @@
   .s3-form label { display: grid; gap: 0.2rem; align-content: start; margin-bottom: 0; min-width: 0; }
   .grid { display: grid; gap: 0.5rem 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
   .hint { margin: 0; font-weight: 400; overflow-wrap: anywhere; }
-  .cors pre { overflow-x: auto; background: var(--bg); padding: 0.5rem; border-radius: var(--radius); font-size: 0.85em; }
+  .cors pre { overflow-x: auto; background: var(--color-surface-muted); padding: 0.5rem; border-radius: var(--border-radius); font-size: 0.85em; }
   .cors summary { cursor: pointer; font-weight: 600; }
   .actions { gap: 0.5rem; }
 </style>

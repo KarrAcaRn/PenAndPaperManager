@@ -14,7 +14,7 @@
     "color-surface-muted": "var(--color-bg)",
     "color-border": "#ddd3c0",
     "color-text": "#2b2620",
-    "color-text-muted": "#7a6f60",
+    "color-text-muted": "#766b5c",
     "color-link": "var(--color-accent)",
     "color-accent": "#8a3b12",
     "color-accent-text": "#fff",

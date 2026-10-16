@@ -371,7 +371,7 @@
   input[type='range'] { padding: 0; }
   .hint { margin: 1rem 0; }
   .upload { margin: 1rem 0; border-style: dashed; }
-  .upload.dragging { border-color: var(--accent); background: var(--bg); }
+  .upload.dragging { border-color: var(--color-accent); background: var(--color-surface-muted); }
   .upload label { margin-bottom: 0; }
   label.file { position: relative; overflow: hidden; }
   label.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -381,8 +381,8 @@
   ul.tiles { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.5rem; }
   .tile { position: relative; }
   .tile .play { width: 100%; min-height: 4.5rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; text-align: left; padding-right: 2rem; }
-  .tile.playing .play { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-  .tile.loading .play { border-color: var(--accent); }
+  .tile.playing .play { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+  .tile.loading .play { border-color: var(--color-accent); }
   .tile .icon { font-size: 0.85em; opacity: 0.8; }
   .tile .name { font-weight: 600; overflow-wrap: anywhere; }
   .tile .delete { position: absolute; top: 0.25rem; right: 0.25rem; padding: 0.1rem 0.4rem; font-size: 0.8em; }
