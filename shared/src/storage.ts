@@ -105,9 +105,13 @@ export interface UploadTarget {
 }
 
 export const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a'] as const;
+export type AudioExtension = (typeof AUDIO_EXTENSIONS)[number];
 
-/** Content-Types, die für Uploads erlaubt sind (Browser melden dieselbe Datei teils unterschiedlich) */
-export const AUDIO_MIME_TYPES: Readonly<Record<(typeof AUDIO_EXTENSIONS)[number], readonly string[]>> = {
+/**
+ * Content-Types je Endung (Browser melden dieselbe Datei teils unterschiedlich); der erste ist der kanonische,
+ * mit dem z.B. die Standard-Sounds ausgeliefert werden.
+ */
+export const AUDIO_MIME_TYPES: Readonly<Record<AudioExtension, readonly [string, ...string[]]>> = {
   mp3: ['audio/mpeg', 'audio/mp3'],
   wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
   ogg: ['audio/ogg', 'application/ogg'],
@@ -122,10 +126,13 @@ export const MAX_STORAGE_FOLDER_LENGTH = 512;
 /** Höchstzahl Dateien je Seite beim Auflisten */
 export const MAX_STORAGE_PAGE_SIZE = 200;
 
-/** Endung (klein, ohne Punkt) eines Dateinamens, falls es eine Audio-Endung ist */
-export function audioExtension(fileName: string): (typeof AUDIO_EXTENSIONS)[number] | null {
-  const ext = /\.([^./\\]+)$/.exec(fileName)?.[1]?.toLowerCase();
-  return (AUDIO_EXTENSIONS as readonly string[]).includes(ext ?? '') ? (ext as (typeof AUDIO_EXTENSIONS)[number]) : null;
+/** Endung einer Datei, wenn sie eine erlaubte Audio-Datei ist, sonst null (Dotfiles wie `.wav` zählen nicht) */
+export function audioExtension(fileName: string): AudioExtension | null {
+  const base = fileName.split(/[\\/]/).pop()!;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const ext = base.slice(dot + 1).toLowerCase();
+  return Object.hasOwn(AUDIO_MIME_TYPES, ext) ? (ext as AudioExtension) : null;
 }
 
 const baseMime = (mimeType: string) => mimeType.split(';')[0]!.trim().toLowerCase();

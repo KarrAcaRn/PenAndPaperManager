@@ -35,7 +35,7 @@ export const outbox = new Map<string, string>();
 /** Ohne Rate-Limits, damit Tests beliebig viele Logins machen können */
 export const NO_RATE_LIMITS: LoginRateLimits = { emailPerMinute: Infinity, emailPerHour: Infinity, ipPerHour: Infinity };
 
-/** buildApp mit abgefangenem Mailversand (siehe `outbox`) und ohne Rate-Limits */
+/** buildApp mit abgefangenem Mailversand (siehe `outbox`), ohne Rate-Limits und mit Zufallsschlüssel */
 export function testApp(db = openDb(':memory:'), opts: AppOptions = {}): FastifyInstance {
   return buildApp(db, {
     sendLoginCodeEmail: async (email, code) => void outbox.set(email, code),

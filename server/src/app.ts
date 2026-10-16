@@ -24,10 +24,20 @@ import type { StorageContext } from './storage/connections.ts';
 import { defaultStorageProviders, type StorageProviderRegistry } from './storage/registry.ts';
 import { createSecretBox, loadSecretKey, type SecretBox } from './secrets.ts';
 import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
+import { soundRoutes } from './routes/sounds.ts';
 import { seedPresets } from './presets.ts';
-import { dbPath, rulebookDir } from './paths.ts';
+import { dbPath, rulebookDir, soundsDir } from './paths.ts';
+import { BUILTIN_SOUND_PREFIX, createSoundLibrary, soundBaseUrl } from './sounds.ts';
 
 const CLIENT_DIST = join(import.meta.dirname, '../../client/dist');
+
+/** Standard-Sounds samt `/sounds/default` ohne Schrägstrich: nie die Startseite der App als Antwort */
+const isSoundPath = (url: string) => {
+  const path = url.split('?')[0];
+  return path.startsWith(BUILTIN_SOUND_PREFIX) || path === BUILTIN_SOUND_PREFIX.slice(0, -1);
+};
+/** Alles, was nicht die API ist, beantworten die statischen Auslieferungen (Sounds, gebautes Frontend) */
+const isStaticPath = (url: string) => !url.startsWith('/api/');
 
 export interface AppOptions {
   logger?: boolean;
@@ -45,6 +55,10 @@ export interface AppOptions {
   storageProviders?: StorageProviderRegistry;
   /** Schlüssel für gespeicherte Zugangsdaten; Vorgabe APP_SECRET_KEY bzw. data/secret.key, erst bei Bedarf geladen */
   secretKey?: Buffer;
+  /** Ordner der Standard-Sounds samt sounds.json; Vorgabe ist SOUNDS_DIR bzw. server/sounds/default */
+  soundsDir?: string;
+  /** URL, unter der die Standard-Sounds abrufbar sind (z.B. ein CDN); Vorgabe ist SOUNDS_BASE_URL bzw. /sounds/default/ */
+  soundsBaseUrl?: string;
 }
 
 /** Query-Parameter, die nie im Log landen dürfen (OAuth-Code und -State, Wiedergabe-Tickets) */
@@ -76,6 +90,8 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {
     if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.message });
     if (err.validation) return reply.code(400).send({ error: `Ungültige Eingabe: ${err.message}` });
+    // Abgewiesene Pfade der statischen Auslieferung (z.B. „..“, Dotfiles) sehen aus wie fehlende Dateien
+    if (err.statusCode === 403 && isStaticPath(req.url)) return reply.code(404).send({ error: 'Nicht gefunden' });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ error: err.message });
     req.log.error(err);
     return reply.code(500).send({ error: 'Interner Fehler' });
@@ -106,13 +122,19 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   };
   storageRoutes(app, storage);
   googleDriveRoutes(app, storage);
+  const sounds = opts.soundsDir ?? soundsDir();
+  const library = createSoundLibrary(sounds, soundBaseUrl(opts.soundsBaseUrl ?? process.env.SOUNDS_BASE_URL), (err) =>
+    app.log.error(`Sound-Manifest nicht übernommen, die bisherige Liste bleibt aktiv: ${err.message}`),
+  );
+  soundRoutes(app, library, sounds);
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {
     app.register(fastifyStatic, { root: CLIENT_DIST });
   }
   app.setNotFoundHandler((req, reply) => {
-    if (apiPath(req).startsWith('/api/')) return reply.code(404).send({ error: 'Nicht gefunden' });
+    const path = apiPath(req);
+    if (path.startsWith('/api/') || isSoundPath(path)) return reply.code(404).send({ error: 'Nicht gefunden' });
     if (existsSync(CLIENT_DIST)) return reply.sendFile('index.html');
     return reply.code(404).send({ error: 'Frontend nicht gebaut (npm run build)' });
   });

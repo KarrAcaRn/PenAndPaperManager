@@ -386,7 +386,8 @@ describe('GroupLayout', () => {
   it('versteckt den Bereich Spielleiter vor Spielern', () => {
     signIn(PLAYER, [playerGroup]);
     renderLayout('#/g/7/notes');
-    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk', 'Einstellungen']);
+    // „Soundboard“ kommt aus dem Benutzermenü, nicht aus der Gruppe
+    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk', 'Soundboard', 'Einstellungen']);
   });
 
   it('zeigt das Regelwerk allen Mitgliedern, ohne Ordnerbaum und SL-Unterpunkte', async () => {

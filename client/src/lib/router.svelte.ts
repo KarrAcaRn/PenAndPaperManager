@@ -11,6 +11,8 @@ export type Route =
   | { name: 'admin' }
   /** storageConnected/storageError: Rückkehr aus der Google-Anmeldung (#/settings?storageConnected=<id>) */
   | { name: 'settings'; storageConnected?: number; storageError?: string }
+  /** Soundboard; die Standard-Sounds gibt es auch ohne Login */
+  | { name: 'sounds' }
   /** next: Seite (Hash), zu der es nach dem Login weitergeht */
   | { name: 'login'; next: string };
 
@@ -52,6 +54,7 @@ export function parseHash(hash: string): Route {
   const section = legacyFolder === undefined ? rawSection : 'notes';
   const subPath = (path: string) => (legacyFolder === undefined || path === '' ? (legacyFolder ?? path) : joinPath(legacyFolder, path));
   if (g === 'admin') return { name: 'admin' };
+  if (g === 'sounds') return { name: 'sounds' };
   if (g === 'login') return { name: 'login', next: loginTarget(gidRaw) };
   const gid = Number(gidRaw);
   if (g !== 'g' || !Number.isInteger(gid)) return { name: 'groups' };
@@ -79,6 +82,7 @@ export const href = {
   rules: (gid: number) => `#/g/${gid}/rules`,
   admin: () => '#/admin',
   settings: () => '#/settings',
+  sounds: () => '#/sounds',
   /** Login; next ist der Hash der ursprünglich angefragten Seite (ohne Angabe: Startseite) */
   login: (next?: string) => {
     const target = loginTarget(next);

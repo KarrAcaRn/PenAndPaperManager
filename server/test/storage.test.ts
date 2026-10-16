@@ -76,7 +76,7 @@ describe('Speicher-Verbindungen', () => {
     const fake = fakeStorage();
     state = fake.state;
     db = openDb(':memory:');
-    const app = testApp(db, { secretKey: randomBytes(32), storageProviders: fake.registry });
+    const app = testApp(db, { storageProviders: fake.registry });
     alice = await loginAs(app, 'alice@test.de');
     bob = await loginAs(app, 'bob@test.de');
   });
@@ -276,7 +276,7 @@ describe('Speicher-Verbindungen', () => {
   it('meldet unlesbare Zugangsdaten nach Schlüsselwechsel als getrennt', async () => {
     const { id } = await create();
     const fake = fakeStorage();
-    const other = await loginAs(testApp(db, { secretKey: randomBytes(32), storageProviders: fake.registry }), 'alice@test.de');
+    const other = await loginAs(testApp(db, { storageProviders: fake.registry }), 'alice@test.de');
     const res = await other.get(`${BASE}/${id}/files`);
     expect(res.status).toBe(409);
     expect(res.body.error).toContain('neu verbinden');
