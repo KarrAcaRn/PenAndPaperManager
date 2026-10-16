@@ -14,6 +14,7 @@ import { presetRoutes } from './routes/presets.ts';
 import { skillRoutes } from './routes/skills.ts';
 import { sheetRoutes } from './routes/sheets.ts';
 import { rulebookRoutes } from './routes/rulebooks.ts';
+import { settingsRoutes } from './routes/settings.ts';
 import { parseAdminEmails } from './auth.ts';
 import { seedPresets } from './presets.ts';
 import { dbPath, rulebookDir } from './paths.ts';
@@ -51,6 +52,7 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   skillRoutes(app, db);
   sheetRoutes(app, db);
   rulebookRoutes(app, db, opts.rulebookDir ?? rulebookDir(dbPath()));
+  settingsRoutes(app, db);
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {

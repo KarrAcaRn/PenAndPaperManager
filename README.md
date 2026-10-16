@@ -74,3 +74,17 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Impressum für den privaten Gebrauch vervielfältigt werden.
 - Suche: alle eingegebenen Wörter müssen auf der Seite vorkommen, jedes als Wortanfang („konseq“ findet
   „Konsequenzen“), Umlaute sind egal („uberwinden“). Seitenzahlen werden wie im Buch gedruckt angezeigt.
+
+## Benutzereinstellungen
+
+- Jeder Login hat eigene Einstellungen, gruppenübergreifend. Gespeichert als JSON-Objekt in `user_settings` (eine
+  Zeile je Benutzer, wird beim ersten Speichern angelegt); fehlt sie oder ein Feld, gelten die Vorgaben.
+- Felder, erlaubte Werte und Vorgaben stehen in `shared/src/settings.ts` (`USER_SETTING_OPTIONS`, erster Wert =
+  Vorgabe). Neue Einstellung: dort eintragen – Validierung und Vorgaben ziehen mit, keine Migration nötig.
+  Gespeicherte Werte, die nicht (mehr) erlaubt sind, werden beim Lesen durch die Vorgabe ersetzt.
+- Derzeit: `theme` – `"system"` (Vorgabe, folgt dem Browser), `"light"`, `"dark"`.
+- API (nur eingeloggt, sonst 401; immer nur die eigenen Einstellungen, eine Benutzer-ID gibt es in der Route nicht):
+  - `GET /api/me/settings` → `200 { "theme": "system" }` – alle Einstellungen, mit Vorgaben aufgefüllt.
+  - `PATCH /api/me/settings` mit z.B. `{ "theme": "dark" }` → `200` mit allen Einstellungen nach dem Speichern.
+    Nur die gesendeten Felder ändern sich; unbekannte Felder werden ignoriert, ungültige Werte geben
+    `400 { "error": "Ungültige Eingabe: …" }`.
