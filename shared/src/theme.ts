@@ -74,7 +74,7 @@ export const THEME_ID_PATTERN = '^[a-z0-9][a-z0-9-]{0,39}$';
 export const THEME_LIMITS = { name: 60, author: 100, description: 500, license: 200, tokenValue: 500, file: 200 } as const;
 /** Erklärung der erlaubten Token-Werte (Schema-Beschreibung und Fehlermeldung) */
 export const THEME_TOKEN_VALUE_HINT =
-  'erlaubt ist ein einzeiliger CSS-Wert ohne { } < > \\ und Kommentare; „;“ nur in Anführungszeichen oder url(…), Anführungszeichen und url( müssen geschlossen sein';
+  'erlaubt ist ein einzeiliger CSS-Wert ohne { } < > \\ und Kommentare; „;“ nur in Anführungszeichen oder url(…), Anführungszeichen und Klammern müssen geschlossen sein';
 
 /** Inhalt einer theme.json */
 export interface ThemeManifest {
@@ -126,10 +126,11 @@ const fileSchema = (description: string, ext: string) => ({
 /*
  * Erlaubte Token-Werte, eindeutig zerlegt (keine überlappenden Alternativen, sonst exponentielles Backtracking):
  * Strings in '…' oder "…" (dürfen „;“ enthalten), url(…) mit String oder unquotiertem Inhalt, sonst einzelne Zeichen
- * ohne ; ' " { } < > \ und Zeilenumbruch, „/“ nicht vor „*“ (Kommentar), „(“ nicht direkt nach „url“.
+ * ohne ; ' " { } < > \ und Steuerzeichen (auch keine Zeilenumbrüche), „/“ nicht vor „*“ (Kommentar), „(“ nicht
+ * direkt nach „url“. Offene Klammern prüft der Server zusätzlich (mit einem Muster nicht eindeutig ausdrückbar).
  */
-const STR = String.raw`'[^'\\\n\r{}<>]*'|"[^"\\\n\r{}<>]*"`;
-export const THEME_TOKEN_VALUE_PATTERN = String.raw`^(?:${STR}|[uU][rR][lL]\((?:${STR}|[^'"()\s\\{}<>]*)\)|[^;'"{}<>\\\n\r/(]|/(?!\*)|(?<![uU][rR][lL])\()*$`;
+const STR = String.raw`'[^'\\\x00-\x1f{}<>]*'|"[^"\\\x00-\x1f{}<>]*"`;
+export const THEME_TOKEN_VALUE_PATTERN = String.raw`^(?:${STR}|[uU][rR][lL]\((?:${STR}|[^'"()\s\\{}<>]*)\)|[^;'"{}<>\\\x00-\x1f/(]|/(?!\*)|(?<![uU][rR][lL])\()*$`;
 
 function tokensSchema(description: string) {
   const value = {

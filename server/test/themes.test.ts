@@ -92,6 +92,8 @@ describe('validateManifest', () => {
     expect(ok('red\n/* x')).toBe(false);
     expect(ok(`'offen`)).toBe(false);
     expect(ok('url(offen')).toBe(false);
+    // Formfeed beendet in CSS einen String
+    expect(ok(`'\f' 'x;color:red;'`)).toBe(false);
   });
 
   it('prüft auch lange, verschachtelte Werte schnell (kein exponentielles Backtracking)', () => {
@@ -155,14 +157,16 @@ describe('loadThemeDir', () => {
 
   it('lehnt kaputte URLs, „none“ in Schattenlisten und Symlinks nach außen ab, ohne zu werfen', () => {
     writeFileSync(join(root, 'geheim.svg'), '<svg/>');
-    const dir = addTheme(extra, 'dunkel', manifest({ tokens: { 'frame-image': `url('50%.svg')`, 'shadow-surface': 'none', 'bg-image': `url("x'y.svg")` } }));
+    const dir = addTheme(extra, 'dunkel', manifest({ tokens: { 'frame-image': `url('50%.svg')`, 'shadow-surface': 'none', 'frame-line': 'Inherit', 'bg-image': `url("x'y.svg")`, 'frame-width': 'calc(1px + (2px)' } }));
     symlinkSync(join(root, 'geheim.svg'), join(dir, 'link.svg'));
     writeFileSync(join(dir, "x'y.svg"), '<svg/>');
     expect(loadThemeDir(dir, 'dunkel')).toEqual({
       ok: false,
       errors: [
         'tokens.frame-image: „50%.svg“ ist keine gültige URL (Sonderzeichen wie % kodieren, z.B. %25).',
+        'tokens.frame-width: Klammern sind nicht geschlossen.',
         'tokens.shadow-surface: „none“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.',
+        'tokens.frame-line: „Inherit“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.',
       ],
     });
     expect(themeFilePath(dir, 'link.svg')).toBeUndefined();
@@ -211,6 +215,17 @@ describe('Theme-Registry', () => {
     expect(registry.getTheme('default')).not.toBe(first);
     expect(registry.getTheme('default')).toBe(registry.getTheme('default'));
     expect(reports).toEqual([[{ dir: join(extra, 'falsch'), errors: [expect.stringMatching(/^„version“ ist ungültig/)] }]]);
+  });
+
+  it('arbeitet mit dem letzten gültigen Stand weiter, wenn das Basis-Theme zur Laufzeit kaputtgeht', () => {
+    addTheme(extra, 'dunkel', manifest());
+    const reports: ThemeProblem[][] = [];
+    const registry = createThemeRegistry({ builtinDir: builtin, extraDir: extra, onProblems: (p) => reports.push(p) });
+    expect(registry.listThemes().map((t) => t.id)).toEqual(['default', 'dunkel']);
+    writeFileSync(join(builtin, 'default/theme.json'), '{');
+    expect(registry.listThemes().map((t) => t.id)).toEqual(['default', 'dunkel']);
+    expect(registry.problems()).toEqual([{ dir: join(builtin, 'default'), errors: [expect.stringMatching(/Basis-Theme „default“ .* kein gültiges JSON/)] }]);
+    expect(reports).toHaveLength(1);
   });
 
   it('übersteht einen nicht lesbaren Theme-Ordner und lädt die eingebauten nicht doppelt', () => {
@@ -287,12 +302,21 @@ describe('Theme-API', () => {
     const svg = await a.inject({ url: '/themes/default/vine-frame.svg' });
     expect(svg.statusCode).toBe(200);
     expect(svg.headers['content-type']).toBe('image/svg+xml');
-    // unverändert: 304 ohne Inhalt
+    // unverändert: 304 ohne Inhalt (auch schwach oder in einer Liste), veraltet: 200
     for (const [url, res] of [['/themes/default/theme.css', css], ['/themes/default/vine-frame.svg', svg]] as const) {
-      const again = await a.inject({ url, headers: { 'if-none-match': String(res.headers.etag) } });
-      expect(again.statusCode).toBe(304);
-      expect(again.body).toBe('');
+      const etag = String(res.headers.etag);
+      for (const header of [etag, `W/${etag}`, `"alt", ${etag}`]) {
+        const again = await a.inject({ url, headers: { 'if-none-match': header } });
+        expect(again.statusCode, header).toBe(304);
+        expect(again.body).toBe('');
+      }
+      expect((await a.inject({ url, headers: { 'if-none-match': '"alt"' } })).statusCode).toBe(200);
     }
+    // geänderte Dateien bekommen ein neues ETag
+    writeFileSync(join(builtin, 'default/vine-frame.svg'), '<svg>neu</svg>');
+    const changed = await a.inject({ url: '/themes/default/vine-frame.svg', headers: { 'if-none-match': String(svg.headers.etag) } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.body).toBe('<svg>neu</svg>');
     writeFileSync(join(root, 'geheim.svg'), '<svg>geheim</svg>');
     for (const url of ['/themes/default/theme.json', '/themes/default/../../geheim.svg', '/themes/default/%2e%2e/%2e%2e/geheim.svg', '/themes/gibtsnicht/theme.css']) {
       const res = await a.inject({ url });

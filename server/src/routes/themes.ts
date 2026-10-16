@@ -11,10 +11,14 @@ const fileParams = objectOf({ id: { type: 'string', pattern: THEME_ID_PATTERN },
 /** API-Form eines Themes: ohne Ordner, Zusatz-CSS und erzeugtes Stylesheet */
 const toInfo = ({ dir: _dir, extraCss: _extra, css: _css, etag: _etag, ...info }: Theme) => info;
 
+/** If-None-Match: Liste, „*“ und schwache ETags (W/…, z.B. nach gzip durch einen Proxy) berücksichtigen */
+const etagMatches = (header: string | undefined, etag: string) =>
+  !!header && header.split(',').some((t) => t.trim() === '*' || t.trim().replace(/^W\//, '') === etag);
+
 /** Themes können sich ohne Neustart ändern: immer nachfragen, unverändert gibt es 304 */
 function revalidate(req: FastifyRequest, reply: FastifyReply, etag: string, type: string): boolean {
   reply.header('Cache-Control', 'no-cache').header('ETag', etag).type(type);
-  if (req.headers['if-none-match'] !== etag) return false;
+  if (!etagMatches(req.headers['if-none-match'], etag)) return false;
   reply.code(304).send();
   return true;
 }

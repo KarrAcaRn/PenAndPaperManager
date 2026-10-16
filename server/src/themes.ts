@@ -41,8 +41,23 @@ export const THEME_FILE_TYPES: Record<string, string> = {
   '.otf': 'font/otf',
 };
 
-/** Tokens, die in einer box-shadow-Liste stehen und deshalb nicht „none“ sein dürfen */
+/** Tokens, die in einer box-shadow-Liste stehen und deshalb kein „none“ oder CSS-weites Schlüsselwort sein dürfen */
 const SHADOW_LIST_TOKENS: ThemeToken[] = ['shadow-surface', 'frame-line'];
+const NOT_IN_LISTS = /^(none|inherit|initial|unset|revert|revert-layer)$/i;
+
+/** Sind alle Klammern außerhalb von Strings geschlossen? (Offene Klammern verschlucken den Rest des Stylesheets) */
+function parensBalanced(value: string): boolean {
+  let depth = 0;
+  let quote = '';
+  for (const c of value) {
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth < 0) return false;
+  }
+  return depth === 0;
+}
 
 export interface Theme extends ThemeInfo {
   dir: string;
@@ -167,9 +182,13 @@ function checkThemeDir(dir: string, folderName: string): ThemeLoadResult {
   const errors: string[] = [];
   if (manifest.id !== folderName) errors.push(`Die ID „${manifest.id}“ muss dem Ordnernamen „${folderName}“ entsprechen.`);
   for (const [field, map] of [['tokens', manifest.tokens], ['darkTokens', manifest.darkTokens ?? {}]] as const) {
-    for (const [token, value] of Object.entries(map)) checkUrls(dir, `${field}.${token}`, value, errors);
+    for (const [token, value] of Object.entries(map)) {
+      if (!parensBalanced(value)) errors.push(`${field}.${token}: Klammern sind nicht geschlossen.`);
+      checkUrls(dir, `${field}.${token}`, value, errors);
+    }
     for (const token of SHADOW_LIST_TOKENS) {
-      if (map[token]?.trim().toLowerCase() === 'none') errors.push(`${field}.${token}: „none“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.`);
+      const value = map[token]?.trim();
+      if (value && NOT_IN_LISTS.test(value)) errors.push(`${field}.${token}: „${value}“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.`);
     }
   }
   if (manifest.preview && !themeFilePath(dir, manifest.preview)) errors.push(`preview: Datei „${manifest.preview}“ fehlt im Theme-Ordner.`);
@@ -253,7 +272,10 @@ function isDir(path: string): boolean {
   }
 }
 
-/** Fingerabdruck aller Dateien unter den Wurzelordnern; ändert sich bei jedem Anlegen, Löschen oder Speichern */
+/**
+ * Fingerabdruck der Theme-Dateien unter den Wurzelordnern; ändert sich bei jedem Anlegen, Löschen oder Speichern.
+ * Übersprungen werden Einträge mit „.“ (z.B. .git) und Vorlagenordner mit „_“ direkt unter der Wurzel.
+ */
 function fingerprint(roots: string[]): string {
   const parts: string[] = [];
   const walk = (dir: string, depth: number) => {
@@ -265,10 +287,11 @@ function fingerprint(roots: string[]): string {
       return;
     }
     for (const e of entries) {
+      if (e.name.startsWith('.') || (depth === 0 && e.name.startsWith('_'))) continue;
       const path = join(dir, e.name);
       try {
         const st = statSync(path);
-        parts.push(`${path}:${st.size}:${st.mtimeMs}`);
+        parts.push(`${path}:${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`);
         if (st.isDirectory() && depth < 4) walk(path, depth + 1);
       } catch {
         parts.push(`${path}:?`);
@@ -278,6 +301,14 @@ function fingerprint(roots: string[]): string {
   for (const root of roots) walk(root, 0);
   return parts.sort().join('\n');
 }
+
+const realOrResolved = (path: string) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+};
 
 export interface ThemeRegistryOptions {
   /** Ordner der mitgelieferten Themes; muss das Basis-Theme enthalten */
@@ -304,7 +335,7 @@ export interface ThemeRegistry {
 
 export function createThemeRegistry(opts: ThemeRegistryOptions): ThemeRegistry {
   // Zeigt THEMES_DIR auf die eingebauten Themes (z.B. DB_PATH relativ zum Repo), nicht doppelt laden
-  const extraDir = opts.extraDir && resolve(opts.extraDir) !== resolve(opts.builtinDir) ? opts.extraDir : undefined;
+  const extraDir = opts.extraDir && realOrResolved(opts.extraDir) !== realOrResolved(opts.builtinDir) ? opts.extraDir : undefined;
   const roots = [opts.builtinDir, ...(extraDir ? [extraDir] : [])];
   let cache: { key: string; snapshot: ThemeSnapshot } | undefined;
 
@@ -337,11 +368,18 @@ export function createThemeRegistry(opts: ThemeRegistryOptions): ThemeRegistry {
 
   function scan(): ThemeSnapshot {
     const key = fingerprint(roots);
-    if (cache?.key !== key) {
-      cache = { key, snapshot: load() };
-      if (cache.snapshot.problems.length) opts.onProblems?.(cache.snapshot.problems);
+    if (cache?.key === key) return cache.snapshot;
+    let snapshot: ThemeSnapshot;
+    try {
+      snapshot = load();
+    } catch (err) {
+      // Basis-Theme zur Laufzeit kaputt: beim Start abbrechen, danach mit dem letzten gültigen Stand weiterarbeiten
+      if (!cache) throw err;
+      snapshot = { themes: cache.snapshot.themes, problems: [{ dir: join(opts.builtinDir, BASE_THEME_ID), errors: [(err as Error).message] }] };
     }
-    return cache.snapshot;
+    cache = { key, snapshot };
+    if (snapshot.problems.length) opts.onProblems?.(snapshot.problems);
+    return snapshot;
   }
 
   return {
@@ -370,6 +408,11 @@ export function themeCss(theme: Pick<Theme, 'id' | 'version' | 'tokens' | 'darkT
 export function themeAsset(theme: Theme, rel: string): { path: string; type: string; etag: string } | undefined {
   const path = themeFilePath(theme.dir, rel);
   if (path === undefined) return undefined;
-  const st = statSync(path);
-  return { path, type: THEME_FILE_TYPES[extname(path).toLowerCase()]!, etag: `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"` };
+  try {
+    const st = statSync(path);
+    const etag = `"${[st.ino, st.size, st.mtimeMs, st.ctimeMs].map((n) => Math.round(n * 1000).toString(36)).join('-')}"`;
+    return { path, type: THEME_FILE_TYPES[extname(path).toLowerCase()]!, etag };
+  } catch {
+    return undefined; // inzwischen gelöscht
+  }
 }
