@@ -19,6 +19,7 @@ import type {
   SkillInput,
   SkillPreset,
   SkillPresetInput,
+  UserSettings,
 } from '@pnp/shared';
 
 export class ApiFailure extends Error {
@@ -60,6 +61,9 @@ export const api = {
   me: () => request<{ user: SessionUser | null }>('GET', '/auth/me'),
   login: (email: string) => request<SessionUser>('POST', '/auth/login', { email }),
   logout: () => request<unknown>('POST', '/auth/logout'),
+
+  settings: () => request<UserSettings>('GET', '/me/settings'),
+  updateSettings: (changes: Partial<UserSettings>) => request<UserSettings>('PATCH', '/me/settings', changes),
 
   groups: () => request<Group[]>('GET', '/groups'),
   createGroup: (name: string, presetId?: number) => request<Group>('POST', '/groups', { name, presetId }),
