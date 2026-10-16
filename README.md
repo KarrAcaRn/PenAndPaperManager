@@ -77,6 +77,23 @@ nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 - Zugangsdaten liegen verschlüsselt in `user_storage_connections` und erscheinen in keiner API-Antwort.
 - Architektur, API, Sicherheit (CORS) und Annahmen: `docs/soundboard-storage.md`.
 
+## Soundboard-Seite
+
+- `#/sounds` (Link im Benutzermenü und auf der Login-Seite), `client/src/routes/Soundboard.svelte`. Ohne Login
+  gibt es nur die Standard-Sounds (`GET /api/sounds/builtin` steht deshalb in `PUBLIC_API_PATHS`), mit Login
+  zusätzlich je verbundenem Speicher einen Abschnitt.
+- Suche nach Titel, Filter nach Quelle (Standard / Speicher) und Kategorie (nur Standard-Sounds). Klick auf eine
+  Kachel spielt ab bzw. stoppt; Lautstärke und „mehrere gleichzeitig“ oder exklusiv merkt sich der Browser
+  (`localStorage`, `lib/soundPlayer.svelte.ts`).
+- Nutzer-Dateien holen ihre Playback-URL erst beim Abspielen, behalten sie bis 30 s vor Ablauf und holen bei einem
+  Ladefehler einmal eine neue (`createPlaybackUrlCache` in `lib/soundboard.ts`).
+- Upload per Dateiauswahl oder Drag-and-drop in den gewählten Ziel-Speicher: Upload-URL vom Server holen, dann
+  per XHR mit Fortschritt direkt zum Anbieter (`lib/upload.ts`); nur mp3/wav/ogg/m4a bis 50 MB, danach wird die
+  Liste neu geladen. Abgelaufener Upload-Link → einmal neuer Link; CORS-Sperre bzw. Verbindungsabbruch werden
+  erklärt.
+- Eigene Dateien lassen sich nach Bestätigung löschen, Standard-Sounds nicht. Ohne verbundenen Speicher gibt es
+  statt des Uploads einen Hinweis mit Link zu den Kontoeinstellungen (`#/settings`).
+
 ## FATE-Bogen und Fertigkeiten
 
 - Artikel in Charaktere und Notizen (z.B. NPCs) können optional einen FATE-Bogen haben (Layout nach

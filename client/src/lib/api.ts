@@ -1,25 +1,31 @@
-import type {
-  ApiError,
-  Article,
-  ArticleInput,
-  ArticleUpdate,
-  ArticleSummary,
-  BuiltinSoundList,
-  Folder,
-  Group,
-  Member,
-  Role,
-  RuleHit,
-  Rulebook,
-  Section,
-  SessionUser,
-  Sheet,
-  SheetData,
-  SheetState,
-  Skill,
-  SkillInput,
-  SkillPreset,
-  SkillPresetInput,
+import {
+  MAX_STORAGE_PAGE_SIZE,
+  type ApiError,
+  type Article,
+  type ArticleInput,
+  type ArticleUpdate,
+  type ArticleSummary,
+  type BuiltinSoundList,
+  type Folder,
+  type Group,
+  type Member,
+  type PlaybackUrl,
+  type Role,
+  type RuleHit,
+  type Rulebook,
+  type Section,
+  type SessionUser,
+  type Sheet,
+  type SheetData,
+  type SheetState,
+  type Skill,
+  type SkillInput,
+  type SkillPreset,
+  type SkillPresetInput,
+  type StorageConnection,
+  type StorageFilePage,
+  type UploadRequest,
+  type UploadTarget,
 } from '@pnp/shared';
 
 export class ApiFailure extends Error {
@@ -127,6 +133,17 @@ export const api = {
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
 
   builtinSounds: () => request<BuiltinSoundList>('GET', '/sounds/builtin'),
+
+  storageConnections: () => request<StorageConnection[]>('GET', '/storage/connections'),
+  storageFiles: (cid: number, cursor?: string) =>
+    request<StorageFilePage>('GET', `/storage/connections/${cid}/files?${qs({ cursor, limit: String(MAX_STORAGE_PAGE_SIZE) })}`),
+  /** Kurzlebige URL, mit der der Browser die Datei direkt beim Anbieter abspielt */
+  playbackUrl: (cid: number, fileId: string) =>
+    request<PlaybackUrl>('GET', `/storage/connections/${cid}/playback-url?${qs({ fileId })}`),
+  /** Ziel für den direkten Upload zum Anbieter; die Datei selbst geht nie über unseren Server */
+  requestUpload: (cid: number, upload: UploadRequest) => request<UploadTarget>('POST', `/storage/connections/${cid}/uploads`, upload),
+  deleteStorageFile: (cid: number, fileId: string) =>
+    request<unknown>('DELETE', `/storage/connections/${cid}/files?${qs({ fileId })}`),
 };
 
 /**

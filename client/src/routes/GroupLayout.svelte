@@ -11,9 +11,9 @@
   import GmSkills from './GmSkills.svelte';
   import Rules from './Rules.svelte';
 
-  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'rules' | 'admin' | 'login' }>;
+  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'rules' | 'admin' | 'login' | 'sounds' }>;
 
-  let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' | 'login' }> } = $props();
+  let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' | 'login' | 'sounds' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
   // Verwalten und Fertigkeiten sind Reiter des SL-Bereichs; das Regelwerk gehört zu keinem Bereich
