@@ -104,6 +104,8 @@ export interface PlayerOptions {
   onEnded?: (sound: BoardSound, channel: Channel) => void;
   /** für Tests austauschbar */
   createAudio?: () => HTMLAudioElement;
+  /** Lautstärke (0…1, Faktor zu Gesamt × Kanal) und Schleife je Sound; ohne: 1 und keine Schleife */
+  soundOptions?: (key: string) => { volume: number; loop: boolean };
 }
 
 /** MediaError.MEDIA_ERR_NETWORK (als Zahl, weil nicht jede Umgebung MediaError kennt) */
@@ -129,16 +131,28 @@ export function createPlayer(options: PlayerOptions) {
   /** der Titel im Musikkanal (lädt oder spielt) */
   let music = $state<BoardSound | null>(null);
   const audios = new Map<string, HTMLAudioElement>();
-  /** Sounds mit eigener Schleifen-Angabe beim Start; die Einstellung „Musik wiederholen“ lässt sie in Ruhe */
-  const explicitLoop = new Set<string>();
+  /** Sounds mit eigener Schleifen-Angabe beim Start; die Einstellungen ändern sie dann nicht mehr */
+  const explicitLoop = new Map<string, boolean>();
   /** Zählt Starts je Kachel, damit ein später fertig gewordener alter Start nichts mehr anrichtet */
   const generation = new Map<string, number>();
 
   const save = () => writeJson(SETTINGS_KEY, settings);
   const volumeOf = (channel: Channel) => settings.volume * (channel === 'music' ? settings.musicVolume : settings.sfxVolume);
+  const soundOptions = options.soundOptions ?? (() => ({ volume: 1, loop: false }));
 
-  function applyVolumes(): void {
-    for (const [key, audio] of audios) audio.volume = volumeOf(channels[key] ?? 'sfx');
+  /**
+   * Lautstärke = Gesamt × Kanal × eigene Lautstärke des Sounds. Schleife: Angabe beim Start, sonst die eigene
+   * Schleife des Sounds, bei Musik zusätzlich „Musik wiederholen“.
+   */
+  function applyOptions(key: string, audio: HTMLAudioElement): void {
+    const channel = channels[key] ?? 'sfx';
+    const own = soundOptions(key);
+    audio.volume = volumeOf(channel) * own.volume;
+    audio.loop = explicitLoop.get(key) ?? (own.loop || (channel === 'music' && settings.musicLoop));
+  }
+
+  function applyAll(): void {
+    for (const [key, audio] of audios) applyOptions(key, audio);
   }
 
   function stop(key: string): void {
@@ -176,7 +190,7 @@ export function createPlayer(options: PlayerOptions) {
     delete errors[sound.key];
     states[sound.key] = 'loading';
     channels[sound.key] = channel;
-    if (playOptions.loop !== undefined) explicitLoop.add(sound.key);
+    if (playOptions.loop !== undefined) explicitLoop.set(sound.key, playOptions.loop);
     if (channel === 'music') music = sound;
 
     const start = async (retry: boolean): Promise<void> => {
@@ -184,8 +198,7 @@ export function createPlayer(options: PlayerOptions) {
       if (!current()) return;
       const audio = createAudio();
       audios.set(sound.key, audio);
-      audio.volume = volumeOf(channel);
-      audio.loop = playOptions.loop ?? (channel === 'music' ? settings.musicLoop : false);
+      applyOptions(sound.key, audio);
       audio.preload = 'auto';
       audio.onended = () => {
         if (!current() || audios.get(sound.key) !== audio) return;
@@ -254,16 +267,18 @@ export function createPlayer(options: PlayerOptions) {
     stopAll,
     setVolume(target: VolumeTarget, volume: number): void {
       settings[VOLUME_FIELD[target]] = clampUnit(volume);
-      applyVolumes();
+      applyAll();
       save();
+    },
+    /** Lautstärke/Schleife eines Sounds geändert: gilt sofort, auch während er läuft */
+    refreshSound(key: string): void {
+      const audio = audios.get(key);
+      if (audio) applyOptions(key, audio);
     },
     /** wirkt auch auf den laufenden Musiktitel, außer er wurde mit eigener Schleifen-Angabe gestartet */
     setMusicLoop(loop: boolean): void {
       settings.musicLoop = loop;
-      for (const key of keysIn('music')) {
-        const audio = audios.get(key);
-        if (audio && !explicitLoop.has(key)) audio.loop = loop;
-      }
+      applyAll();
       save();
     },
     clearError(key: string): void {

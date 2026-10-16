@@ -104,19 +104,27 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 - `#/sounds` (Link im Benutzermenü und auf der Login-Seite), `client/src/routes/Soundboard.svelte`. Ohne Login
   gibt es nur die Standard-Sounds (`GET /api/sounds/builtin` steht deshalb in `PUBLIC_API_PATHS`), mit Login
   zusätzlich je verbundenem Speicher einen Abschnitt.
-- Suche nach Titel, Filter nach Quelle (Standard / Speicher) und Kategorie (nur Standard-Sounds). Klick auf eine
-  Kachel spielt ab bzw. stoppt.
+- Suche über Titel, Kategorie/Ordner und Schlagwörter (alle Wörter müssen passen; wer sucht, sucht über alle
+  Kategorien, Bereich „Suche“), Filter nach Quelle (Standard / Speicher) und Kategorie-Leiste mit ‹ ›. Kategorien
+  sind die des Manifests und die Unterordner im eigenen Speicher (S3; Google Drive nur der verbundene Ordner).
+  Klick auf eine Kachel spielt ab bzw. stoppt.
 - Zwei Kanäle wie im Referenz-Soundboard (`lib/soundPlayer.svelte.ts`): **Hintergrundmusik** – immer nur ein Titel,
   ein neuer ersetzt den laufenden (harter Wechsel), auf Wunsch in Schleife; **Effekte** – beliebig viele
-  gleichzeitig, auch über der Musik. Regler für Gesamt-, Musik- und Effektlautstärke (Sound = Gesamt × Kanal),
-  „Musik stoppen“, „Effekte stoppen“, „Alle stoppen“ und eine Anzeige des laufenden Musiktitels. Umschalter „Alle /
-  Hintergrundmusik / Effekte“ filtern die Kacheln.
+  gleichzeitig, auch über der Musik. Regler für Gesamt-, Musik- und Effektlautstärke, „Musik stoppen“, „Effekte
+  stoppen“, „Alle stoppen“ und eine Anzeige des laufenden Musiktitels. Umschalter „Alle / Hintergrundmusik /
+  Effekte“ filtern die Kacheln. Je Kachel zusätzlich eigene Lautstärke und Endlosschleife
+  (`lib/soundSettings.svelte.ts`, `pnp.soundboard.sounds`); ein Sound klingt mit Gesamt × Kanal × eigener
+  Lautstärke und läuft in Schleife, wenn seine eigene Schleife an ist oder – bei Musik – „Musik wiederholen“.
 - Typ je Sound (`sfx` | `music`): Vorgabe aus dem Manifest (`type`), eigene Dateien sind zunächst Effekte. Jede
   Kachel hat eine Typ-Auswahl (ein laufender Sound stoppt beim Umstellen), beim Upload wählt man den Typ für die
-  neuen Dateien. Der Browser merkt sich
-  Lautstärken und Schleife (`localStorage` `pnp.soundboard`; ältere Einstellungen: `volume` gilt als
-  Gesamtlautstärke, der frühere Schalter „Mehrere Sounds gleichzeitig“ entfällt) sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe,
-  Schlüssel = Kachel-`key`).
+  neuen Dateien. Der Browser merkt sich Lautstärken und Schleife (`localStorage` `pnp.soundboard`; ältere
+  Einstellungen: `volume` gilt als Gesamtlautstärke, der frühere Schalter „Mehrere Sounds gleichzeitig“ entfällt)
+  sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe, Schlüssel =
+  Kachel-`key`).
+- Tastatur wie im Referenz-Soundboard (`lib/soundHotkeys.ts`): die sichtbaren Kacheln bekommen der Reihe nach
+  `0–9`, `a–z`, `A–Z`; Pfeil links/rechts wechselt die Kategorie, hoch/runter die Musik-Lautstärke, Alt springt in
+  die Suche. Beim Tippen in Feldern und bei offenem Dialog ist das aus. Vergleich mit der Referenz:
+  `docs/soundboard-feature-gap.md`.
 - Nutzer-Dateien holen ihre Playback-URL erst beim Abspielen, behalten sie bis 30 s vor Ablauf und holen bei einem
   Ladefehler einmal eine neue (`createPlaybackUrlCache` in `lib/soundboard.ts`).
 - Upload per Dateiauswahl oder Drag-and-drop in den gewählten Ziel-Speicher: Upload-URL vom Server holen, dann
