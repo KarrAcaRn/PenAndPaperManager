@@ -37,7 +37,8 @@ Passwortlos per E-Mail-Code (`server/src/routes/login-codes.ts`, Seite `#/login`
    gespeichert nur als scrypt-Hash) und verschickt ihn per `sendLoginCodeEmail` (`server/src/mail.ts`). Die Antwort
    ist für jede Adresse gleich (204), nur Rate-Limits (429) und Versandfehler (503) melden sich.
 2. Code eingeben → `POST /api/auth/verify-code`. Richtig: Nutzer wird bei Bedarf angelegt, `createSession` setzt das
-   Session-Cookie. Ein Code gilt einmal; nach 5 Fehlversuchen ist er verbrannt.
+   Session-Cookie. Ein Code gilt einmal; nach 5 Fehlversuchen ist er verbrannt. Pro Adresse sind höchstens 10 Fehlversuche
+   in 24 Stunden möglich (über alle Codes), danach ist der Login für diese Adresse bis zum Ablauf gesperrt.
 3. `GET /api/auth/me` liefert den Nutzer (ohne Login 401), `POST /api/auth/logout` beendet die Session.
 
 Alle anderen `/api`-Routen verlangen eine Session (globaler Guard `requireAuthForApi` in `auth.ts`, dazu

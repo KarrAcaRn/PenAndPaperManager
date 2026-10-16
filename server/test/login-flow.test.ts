@@ -104,6 +104,9 @@ describe('Login per E-Mail-Code (Ende zu Ende)', () => {
       ['GET', '/api/rulebooks'],
       ['GET', '/api/groups/1/articles'],
       ['GET', '/api/gibtsnicht'],
+      // prozentkodiert: der Router dekodiert, der Guard muss es auch (sonst käme hier 400 aus der Validierung)
+      ['POST', '/%61pi/groups'],
+      ['GET', '/%61pi/gibtsnicht'],
     ] as const) {
       const res = await app.inject({ method, url });
       expect([url, res.statusCode]).toEqual([url, 401]);

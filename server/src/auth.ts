@@ -127,9 +127,22 @@ export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
 export function requireAuth(db: Db): preHandlerHookHandler {
   return async (req, reply) => {
     if (getCurrentUser(db, req)) return;
-    if (req.url.startsWith('/api/')) throw unauthorized();
+    if (apiPath(req).startsWith('/api/')) throw unauthorized();
     return reply.redirect(LOGIN_PAGE);
   };
+}
+
+/**
+ * Pfad so, wie der Router ihn sieht: Fastify dekodiert Prozent-Kodierungen (`/%61pi/…` trifft `/api/…`),
+ * deshalb hier ebenfalls dekodiert vergleichen. Nicht dekodierbare Pfade bleiben roh.
+ */
+export function apiPath(req: FastifyRequest): string {
+  const raw = req.url.split('?')[0];
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 /**
@@ -138,7 +151,7 @@ export function requireAuth(db: Db): preHandlerHookHandler {
  */
 export function requireAuthForApi(db: Db): preValidationHookHandler {
   return async (req) => {
-    const path = req.url.split('?')[0];
+    const path = apiPath(req);
     if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) return;
     if (!getCurrentUser(db, req)) throw unauthorized();
   };

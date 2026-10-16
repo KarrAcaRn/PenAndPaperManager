@@ -7,6 +7,8 @@ import { tooManyRequests } from './errors.ts';
 export const LOGIN_CODE_MINUTES = 10;
 /** Nach so vielen falschen Eingaben ist ein Code verbrannt */
 export const MAX_FAILED_ATTEMPTS = 5;
+/** Höchstzahl falscher Eingaben pro Adresse und Tag über alle Codes hinweg (gegen Durchprobieren mit neuen Codes) */
+export const MAX_FAILED_ATTEMPTS_PER_DAY = 10;
 
 export interface LoginRateLimits {
   emailPerMinute: number;
@@ -43,10 +45,7 @@ const hashCode = (code: string, salt: string): Buffer => scryptSync(code, Buffer
  */
 export function issueLoginCode(db: Db, rawEmail: string, ip: string, limits: LoginRateLimits = RATE_LIMITS): string {
   const email = normalizeEmail(rawEmail);
-  const code = generateCode();
-  const salt = randomBytes(16).toString('hex');
-  const hash = hashCode(code, salt).toString('hex');
-  transaction(db, () => {
+  return transaction(db, () => {
     // Aufräumen: fürs Rate-Limiting reicht die letzte Stunde
     run(db, `DELETE FROM login_codes WHERE created_at < datetime('now', '-1 day')`);
     const count = (where: string, value: string, window: string) =>
@@ -57,6 +56,10 @@ export function issueLoginCode(db: Db, rawEmail: string, ip: string, limits: Log
     if (count('email', email, '-1 hour') >= limits.emailPerHour) throw tooManyRequests();
     if (count('ip', ip, '-1 hour') >= limits.ipPerHour) throw tooManyRequests();
 
+    // erst nach den Limits hashen: scrypt kostet CPU, abgewiesene Anfragen sollen nichts kosten
+    const code = generateCode();
+    const salt = randomBytes(16).toString('hex');
+    const hash = hashCode(code, salt).toString('hex');
     run(
       db,
       `UPDATE login_codes SET invalidated_at = datetime('now')
@@ -72,8 +75,8 @@ export function issueLoginCode(db: Db, rawEmail: string, ip: string, limits: Log
       ip,
       `+${LOGIN_CODE_MINUTES} minutes`,
     );
+    return code;
   });
-  return code;
 }
 
 interface CodeRow {
@@ -90,6 +93,12 @@ export function consumeLoginCode(db: Db, rawEmail: string, rawCode: string): boo
   const email = normalizeEmail(rawEmail);
   const code = rawCode.trim();
   return transaction(db, () => {
+    const failedToday = getRow<{ n: number }>(
+      db,
+      `SELECT COALESCE(SUM(failed_attempts), 0) AS n FROM login_codes WHERE email = ? AND created_at > datetime('now', '-1 day')`,
+      email,
+    )!.n;
+    if (failedToday >= MAX_FAILED_ATTEMPTS_PER_DAY) return false;
     const row = getRow<CodeRow>(
       db,
       `SELECT id, code_salt AS codeSalt, code_hash AS codeHash FROM login_codes

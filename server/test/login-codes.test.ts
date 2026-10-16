@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../src/db.ts';
 import { buildApp } from '../src/app.ts';
 import { SESSION_COOKIE } from '../src/auth.ts';
-import { generateCode, MAX_FAILED_ATTEMPTS, RATE_LIMITS } from '../src/login-codes.ts';
+import { generateCode, MAX_FAILED_ATTEMPTS, MAX_FAILED_ATTEMPTS_PER_DAY, RATE_LIMITS } from '../src/login-codes.ts';
 
 /** App mit abgefangenem Mailversand: `sent` enthält alle verschickten Codes. */
 function setup() {
@@ -144,6 +144,28 @@ describe('Login per E-Mail-Code', () => {
     const code = lastCode();
     for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) expect((await verify('a@test.de', wrong(code))).statusCode).toBe(401);
     expect((await verify('a@test.de', code)).statusCode).toBe(401);
+  });
+
+  it(`lässt pro Adresse höchstens ${MAX_FAILED_ATTEMPTS_PER_DAY} Fehlversuche pro Tag zu, auch über neue Codes`, async () => {
+    const { db, request, verify, lastCode } = setup();
+    let failed = 0;
+    while (failed < MAX_FAILED_ATTEMPTS_PER_DAY) {
+      age(db, '-61 seconds');
+      await request('a@test.de');
+      for (let i = 0; i < MAX_FAILED_ATTEMPTS && failed < MAX_FAILED_ATTEMPTS_PER_DAY; i++, failed++) {
+        expect((await verify('a@test.de', wrong(lastCode()))).statusCode).toBe(401);
+      }
+    }
+    age(db, '-61 seconds');
+    await request('a@test.de');
+    expect((await verify('a@test.de', lastCode())).statusCode).toBe(401);
+    // andere Adressen sind nicht betroffen
+    await request('b@test.de');
+    expect((await verify('b@test.de', lastCode())).statusCode).toBe(200);
+    // nach einem Tag ist die Sperre vorbei
+    age(db, '-1 day');
+    await request('a@test.de');
+    expect((await verify('a@test.de', lastCode())).statusCode).toBe(200);
   });
 
   it('zählt auch Codes im falschen Format als Fehlversuch', async () => {

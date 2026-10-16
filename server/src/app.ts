@@ -17,7 +17,7 @@ import { presetRoutes } from './routes/presets.ts';
 import { skillRoutes } from './routes/skills.ts';
 import { sheetRoutes } from './routes/sheets.ts';
 import { rulebookRoutes } from './routes/rulebooks.ts';
-import { parseAdminEmails, requireAuthForApi } from './auth.ts';
+import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
 import { seedPresets } from './presets.ts';
 import { dbPath, rulebookDir } from './paths.ts';
 
@@ -71,7 +71,7 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
     app.register(fastifyStatic, { root: CLIENT_DIST });
   }
   app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Nicht gefunden' });
+    if (apiPath(req).startsWith('/api/')) return reply.code(404).send({ error: 'Nicht gefunden' });
     if (existsSync(CLIENT_DIST)) return reply.sendFile('index.html');
     return reply.code(404).send({ error: 'Frontend nicht gebaut (npm run build)' });
   });
