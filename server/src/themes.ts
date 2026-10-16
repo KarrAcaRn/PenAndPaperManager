@@ -1,10 +1,12 @@
 /**
  * Theme-Registry: lädt die eingebauten Themes (themes/ im Repo) und die des Seitenbetreibers (THEMES_DIR,
  * Vorgabe data/themes). Jeder Unterordner mit einer theme.json ist ein Theme; Ordner, die mit „_“ oder „.“
- * beginnen (z.B. Vorlagen), werden übersprungen. Die Ordner werden bei jedem Zugriff neu gelesen, damit ein
- * abgelegtes Theme ohne Neustart erscheint.
+ * beginnen (z.B. Vorlagen), werden übersprungen. Bei jedem Zugriff wird geprüft, ob sich in den Ordnern etwas
+ * geändert hat (Dateinamen, Größen, Änderungszeiten); nur dann wird neu geladen. So erscheint ein abgelegtes
+ * Theme ohne Neustart.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { Ajv, type ErrorObject } from 'ajv';
 import {
@@ -39,10 +41,17 @@ export const THEME_FILE_TYPES: Record<string, string> = {
   '.otf': 'font/otf',
 };
 
+/** Tokens, die in einer box-shadow-Liste stehen und deshalb nicht „none“ sein dürfen */
+const SHADOW_LIST_TOKENS: ThemeToken[] = ['shadow-surface', 'frame-line'];
+
 export interface Theme extends ThemeInfo {
   dir: string;
   /** Inhalt der Zusatz-CSS-Datei */
   extraCss?: string;
+  /** erzeugtes Stylesheet */
+  css: string;
+  /** ETag des erzeugten Stylesheets */
+  etag: string;
 }
 
 export interface ThemeProblem {
@@ -87,10 +96,7 @@ function describeError(err: ErrorObject): string {
     case 'maxLength':
       return `„${field}“ darf höchstens ${String(params.limit)} Zeichen lang sein.`;
     case 'pattern': {
-      const parentField = field.split('.')[0];
-      const hint = isTokenMap(parentField) && field.includes('.')
-        ? THEME_TOKEN_VALUE_HINT
-        : parent?.description;
+      const hint = isTokenMap(field.split('.')[0]) && field.includes('.') ? THEME_TOKEN_VALUE_HINT : parent?.description;
       return `„${field}“ ist ungültig${hint ? ` – ${hint}` : ''}.`;
     }
     default:
@@ -105,16 +111,26 @@ export function validateManifest(raw: unknown): { ok: true; manifest: ThemeManif
   return { ok: false, errors: [...new Set((validateSchema.errors ?? []).map(describeError))] };
 }
 
-const URL_RE = /url\(\s*(['"]?)([^'")]*)\1\s*\)/g;
+/** url(…) mit '…', "…" oder unquotiertem Ziel; das Ziel steht in Gruppe 1, 2 oder 3 */
+const URL_RE = /url\(\s*(?:'([^']*)'|"([^"]*)"|([^'"()\s]*))\s*\)/gi;
+const urlTarget = (m: RegExpMatchArray) => m[1] ?? m[2] ?? m[3] ?? '';
 const isExternal = (target: string) => /^(data:|https?:|\/|#)/i.test(target);
 
-/** Liegt ein relativer Pfad innerhalb des Theme-Ordners und ist eine auslieferbare Datei? */
+/** Liegt ein relativer Pfad (auch nach Auflösen von Symlinks) im Theme-Ordner und ist eine auslieferbare Datei? */
 export function themeFilePath(dir: string, rel: string): string | undefined {
-  const root = resolve(dir);
-  const file = resolve(root, rel);
-  if (!file.startsWith(root + sep) || !(extname(file).toLowerCase() in THEME_FILE_TYPES)) return undefined;
   try {
+    const root = realpathSync(dir);
+    const file = realpathSync(resolve(root, rel));
+    if (!file.startsWith(root + sep) || !(extname(file).toLowerCase() in THEME_FILE_TYPES)) return undefined;
     return statSync(file).isFile() ? file : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeTarget(target: string): string | undefined {
+  try {
+    return decodeURI(target);
   } catch {
     return undefined;
   }
@@ -122,34 +138,39 @@ export function themeFilePath(dir: string, rel: string): string | undefined {
 
 /** Prüft, dass jede relative url(…) auf eine vorhandene Datei im Theme-Ordner zeigt */
 function checkUrls(dir: string, where: string, css: string, errors: string[]) {
-  for (const [, , target] of css.matchAll(URL_RE)) {
+  for (const m of css.matchAll(URL_RE)) {
+    const target = urlTarget(m);
     if (!target || isExternal(target)) continue;
-    if (!themeFilePath(dir, decodeURI(target))) {
+    const decoded = decodeTarget(target);
+    if (decoded === undefined) errors.push(`${where}: „${target}“ ist keine gültige URL (Sonderzeichen wie % kodieren, z.B. %25).`);
+    else if (!themeFilePath(dir, decoded)) {
       errors.push(`${where}: Datei „${target}“ fehlt im Theme-Ordner oder hat keinen erlaubten Typ (${Object.keys(THEME_FILE_TYPES).join(', ')}).`);
     }
   }
 }
 
-/**
- * Lädt und prüft einen Theme-Ordner: Schema, ID gleich Ordnername, referenzierte Dateien vorhanden.
- * Wird auch von Skripten (Validierung) genutzt.
- */
-export function loadThemeDir(dir: string, folderName: string): ThemeLoadResult {
+function readManifest(dir: string): unknown {
   const manifestPath = join(dir, MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return { ok: false, errors: [`${MANIFEST_FILE} fehlt.`] };
-  let raw: unknown;
+  if (!existsSync(manifestPath)) throw new Error(`${MANIFEST_FILE} fehlt.`);
+  const text = readFileSync(manifestPath, 'utf8');
   try {
-    raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    return JSON.parse(text);
   } catch (err) {
-    return { ok: false, errors: [`${MANIFEST_FILE} ist kein gültiges JSON: ${(err as Error).message}`] };
+    throw new Error(`${MANIFEST_FILE} ist kein gültiges JSON: ${(err as Error).message}`);
   }
-  const checked = validateManifest(raw);
+}
+
+function checkThemeDir(dir: string, folderName: string): ThemeLoadResult {
+  const checked = validateManifest(readManifest(dir));
   if (!checked.ok) return checked;
   const manifest = checked.manifest;
   const errors: string[] = [];
   if (manifest.id !== folderName) errors.push(`Die ID „${manifest.id}“ muss dem Ordnernamen „${folderName}“ entsprechen.`);
   for (const [field, map] of [['tokens', manifest.tokens], ['darkTokens', manifest.darkTokens ?? {}]] as const) {
     for (const [token, value] of Object.entries(map)) checkUrls(dir, `${field}.${token}`, value, errors);
+    for (const token of SHADOW_LIST_TOKENS) {
+      if (map[token]?.trim().toLowerCase() === 'none') errors.push(`${field}.${token}: „none“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.`);
+    }
   }
   if (manifest.preview && !themeFilePath(dir, manifest.preview)) errors.push(`preview: Datei „${manifest.preview}“ fehlt im Theme-Ordner.`);
   let extraCss: string | undefined;
@@ -164,42 +185,98 @@ export function loadThemeDir(dir: string, folderName: string): ThemeLoadResult {
   return errors.length ? { ok: false, errors } : { ok: true, manifest, extraCss };
 }
 
+/**
+ * Lädt und prüft einen Theme-Ordner: Schema, ID gleich Ordnername, referenzierte Dateien vorhanden.
+ * Wirft nie; auch Lesefehler werden als Fehlermeldung geliefert. Wird auch von Skripten (Validierung) genutzt.
+ */
+export function loadThemeDir(dir: string, folderName: string): ThemeLoadResult {
+  try {
+    return checkThemeDir(dir, folderName);
+  } catch (err) {
+    return { ok: false, errors: [(err as Error).message] };
+  }
+}
+
 /** Relative url(…) in Token-Werten absolut machen – in Custom Properties würden sie sonst je nach Browser falsch aufgelöst */
 const absolutizeUrls = (id: string, value: string) =>
-  value.replace(URL_RE, (match, quote: string, target: string) =>
-    !target || isExternal(target) ? match : `url(${quote || '"'}/themes/${encodeURIComponent(id)}/${target}${quote || '"'})`,
-  );
+  value.replace(URL_RE, (match: string, q1?: string, q2?: string, bare?: string) => {
+    const target = q1 ?? q2 ?? bare ?? '';
+    return !target || isExternal(target) ? match : `url("/themes/${id}/${target.replaceAll('"', '%22')}")`;
+  });
 
 function absolutizeTokens(id: string, tokens: ThemeTokens): ThemeTokens {
   return Object.fromEntries(Object.entries(tokens).map(([k, v]) => [k, absolutizeUrls(id, v)]));
 }
 
+type ThemeDraft = Omit<Theme, 'css' | 'etag'>;
+
 function toTheme(dir: string, manifest: ThemeManifest, extraCss: string | undefined, base: Theme | undefined, builtin: boolean): Theme {
-  const own = absolutizeTokens(manifest.id, manifest.tokens);
-  return {
+  const draft: ThemeDraft = {
     id: manifest.id,
     name: manifest.name,
     author: manifest.author,
     version: manifest.version,
     ...(manifest.description === undefined ? {} : { description: manifest.description }),
     ...(manifest.license === undefined ? {} : { license: manifest.license }),
-    ...(manifest.preview === undefined ? {} : { preview: `/themes/${encodeURIComponent(manifest.id)}/${manifest.preview}` }),
+    ...(manifest.preview === undefined ? {} : { preview: `/themes/${manifest.id}/${manifest.preview}` }),
     stylesheet: themeStylesheetUrl(manifest.id),
     // Fehlende Tokens aus dem Basis-Theme; dunkle Abweichungen nicht, sonst mischten sich fremde Farben ein
-    tokens: { ...base?.tokens, ...own } as Record<ThemeToken, string>,
+    tokens: { ...base?.tokens, ...absolutizeTokens(manifest.id, manifest.tokens) } as Record<ThemeToken, string>,
     darkTokens: absolutizeTokens(manifest.id, manifest.darkTokens ?? {}),
     builtin,
     dir,
     ...(extraCss === undefined ? {} : { extraCss }),
   };
+  const css = themeCss(draft);
+  return { ...draft, css, etag: `"${createHash('sha1').update(css).digest('base64url')}"` };
 }
 
-function themeFolders(root: string | undefined): string[] {
-  if (!root || !existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
-    .map((e) => e.name)
-    .sort();
+/** Theme-Ordner eines Wurzelordners; Lesefehler landen in problems */
+function themeFolders(root: string, problems: ThemeProblem[]): string[] {
+  try {
+    if (!existsSync(root)) return [];
+    return readdirSync(root, { withFileTypes: true })
+      .filter((e) => (e.isDirectory() || (e.isSymbolicLink() && isDir(join(root, e.name)))) && !e.name.startsWith('_') && !e.name.startsWith('.'))
+      .map((e) => e.name)
+      .sort();
+  } catch (err) {
+    problems.push({ dir: root, errors: [`Ordner nicht lesbar: ${(err as Error).message}`] });
+    return [];
+  }
+}
+
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Fingerabdruck aller Dateien unter den Wurzelordnern; ändert sich bei jedem Anlegen, Löschen oder Speichern */
+function fingerprint(roots: string[]): string {
+  const parts: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      parts.push(`${dir}:?`);
+      return;
+    }
+    for (const e of entries) {
+      const path = join(dir, e.name);
+      try {
+        const st = statSync(path);
+        parts.push(`${path}:${st.size}:${st.mtimeMs}`);
+        if (st.isDirectory() && depth < 4) walk(path, depth + 1);
+      } catch {
+        parts.push(`${path}:?`);
+      }
+    }
+  };
+  for (const root of roots) walk(root, 0);
+  return parts.sort().join('\n');
 }
 
 export interface ThemeRegistryOptions {
@@ -207,6 +284,8 @@ export interface ThemeRegistryOptions {
   builtinDir: string;
   /** Ordner des Seitenbetreibers (darf fehlen) */
   extraDir?: string;
+  /** wird nach jedem Neuladen mit den abgelehnten Themes aufgerufen (z.B. fürs Log) */
+  onProblems?: (problems: ThemeProblem[]) => void;
 }
 
 export interface ThemeSnapshot {
@@ -215,17 +294,21 @@ export interface ThemeSnapshot {
 }
 
 export interface ThemeRegistry {
+  /** aktueller Stand; lädt nur neu, wenn sich in den Ordnern etwas geändert hat */
   scan(): ThemeSnapshot;
   listThemes(): Theme[];
   getTheme(id: string): Theme | undefined;
-  /** erzeugtes Stylesheet eines Themes */
-  stylesheet(id: string): string | undefined;
   /** abgelehnte Theme-Ordner mit Begründung */
   problems(): ThemeProblem[];
 }
 
 export function createThemeRegistry(opts: ThemeRegistryOptions): ThemeRegistry {
-  function scan(): ThemeSnapshot {
+  // Zeigt THEMES_DIR auf die eingebauten Themes (z.B. DB_PATH relativ zum Repo), nicht doppelt laden
+  const extraDir = opts.extraDir && resolve(opts.extraDir) !== resolve(opts.builtinDir) ? opts.extraDir : undefined;
+  const roots = [opts.builtinDir, ...(extraDir ? [extraDir] : [])];
+  let cache: { key: string; snapshot: ThemeSnapshot } | undefined;
+
+  function load(): ThemeSnapshot {
     const problems: ThemeProblem[] = [];
     const baseDir = join(opts.builtinDir, BASE_THEME_ID);
     const baseResult = loadThemeDir(baseDir, BASE_THEME_ID);
@@ -235,9 +318,10 @@ export function createThemeRegistry(opts: ThemeRegistryOptions): ThemeRegistry {
     const base = toTheme(baseDir, baseResult.manifest, baseResult.extraCss, undefined, true);
     const themes = new Map<string, Theme>([[base.id, base]]);
 
-    for (const [root, builtin] of [[opts.builtinDir, true], [opts.extraDir, false]] as const) {
-      for (const name of themeFolders(root)) {
-        const dir = join(root!, name);
+    for (const root of roots) {
+      const builtin = root === opts.builtinDir;
+      for (const name of themeFolders(root, problems)) {
+        const dir = join(root, name);
         if (builtin && name === BASE_THEME_ID) continue;
         if (themes.has(name)) {
           problems.push({ dir, errors: [`Ein Theme mit der ID „${name}“ ist bereits vorhanden (${themes.get(name)!.dir}).`] });
@@ -251,14 +335,19 @@ export function createThemeRegistry(opts: ThemeRegistryOptions): ThemeRegistry {
     return { themes, problems };
   }
 
+  function scan(): ThemeSnapshot {
+    const key = fingerprint(roots);
+    if (cache?.key !== key) {
+      cache = { key, snapshot: load() };
+      if (cache.snapshot.problems.length) opts.onProblems?.(cache.snapshot.problems);
+    }
+    return cache.snapshot;
+  }
+
   return {
     scan,
     listThemes: () => [...scan().themes.values()],
     getTheme: (id) => scan().themes.get(id),
-    stylesheet: (id) => {
-      const theme = scan().themes.get(id);
-      return theme && themeCss(theme);
-    },
     problems: () => scan().problems,
   };
 }
@@ -267,11 +356,9 @@ const declarations = (tokens: ThemeTokens, indent: string) =>
   THEME_TOKEN_NAMES.filter((t) => tokens[t] !== undefined).map((t) => `${indent}--${t}: ${tokens[t]};`).join('\n');
 
 /** Stylesheet eines Themes: Tokens auf :root, dunkle Abweichungen per Media Query, danach das Zusatz-CSS */
-export function themeCss(theme: Theme): string {
-  const parts = [
-    `/* Theme „${theme.name.replaceAll('*/', '')}“ (${theme.id} ${theme.version}) – automatisch erzeugt */`,
-    `:root {\n${declarations(theme.tokens, '  ')}\n}`,
-  ];
+export function themeCss(theme: Pick<Theme, 'id' | 'version' | 'tokens' | 'darkTokens' | 'extraCss'>): string {
+  // nur ID und Version in den Kommentar – beide sind per Schema frei von */
+  const parts = [`/* Theme ${theme.id} ${theme.version} – automatisch erzeugt */`, `:root {\n${declarations(theme.tokens, '  ')}\n}`];
   if (Object.keys(theme.darkTokens).length) {
     parts.push(`@media (prefers-color-scheme: dark) {\n  :root {\n${declarations(theme.darkTokens, '    ')}\n  }\n}`);
   }
@@ -280,7 +367,9 @@ export function themeCss(theme: Theme): string {
 }
 
 /** Theme-Datei (Grafik, Schrift, CSS) zum Ausliefern; theme.json und andere Typen werden nicht herausgegeben */
-export function themeAsset(theme: Theme, rel: string): { path: string; type: string } | undefined {
+export function themeAsset(theme: Theme, rel: string): { path: string; type: string; etag: string } | undefined {
   const path = themeFilePath(theme.dir, rel);
-  return path === undefined ? undefined : { path, type: THEME_FILE_TYPES[extname(path).toLowerCase()]! };
+  if (path === undefined) return undefined;
+  const st = statSync(path);
+  return { path, type: THEME_FILE_TYPES[extname(path).toLowerCase()]!, etag: `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"` };
 }

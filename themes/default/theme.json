@@ -29,7 +29,7 @@
     "border-radius": "8px",
     "border-radius-small": "2px",
     "radius-pill": "999px",
-    "shadow-surface": "none",
+    "shadow-surface": "0 0 transparent",
     "shadow-popup": "0 4px 14px rgba(0, 0, 0, 0.18)",
     "frame-image": "url('vine-frame.svg')",
     "frame-slice": "32",

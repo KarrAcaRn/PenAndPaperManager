@@ -47,9 +47,11 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Invarianten aus der README (mindestens ein Spielleiter, verwaiste private Artikel gehen an die Spielleiter)
   nicht brechen.
 - **Stil:** 2 Leerzeichen, einfache Anführungszeichen, Semikolons, Trailing Commas, lange Zeilen (~120) sind ok.
-- **Gestaltung:** keine festen Farb-, Rahmen-, Schatten- oder Schriftwerte in Komponenten oder `app.css` – nur
-  Design-Tokens (`var(--color-…)`, `var(--border)`, …, siehe README „Themes“). Neues Token: in `THEME_TOKENS`
-  (`shared/src/theme.ts`) und `themes/default/theme.json` eintragen, dann `npm run theme:schema -w server`.
+- **Gestaltung:** keine festen Farb-, Rahmen- oder Schattenwerte in Komponenten oder `app.css`, Schriften der
+  Oberfläche über `--font-…` – nur Design-Tokens (`var(--color-…)`, `var(--border)`, …, siehe README „Themes“;
+  ein Test prüft feste Farben und px-Rahmen). Ausnahme: Linienstärken und Maße des FATE-Bogens (Druckvorlage).
+  Neues Token: in `THEME_TOKENS` (`shared/src/theme.ts`) und `themes/default/theme.json` eintragen, dann
+  `npm run theme:schema -w server`.
 
 ## Tests
 

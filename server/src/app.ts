@@ -41,9 +41,13 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   const themes = createThemeRegistry({
     builtinDir: opts.builtinThemesDir ?? builtinThemesDir(),
     extraDir: opts.themesDir ?? themesDir(dbPath()),
+    // Ungültige Themes werden übersprungen und bei jedem Neuladen gemeldet
+    onProblems: (problems) => {
+      for (const { dir, errors } of problems) app.log.warn(`Theme in ${dir} abgelehnt: ${errors.join(' ')}`);
+    },
   });
-  // Ungültige Themes werden übersprungen und beim Start gemeldet; ein ungültiges Basis-Theme bricht hier ab
-  for (const { dir, errors } of themes.problems()) app.log.warn(`Theme in ${dir} abgelehnt: ${errors.join(' ')}`);
+  // Schon beim Start laden: ein ungültiges Basis-Theme bricht hier ab
+  themes.scan();
   app.register(cookie);
 
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {

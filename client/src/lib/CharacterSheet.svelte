@@ -323,7 +323,8 @@
     display: inline-flex;
     align-items: center;
     background: var(--sheet-logo);
-    color: var(--on-accent);
+    /* Schrift und Schwung wie aus dem Papier ausgeschnitten */
+    color: var(--paper);
     padding: 1.2mm 3.2mm 1.2mm 2.4mm;
     border-radius: 1.2mm;
     font-family: var(--sheet-font-heading);

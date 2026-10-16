@@ -28,21 +28,21 @@ export const THEME_TOKENS = {
   'color-danger': { group: 'Farben', description: 'Fehlermeldungen, Löschen-Knöpfe, „privat“-Abzeichen' },
   'color-highlight': { group: 'Farben', description: 'Hervorhebung von Suchtreffern' },
   'color-selection': { group: 'Farben', description: 'Auswahl im Editor (z.B. markierte Tabellenzellen)' },
-  'border-width': { group: 'Rahmen', description: 'Breite normaler Rahmen (Karten, Knöpfe, Felder, Trennlinien)' },
+  'border-width': { group: 'Rahmen', description: 'Breite normaler Rahmen (Karten, Knöpfe, Felder, Trennlinien); Länge mit Einheit, z.B. 1px' },
   'border-style': { group: 'Rahmen', description: 'Linienart normaler Rahmen (solid, dashed, …)' },
-  'border-width-strong': { group: 'Rahmen', description: 'Breite betonter Linien (Zitatbalken, Markierung im Inhaltsverzeichnis)' },
-  'outline-width': { group: 'Rahmen', description: 'Breite von Fokus- und Ablage-Markierungen' },
+  'border-width-strong': { group: 'Rahmen', description: 'Breite betonter Linien (Zitatbalken, Markierung im Inhaltsverzeichnis); Länge mit Einheit' },
+  'outline-width': { group: 'Rahmen', description: 'Breite von Fokus- und Ablage-Markierungen; Länge mit Einheit' },
   'border-radius': { group: 'Rahmen', description: 'Eckenradius von Karten, Knöpfen, Feldern und Menüs' },
   'border-radius-small': { group: 'Rahmen', description: 'kleiner Eckenradius (Suchtreffer)' },
   'radius-pill': { group: 'Rahmen', description: 'Eckenradius der Abzeichen' },
-  'shadow-surface': { group: 'Schatten', description: 'Schatten von Karten und Kopfleiste' },
+  'shadow-surface': { group: 'Schatten', description: 'Schatten von Karten und Kopfleiste (auch gerahmt); ohne Schatten 0 0 transparent, nicht none' },
   'shadow-popup': { group: 'Schatten', description: 'Schatten aufklappender Menüs' },
   'frame-image': { group: 'Zierrahmen', description: 'Rahmengrafik (border-image, 9-Slice) um Kopfleiste und Seitenleisten; none für keinen' },
   'frame-slice': { group: 'Zierrahmen', description: 'Slice-Wert der Rahmengrafik (border-image-slice)' },
-  'frame-width': { group: 'Zierrahmen', description: 'Breite der Rahmengrafik; 0px ohne Grafik' },
-  'frame-outset': { group: 'Zierrahmen', description: 'wie weit die Rahmengrafik über den Kasten hinausragt' },
+  'frame-width': { group: 'Zierrahmen', description: 'Breite der Rahmengrafik; Länge mit Einheit, 0px ohne Grafik' },
+  'frame-outset': { group: 'Zierrahmen', description: 'wie weit die Rahmengrafik über den Kasten hinausragt; Länge mit Einheit' },
   'frame-repeat': { group: 'Zierrahmen', description: 'Wiederholung der Rahmengrafik (round, repeat, stretch, space)' },
-  'frame-line': { group: 'Zierrahmen', description: 'Kastenlinie innerhalb des Zierrahmens (box-shadow)' },
+  'frame-line': { group: 'Zierrahmen', description: 'Kastenlinie gerahmter Kästen (box-shadow); ohne Linie 0 0 transparent, nicht none' },
   'frame-padding': { group: 'Zierrahmen', description: 'Innenabstand gerahmter Kästen' },
   'bg-image': { group: 'Hintergründe', description: 'Hintergrundbild/Textur der Seite; none für keines' },
   'surface-image': { group: 'Hintergründe', description: 'Hintergrundbild/Textur von Karten und Kopfleiste; none für keines' },
@@ -56,7 +56,7 @@ export const THEME_TOKENS = {
   'sheet-focus': { group: 'Charakterbogen', description: 'Hintergrund fokussierter Bogenfelder' },
   'sheet-accent': { group: 'Charakterbogen', description: 'Balken, Kästchen und Trennlinie des Bogens' },
   'sheet-on-accent': { group: 'Charakterbogen', description: 'Text auf Bogen-Akzentflächen' },
-  'sheet-logo': { group: 'Charakterbogen', description: 'Hintergrund des Logos oben rechts' },
+  'sheet-logo': { group: 'Charakterbogen', description: 'Hintergrund des Logos oben rechts (Schrift in Papierfarbe)' },
   'sheet-shadow': { group: 'Charakterbogen', description: 'Schatten des Bogens auf der Seite' },
   'sheet-font': { group: 'Charakterbogen', description: 'Schrift des Bogens' },
   'sheet-font-heading': { group: 'Charakterbogen', description: 'Schrift der Bogen-Überschriften und Werte' },
@@ -73,7 +73,8 @@ export const BASE_THEME_ID = 'default';
 export const THEME_ID_PATTERN = '^[a-z0-9][a-z0-9-]{0,39}$';
 export const THEME_LIMITS = { name: 60, author: 100, description: 500, license: 200, tokenValue: 500, file: 200 } as const;
 /** Erklärung der erlaubten Token-Werte (Schema-Beschreibung und Fehlermeldung) */
-export const THEME_TOKEN_VALUE_HINT = 'erlaubt ist ein CSS-Wert ohne { } < > \\ und ohne Kommentare, „;“ nur innerhalb von url(…)';
+export const THEME_TOKEN_VALUE_HINT =
+  'erlaubt ist ein einzeiliger CSS-Wert ohne { } < > \\ und Kommentare; „;“ nur in Anführungszeichen oder url(…), Anführungszeichen und url( müssen geschlossen sein';
 
 /** Inhalt einer theme.json */
 export interface ThemeManifest {
@@ -122,13 +123,20 @@ const fileSchema = (description: string, ext: string) => ({
   description,
 });
 
+/*
+ * Erlaubte Token-Werte, eindeutig zerlegt (keine überlappenden Alternativen, sonst exponentielles Backtracking):
+ * Strings in '…' oder "…" (dürfen „;“ enthalten), url(…) mit String oder unquotiertem Inhalt, sonst einzelne Zeichen
+ * ohne ; ' " { } < > \ und Zeilenumbruch, „/“ nicht vor „*“ (Kommentar), „(“ nicht direkt nach „url“.
+ */
+const STR = String.raw`'[^'\\\n\r{}<>]*'|"[^"\\\n\r{}<>]*"`;
+export const THEME_TOKEN_VALUE_PATTERN = String.raw`^(?:${STR}|[uU][rR][lL]\((?:${STR}|[^'"()\s\\{}<>]*)\)|[^;'"{}<>\\\n\r/(]|/(?!\*)|(?<![uU][rR][lL])\()*$`;
+
 function tokensSchema(description: string) {
   const value = {
     type: 'string',
     minLength: 1,
     maxLength: THEME_LIMITS.tokenValue,
-    // „;“ nur innerhalb von url(…) (data:-URLs), sonst könnte ein Wert die Deklaration beenden
-    pattern: '^(?!.*/\\*)(?:url\\((?:\'[^\'{}<>\\\\]*\'|"[^"{}<>\\\\]*"|[^\'"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$',
+    pattern: THEME_TOKEN_VALUE_PATTERN,
     description: THEME_TOKEN_VALUE_HINT,
   };
   return {

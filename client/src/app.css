@@ -70,7 +70,7 @@ label > input, label > select, label > textarea { margin-top: 0.25rem; font-weig
 .frame {
   border: var(--border-width) solid transparent;
   border-image: var(--frame-image) var(--frame-slice) / var(--frame-width) / var(--frame-outset) var(--frame-repeat);
-  box-shadow: var(--frame-line);
+  box-shadow: var(--frame-line), var(--shadow-surface);
   /* Platz, damit nach innen ragende Teile der Grafik nicht unter dem Text liegen */
   padding: var(--frame-padding);
 }

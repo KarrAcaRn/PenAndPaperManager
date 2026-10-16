@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, cpSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import { THEME_TOKEN_NAMES, THEME_TOKEN_VALUE_HINT } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
 import { buildApp } from '../src/app.ts';
 import { builtinThemesDir } from '../src/paths.ts';
-import { createThemeRegistry, loadThemeDir, validateManifest } from '../src/themes.ts';
+import { createThemeRegistry, loadThemeDir, themeFilePath, validateManifest, type ThemeProblem } from '../src/themes.ts';
 import { themeSchemaFile, themeSchemaJson } from '../src/write-theme-schema.ts';
 
 const manifest = (extra: Record<string, unknown> = {}) => ({
@@ -83,8 +83,23 @@ describe('validateManifest', () => {
     const ok = (value: string) => validateManifest(manifest({ tokens: { 'bg-image': value } })).ok;
     expect(ok('url(data:image/png;base64,AA)')).toBe(true);
     expect(ok(`url("data:image/svg+xml;utf8,%3Csvg%3E") , linear-gradient(red, blue)`)).toBe(true);
+    expect(ok(`"Font; mit Semikolon", serif`)).toBe(true);
+    expect(ok('calc(var(--frame-width) / 2)')).toBe(true);
     expect(ok('none; color: red')).toBe(false);
     expect(ok('url(a.png) /* Kommentar */')).toBe(false);
+    // Umgehungen: ; nach geschlossenem String, Zeilenumbruch, offene Strings bzw. url(
+    expect(ok(`'url(';--x:red;')`)).toBe(false);
+    expect(ok('red\n/* x')).toBe(false);
+    expect(ok(`'offen`)).toBe(false);
+    expect(ok('url(offen')).toBe(false);
+  });
+
+  it('prüft auch lange, verschachtelte Werte schnell (kein exponentielles Backtracking)', () => {
+    const start = performance.now();
+    for (const value of ['url(a)'.repeat(80) + ';', `'a'`.repeat(160) + ';', '('.repeat(490) + ';', 'u'.repeat(499) + ';']) {
+      expect(validateManifest(manifest({ tokens: { 'bg-image': value } })).ok).toBe(false);
+    }
+    expect(performance.now() - start).toBeLessThan(500);
   });
 
   it('lehnt Dateipfade außerhalb des Theme-Ordners und falsche Typen ab', () => {
@@ -137,6 +152,22 @@ describe('loadThemeDir', () => {
     writeFileSync(join(dir, 'style.css'), '.card { background: url(img/textur.png); }');
     expect(loadThemeDir(dir, 'dunkel')).toMatchObject({ ok: true, extraCss: '.card { background: url(img/textur.png); }' });
   });
+
+  it('lehnt kaputte URLs, „none“ in Schattenlisten und Symlinks nach außen ab, ohne zu werfen', () => {
+    writeFileSync(join(root, 'geheim.svg'), '<svg/>');
+    const dir = addTheme(extra, 'dunkel', manifest({ tokens: { 'frame-image': `url('50%.svg')`, 'shadow-surface': 'none', 'bg-image': `url("x'y.svg")` } }));
+    symlinkSync(join(root, 'geheim.svg'), join(dir, 'link.svg'));
+    writeFileSync(join(dir, "x'y.svg"), '<svg/>');
+    expect(loadThemeDir(dir, 'dunkel')).toEqual({
+      ok: false,
+      errors: [
+        'tokens.frame-image: „50%.svg“ ist keine gültige URL (Sonderzeichen wie % kodieren, z.B. %25).',
+        'tokens.shadow-surface: „none“ ist hier nicht erlaubt, stattdessen „0 0 transparent“.',
+      ],
+    });
+    expect(themeFilePath(dir, 'link.svg')).toBeUndefined();
+    expect(themeFilePath(dir, "x'y.svg")).toBe(join(realpathSync(dir), "x'y.svg"));
+  });
 });
 
 describe('Theme-Registry', () => {
@@ -145,7 +176,7 @@ describe('Theme-Registry', () => {
     const base = registry.getTheme('default')!;
     expect(base).toMatchObject({ id: 'default', builtin: true, stylesheet: '/themes/default/theme.css' });
     expect(Object.keys(base.tokens).sort()).toEqual([...THEME_TOKEN_NAMES].sort());
-    expect(base.tokens['frame-image']).toBe(`url('/themes/default/vine-frame.svg')`);
+    expect(base.tokens['frame-image']).toBe('url("/themes/default/vine-frame.svg")');
     expect(registry.problems()).toEqual([]);
   });
 
@@ -157,7 +188,7 @@ describe('Theme-Registry', () => {
     expect(theme.builtin).toBe(false);
     expect(theme.tokens['color-bg']).toBe('#000');
     expect(theme.tokens['color-accent']).toBe(base.tokens['color-accent']);
-    expect(theme.tokens['frame-image']).toBe(`url('/themes/default/vine-frame.svg')`);
+    expect(theme.tokens['frame-image']).toBe('url("/themes/default/vine-frame.svg")');
     expect(theme.darkTokens).toEqual({ 'color-text': '#fff' });
   });
 
@@ -169,6 +200,28 @@ describe('Theme-Registry', () => {
     addTheme(join(root, 'fehlt-noch'), '.versteckt', manifest());
     expect(registry.listThemes().map((t) => t.id)).toEqual(['default', 'dunkel']);
     expect(registry.problems()).toEqual([]);
+  });
+
+  it('lädt nur bei Änderungen neu und meldet Probleme dabei', () => {
+    const reports: ThemeProblem[][] = [];
+    const registry = createThemeRegistry({ builtinDir: builtin, extraDir: extra, onProblems: (p) => reports.push(p) });
+    const first = registry.getTheme('default');
+    expect(registry.getTheme('default')).toBe(first);
+    addTheme(extra, 'falsch', manifest({ id: 'falsch', version: 'x' }));
+    expect(registry.getTheme('default')).not.toBe(first);
+    expect(registry.getTheme('default')).toBe(registry.getTheme('default'));
+    expect(reports).toEqual([[{ dir: join(extra, 'falsch'), errors: [expect.stringMatching(/^„version“ ist ungültig/)] }]]);
+  });
+
+  it('übersteht einen nicht lesbaren Theme-Ordner und lädt die eingebauten nicht doppelt', () => {
+    writeFileSync(join(root, 'datei'), '');
+    const registry = createThemeRegistry({ builtinDir: builtin, extraDir: join(root, 'datei') });
+    expect(registry.listThemes().map((t) => t.id)).toEqual(['default']);
+    expect(registry.problems()).toEqual([{ dir: join(root, 'datei'), errors: [expect.stringMatching(/^Ordner nicht lesbar: /)] }]);
+    addTheme(builtin, 'dunkel', manifest());
+    const same = createThemeRegistry({ builtinDir: builtin, extraDir: `${builtin}/` });
+    expect(same.listThemes().map((t) => t.id)).toEqual(['default', 'dunkel']);
+    expect(same.problems()).toEqual([]);
   });
 
   it('lehnt ungültige und doppelte Themes mit Begründung ab, die übrigen bleiben nutzbar', () => {
@@ -199,7 +252,7 @@ describe('Theme-Registry', () => {
       manifest({ css: 'style.css', tokens: { 'color-bg': '#000', 'bg-image': 'url(img/stein.png)' }, darkTokens: { 'color-text': '#fff' } }),
       { 'style.css': 'h1 { letter-spacing: 0.1em; }', 'img/stein.png': '' },
     );
-    const css = createThemeRegistry({ builtinDir: builtin, extraDir: extra }).stylesheet('dunkel')!;
+    const css = createThemeRegistry({ builtinDir: builtin, extraDir: extra }).getTheme('dunkel')!.css;
     expect(css).toContain(':root {\n  --color-scheme: normal;\n  --color-bg: #000;\n');
     expect(css).toContain('  --bg-image: url("/themes/dunkel/img/stein.png");\n');
     expect(css).toContain('@media (prefers-color-scheme: dark) {\n  :root {\n    --color-text: #fff;\n  }\n}');
@@ -230,10 +283,16 @@ describe('Theme-API', () => {
     const css = await a.inject({ url: '/themes/default/theme.css' });
     expect(css.statusCode).toBe(200);
     expect(css.headers['content-type']).toBe('text/css; charset=utf-8');
-    expect(css.body).toContain('--frame-image: url(\'/themes/default/vine-frame.svg\');');
+    expect(css.body).toContain('--frame-image: url("/themes/default/vine-frame.svg");');
     const svg = await a.inject({ url: '/themes/default/vine-frame.svg' });
     expect(svg.statusCode).toBe(200);
     expect(svg.headers['content-type']).toBe('image/svg+xml');
+    // unverändert: 304 ohne Inhalt
+    for (const [url, res] of [['/themes/default/theme.css', css], ['/themes/default/vine-frame.svg', svg]] as const) {
+      const again = await a.inject({ url, headers: { 'if-none-match': String(res.headers.etag) } });
+      expect(again.statusCode).toBe(304);
+      expect(again.body).toBe('');
+    }
     writeFileSync(join(root, 'geheim.svg'), '<svg>geheim</svg>');
     for (const url of ['/themes/default/theme.json', '/themes/default/../../geheim.svg', '/themes/default/%2e%2e/%2e%2e/geheim.svg', '/themes/gibtsnicht/theme.css']) {
       const res = await a.inject({ url });

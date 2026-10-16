@@ -26,31 +26,33 @@ export function currentTheme(): string {
 let pending = 0;
 
 /**
- * Wendet ein Theme zur Laufzeit an. Erfüllt sich, sobald das Stylesheet geladen ist; schlägt fehl (und lässt das
- * bisherige Theme aktiv), wenn es nicht geladen werden kann. Bei schnell aufeinanderfolgenden Aufrufen gewinnt der
- * letzte; ältere, noch ladende werden verworfen.
+ * Wendet ein Theme zur Laufzeit an. Liefert true, sobald das Stylesheet geladen und aktiv ist, und false, wenn
+ * inzwischen ein neuerer Aufruf kam (dann gewinnt dieser, auch wenn er früher fertig ist). Kann das Stylesheet
+ * nicht geladen werden, schlägt der Aufruf fehl und das bisherige Theme bleibt aktiv.
  */
-export function applyTheme(id: string): Promise<void> {
+export function applyTheme(id: string): Promise<boolean> {
   const request = ++pending;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = themeStylesheetUrl(id);
   link.dataset.themePending = id;
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     link.addEventListener('load', () => {
       if (request !== pending) {
         link.remove();
-        return resolve();
+        return resolve(false);
       }
       for (const old of document.querySelectorAll(`link#${THEME_LINK_ID}`)) old.remove();
       delete link.dataset.themePending;
       link.id = THEME_LINK_ID;
       document.documentElement.dataset.theme = id;
-      resolve();
+      resolve(true);
     });
     link.addEventListener('error', () => {
       link.remove();
-      reject(new Error(`Das Theme „${id}“ konnte nicht geladen werden.`));
+      // Fehler eines überholten Aufrufs interessieren niemanden mehr
+      if (request !== pending) resolve(false);
+      else reject(new Error(`Das Theme „${id}“ konnte nicht geladen werden.`));
     });
     // nach dem aktiven Stylesheet einfügen, damit das neue in der Kaskade gewinnt
     const active = document.getElementById(THEME_LINK_ID);
