@@ -1,5 +1,6 @@
 import { STORAGE_PROVIDER_LABELS, type StorageConfig, type StorageProviderInfo, type StorageProviderType } from '@pnp/shared';
 import { badRequest } from '../errors.ts';
+import { googleDriveOptionsFromEnv, googleDriveProvider } from './googleDrive.ts';
 import type { StorageProviderDefinition } from './provider.ts';
 import { s3Provider } from './s3.ts';
 
@@ -34,9 +35,13 @@ export class StorageProviderRegistry {
 }
 
 /**
- * Die Anbieter dieses Servers. Google Drive wird hier eingetragen, sobald sein Adapter existiert.
- * `S3_ALLOW_PRIVATE_ENDPOINTS=1` erlaubt S3-Endpoints im lokalen Netz (selbst gehostetes MinIO).
+ * Die Anbieter dieses Servers. S3 ist immer verfügbar; `S3_ALLOW_PRIVATE_ENDPOINTS=1` erlaubt S3-Endpoints im lokalen
+ * Netz (selbst gehostetes MinIO). Google Drive ist nur verfügbar, wenn GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET und
+ * GOOGLE_REDIRECT_URI gesetzt sind (sonst böte die Oberfläche einen Anbieter an, dessen Anmeldung scheitert).
  */
 export function defaultStorageProviders(env: NodeJS.ProcessEnv = process.env): StorageProviderRegistry {
-  return new StorageProviderRegistry().register(s3Provider({ allowPrivateEndpoints: env.S3_ALLOW_PRIVATE_ENDPOINTS === '1' }));
+  const registry = new StorageProviderRegistry().register(s3Provider({ allowPrivateEndpoints: env.S3_ALLOW_PRIVATE_ENDPOINTS === '1' }));
+  const drive = googleDriveOptionsFromEnv(env);
+  if (drive) registry.register(googleDriveProvider(drive));
+  return registry;
 }

@@ -1,14 +1,15 @@
 # Soundboard: externe Speicher der Nutzer
 
-Stand: Fundament (Interface, Datenmodell, Registry, API) und S3-Adapter. Der Google-Drive-Adapter und die
-Oberfläche bauen darauf auf.
+Stand: Fundament (Interface, Datenmodell, Registry, API), S3- und Google-Drive-Adapter sowie die Oberfläche in den
+Kontoeinstellungen (`client/src/lib/StorageSettings.svelte`); das Soundboard selbst baut darauf auf.
 
 ## Ziel
 
 Der Betreiber liefert nur eine kleine Standardbibliothek an Liedern und Sounds aus. Eigene Sounds laden Nutzer in
 **ihren eigenen** externen Speicher (S3-Bucket, Google-Drive-Ordner, …), den sie in ihrem Konto verknüpfen.
 Unser Server speichert keine Nutzer-Uploads und leitet keine Audiodaten durch: Er vermittelt nur kurzlebige,
-signierte URLs, mit denen der Browser direkt beim Anbieter abspielt und hochlädt.
+signierte URLs, mit denen der Browser direkt beim Anbieter abspielt und hochlädt. Einzige Ausnahme ist die
+Wiedergabe aus Google Drive (siehe unten, „Wiedergabe“).
 
 ```
 Browser ──(1) API: Dateiliste / Playback-URL / Upload-URL──▶ unser Server ──(2) API-Aufruf mit Zugangsdaten──▶ Anbieter
@@ -28,6 +29,9 @@ Browser ──(3) GET/PUT direkt mit der signierten URL────────�
 | `server/src/routes/storage.ts` | HTTP-Endpunkte |
 | `server/src/migrations/006_user_storage_connections.sql` | Tabelle `user_storage_connections` |
 | `server/test/fakeStorage.ts` | Fake-Anbieter für Tests |
+| `server/src/storage/googleDrive.ts` | Google-Drive-Adapter (`GoogleDriveStorageProvider`, `googleDriveProvider`), OAuth-Hilfen, Wiedergabe-Tickets |
+| `server/src/routes/googleDrive.ts` | OAuth-Start/-Callback, Ordnerauswahl, Streaming-Endpunkt |
+| `server/test/fakeGoogleDrive.ts` | gemockte Google-APIs (Token-Endpunkt, Drive v3, Resumable Upload) |
 
 ### StorageProvider
 
@@ -144,8 +148,9 @@ Die ursprüngliche Aufgabenbeschreibung war abgeschnitten; getroffene Annahmen:
 6. Die Standardbibliothek des Betreibers ist nicht Teil dieses Modells (eigener Manifest-Endpunkt).
 7. Eine Datei zählt als Audio, wenn Endung **oder** MIME-Type passt (Drive-Dateien haben nicht immer eine Endung);
    beim Upload müssen beide passen.
-8. Solange kein Google-Drive-Adapter registriert ist, liefert `GET /api/storage/providers` nur S3, und Drive-Verbindungen
-   antworten mit „Anbieter … ist auf diesem Server nicht verfügbar“.
+8. `GET /api/storage/providers` liefert die eingerichteten Anbieter; für alle anderen antwortet das Anlegen
+   mit „Anbieter … ist auf diesem Server nicht verfügbar“. S3 ist immer verfügbar, Google Drive nur mit gesetzten
+   Env-Variablen.
 
 ## S3 und kompatible Dienste
 
@@ -261,3 +266,131 @@ Wiedergabe mit Web-Audio funktionieren, muss der Bucket Anfragen von der Adresse
 Reines Abspielen über `<audio src>` braucht kein CORS; Uploads und `fetch` schon. Fehlt CORS, meldet der Browser
 den Upload nur als „Netzwerkfehler“ – der Verbindungstest auf unserem Server kann das nicht erkennen, weil er
 S3 serverseitig anspricht.
+
+## Google Drive (`google_drive`)
+
+### Einrichtung beim Betreiber
+
+1. In der [Google Cloud Console](https://console.cloud.google.com/) ein Projekt anlegen, die **Google Drive API**
+   aktivieren und den OAuth-Zustimmungsbildschirm einrichten (Nutzertyp „Extern“; in der Testphase die eigenen
+   Google-Konten als Testnutzer eintragen). Als Scope genügt `…/auth/drive.file` – er gilt als „nicht sensibel“,
+   eine Sicherheitsprüfung durch Google ist dafür nicht nötig.
+2. Unter „Anmeldedaten“ eine **OAuth-Client-ID vom Typ „Webanwendung“** anlegen und als autorisierte
+   Weiterleitungs-URI eintragen: lokal `http://localhost:5173/api/storage/google-drive/oauth/callback` (Vite;
+   bei `npm start` Port 3000), in Produktion `https://<domain>/api/storage/google-drive/oauth/callback`.
+3. Server mit diesen Variablen starten:
+
+   | Variable | Bedeutung |
+   | --- | --- |
+   | `GOOGLE_CLIENT_ID` | Client-ID (`….apps.googleusercontent.com`) |
+   | `GOOGLE_CLIENT_SECRET` | Client-Secret – geheim, nur in der Umgebung, nie im Repository |
+   | `GOOGLE_REDIRECT_URI` | exakt die eingetragene Weiterleitungs-URI |
+   | `GOOGLE_APP_ORIGIN` (optional) | Origin der Seite für Uploads aus dem Browser; Vorgabe ist der Origin der Redirect-URI |
+
+   Fehlt eine der drei Pflichtvariablen, registriert der Server Google Drive nicht (die Oberfläche bietet es dann
+   nicht an).
+
+### Ablauf und Endpunkte
+
+| Methode und Pfad | Zweck |
+| --- | --- |
+| `GET /api/storage/google-drive/oauth/start?displayName=` | Browser-Navigation (kein `fetch`): leitet zu Google weiter |
+| `GET /api/storage/google-drive/oauth/callback` | Rückkehr von Google; legt die Verbindung an und leitet nach `/#/settings?storageConnected=<id>` bzw. `/#/settings?storageError=<Meldung>` weiter |
+| `GET /api/storage/google-drive/connections/:cid/folders?cursor=` | Ordner zur Auswahl, `{ folders: [{ id, name }], nextCursor }` |
+| `PUT /api/storage/google-drive/connections/:cid/folder` | `{ name: "Soundboard" }` legt den Ordner an, `{ folderId }` wählt einen vorhandenen; liefert die Verbindung |
+| `GET /api/storage/google-drive/stream?t=` | Wiedergabe (URL kommt aus `playback-url`, nicht selbst bauen) |
+
+1. **Verbinden:** `start` erzeugt `state` und einen PKCE-Verifier (S256) und legt beides verschlüsselt (an den
+   Nutzer gebunden, 10 Minuten gültig) im Cookie `pnp_gdrive_oauth` ab. Google wird mit `access_type=offline` und
+   `prompt=consent` aufgerufen, damit immer ein Refresh-Token kommt.
+2. **Callback:** prüft Login, Cookie und `state`, löst den Code mit Verifier und Client-Secret ein und verlangt,
+   dass `drive.file` gewährt wurde (bei granularer Zustimmung kann der Nutzer das Häkchen abwählen) und ein
+   Refresh-Token geliefert wurde. Dann wird die Verbindung **ohne Ordner** angelegt
+   (`config = { folderId: null, folderName: null, accountEmail }`), Anzeigename „Google Drive (<E-Mail>)“.
+3. **Ordnerauswahl:** Die Oberfläche zeigt nach `storageConnected` die Ordnerauswahl: Ordner anlegen
+   (empfohlen, Vorschlag „Soundboard“) oder einen der gelisteten wählen. Die Folder-ID landet in `config.folderId`.
+   Bis dahin antworten Dateiaktionen mit 400 „Bitte zuerst einen Google-Drive-Ordner wählen“.
+
+Tokens (`refreshToken`, `accessToken`, `expiresAt`) liegen nur verschlüsselt in `credentials`. Das Access-Token
+wird eine Minute vor Ablauf (und einmalig bei einer 401-Antwort) automatisch erneuert und neu gespeichert.
+Antwortet Google beim Erneuern mit `invalid_grant` (Nutzer hat der App den Zugriff entzogen, Passwort geändert,
+Token abgelaufen), gilt das als `auth` → Verbindung `disconnected`, der Nutzer muss neu verbinden (neue Verbindung,
+die alte entfernen). Fehlende Scopes (`insufficientPermissions`) ebenso; Rate-Limits und 5xx sind `unavailable`.
+
+### Warum `drive.file` – und was daraus folgt
+
+`drive.file` gibt der App nur Zugriff auf Dateien und Ordner, die sie **selbst angelegt** hat oder die der Nutzer
+ihr über den Google Picker freigibt. Breitere Scopes (`drive`, `drive.readonly`) sind bei Google „eingeschränkt“
+und verlangen eine kostenpflichtige Sicherheitsprüfung – für ein Soundboard unverhältnismäßig, und der Nutzer müsste
+uns Lesezugriff auf sein ganzes Drive geben.
+
+Für die Ordnerauswahl reicht `drive.file`, weil der empfohlene Weg ist, den Ordner **über die App anzulegen**:
+
+- Ordner und alle über die App hochgeladenen Dateien sind dann für die App sichtbar.
+- Die Ordnerliste zeigt nur Ordner, die die App kennt (selbst angelegt oder per Picker freigegeben) – also nicht
+  das ganze Drive des Nutzers.
+- Dateien, die der Nutzer **direkt in Drive** (Web, Desktop-App) in den Ordner legt, sieht die App mit
+  `drive.file` **nicht**. Auch ein per Picker freigegebener vorhandener Ordner gibt nur den Ordner selbst frei,
+  nicht seinen Inhalt. Sounds müssen also über das Soundboard hochgeladen werden. Soll später ein bestehender
+  Ordner samt Inhalt nutzbar sein, bräuchte es `drive.readonly` (plus Prüfung durch Google) oder die Auswahl
+  einzelner Dateien per Picker.
+- Optionaler Ausbau: Google Picker im Browser (eigenes, kurzlebiges Token per Google Identity Services, nie von
+  unserer API) zur Freigabe eines vorhandenen Ordners; die ID geht dann an `PUT …/folder { folderId }`.
+
+### Dateien
+
+- `listFiles`: Drive-Suche `'<ordner>' in parents and trashed = false and (mimeType contains 'audio/' or
+  mimeType = 'application/ogg')`, sortiert nach Name, `pageSize` = `limit`, Cursor = Drive-`nextPageToken`.
+  Unterordner (`folder=a/b`) werden per Namen aufgelöst. Dateien, die Drive nicht als Audio erkennt
+  (`application/octet-stream`), fehlen – beim Upload über die App setzen wir den MIME-Type immer.
+- Datei-IDs vom Client werden geprüft: nur `[A-Za-z0-9_-]`, nicht im Papierkorb, und der verbundene Ordner muss
+  unter den Vorfahren sein (höchstens 10 Ebenen). Sonst 404.
+- `delete` verschiebt die Datei in den **Papierkorb** des Nutzers (30 Tage wiederherstellbar) statt endgültig zu
+  löschen.
+
+### Upload: Resumable-Session
+
+`POST …/uploads` legt beim Server eine
+[Resumable-Upload-Session](https://developers.google.com/drive/api/guides/manage-uploads#resumable) an
+(`uploadType=resumable`, Metadaten `{ name, parents: [folderId], mimeType }`, `X-Upload-Content-Type` und
+`X-Upload-Content-Length` legen Typ und Größe fest) und gibt die Session-URL zurück:
+
+```json
+{ "method": "PUT", "url": "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=…",
+  "headers": { "Content-Type": "audio/mpeg" }, "fields": {}, "fileId": null, "expiresAt": "…" }
+```
+
+Der Browser schickt die Datei per `PUT` direkt dorthin (kein Authorization-Header nötig, die Session-URL selbst
+berechtigt nur zu diesem einen Upload, gültig eine Woche). Die Session wird mit `Origin` = `GOOGLE_APP_ORIGIN`
+bzw. Origin der Redirect-URI angelegt; nur von diesem Origin erlaubt Google den Upload per CORS. Große Dateien darf
+der Client in Stücken (Vielfache von 256 KiB) mit `Content-Range` hochladen und nach Abbrüchen fortsetzen. Die
+Datei-ID steht in der Antwort von Google auf den letzten `PUT` (`fileId` ist darum `null`).
+
+### Wiedergabe: Streaming über unseren Server (bewusst gewählt)
+
+Geprüfte Alternativen für eine direkt abspielbare URL:
+
+| Weg | Ergebnis |
+| --- | --- |
+| `webContentLink` / `drive.google.com/uc?export=download` | Funktioniert nur, wenn der Browser bei Google mit einem berechtigten Konto angemeldet ist (Third-Party-Cookies), leitet um und zeigt bei großen Dateien eine Virenscan-Zwischenseite statt Audio. Für `<audio src>` unzuverlässig. |
+| `files/<id>?alt=media&access_token=…` | Drive nimmt Tokens als Query-Parameter seit Januar 2020 nicht mehr an. Zudem stünde das Token in einer API-Antwort und im Browser-Verlauf und gälte eine Stunde für **alle** App-Dateien des Nutzers – ausgeschlossen. |
+| Access-Token an den Browser, Download per `fetch` mit Header | Gleiches Problem: Token verlässt den Server. |
+| Datei öffentlich freigeben („Jeder mit dem Link“) | Ändert die Freigaben im Drive des Nutzers, Dateien wären dauerhaft öffentlich – ausgeschlossen. |
+| **Streaming über unseren Server** | Funktioniert zuverlässig, Token bleibt beim Server. Kostet Bandbreite des Betreibers. |
+
+Darum liefert `getPlaybackUrl` eine URL auf unseren Endpunkt `GET /api/storage/google-drive/stream?t=<ticket>`.
+Das Ticket ist signiert (HMAC-SHA256 mit einem aus dem Client-Secret abgeleiteten Schlüssel) und enthält Nutzer,
+Verbindung, Datei-ID und Ablauf (1 Stunde); es enthält kein Google-Token. Der Endpunkt holt die Datei mit
+`alt=media` und reicht sie als Stream durch – ohne sie zu speichern oder zu puffern. `Range`-Anfragen gehen an
+Google weiter (206/416), damit Spulen im Player funktioniert. Antworten tragen `X-Content-Type-Options: nosniff`
+und `Content-Security-Policy: sandbox`. Das Ticket braucht kein Session-Cookie, damit später auch Mitspieler einer
+Runde dieselbe URL abspielen können; ist der Zugriff widerrufen, antwortet der Endpunkt 409 und die Verbindung wird
+`disconnected`.
+
+### Was nie nach außen geht
+
+- Keine API-Antwort und keine Weiterleitung enthält Access-/Refresh-Token, Client-Secret oder Autorisierungscode.
+- Anfragen an Google tragen das Token nur im `Authorization`-Header bzw. im POST-Body, nie in der URL.
+- Im Request-Log ersetzt der Server die Query-Parameter `code`, `state` und `t` durch `[entfernt]`
+  (`redactUrl` in `app.ts`); Fehlermeldungen enthalten keine Antworttexte von Google.
+- Tests: `server/test/googleDrive.test.ts` prüft das über alle Antworten und das mitgeschnittene Log.

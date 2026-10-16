@@ -49,6 +49,13 @@ Alle anderen `/api`-Routen verlangen eine Session (globaler Guard `requireAuthFo
 `requireUser` in den Routen). Den früheren Test-Login `POST /api/auth/login` (nur E-Mail, ohne Code) gibt es
 nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 
+Google Drive als Soundboard-Speicher (optional; ohne diese drei Variablen bietet der Server Drive nicht an):
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth-Client vom Typ „Webanwendung“ aus der Google Cloud Console) und
+`GOOGLE_REDIRECT_URI` – exakt so in der Console eingetragen, z.B. lokal
+`http://localhost:5173/api/storage/google-drive/oauth/callback` (Vite) bzw. `http://localhost:3000/…` (`npm start`),
+in Produktion `https://<domain>/api/storage/google-drive/oauth/callback`. Optional `GOOGLE_APP_ORIGIN`, falls die
+Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs/soundboard-storage.md`.
+
 ## Regeln
 
 - Login per E-Mail-Code (siehe „Login“). Admins sind die Adressen aus `ADMIN_EMAILS`.

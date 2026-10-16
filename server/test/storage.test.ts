@@ -95,7 +95,7 @@ describe('Speicher-Verbindungen', () => {
 
   it('listet die verfügbaren Anbieter', async () => {
     expect((await alice.get('/api/storage/providers')).body).toEqual([{ type: 's3', label: 'S3 (oder kompatibel)', manualSetup: true }]);
-    // Eingebaut ist bisher der S3-Adapter
+    // Ohne Google-Env-Variablen ist nur der S3-Adapter eingebaut
     expect(defaultStorageProviders({}).list()).toEqual([{ type: 's3', label: 'S3 (oder kompatibel)', manualSetup: true }]);
   });
 

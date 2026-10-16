@@ -35,7 +35,8 @@ npm run build && npm start
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`); Mailversand (`server/src/mail.ts`)
 über `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM` – siehe `.env.example`. Ohne SMTP wird außerhalb von Produktion nur geloggt.
-`APP_SECRET_KEY` (sonst `data/secret.key`), `S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben).
+`APP_SECRET_KEY` (sonst `data/secret.key`), `S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben),
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` (optional, Google Drive fürs Soundboard).
 
 ## Konventionen
 

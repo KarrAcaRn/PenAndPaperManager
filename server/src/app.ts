@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import type { Db } from './db.ts';
@@ -19,6 +19,8 @@ import { sheetRoutes } from './routes/sheets.ts';
 import { rulebookRoutes } from './routes/rulebooks.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { storageRoutes } from './routes/storage.ts';
+import { googleDriveRoutes } from './routes/googleDrive.ts';
+import type { StorageContext } from './storage/connections.ts';
 import { defaultStorageProviders, type StorageProviderRegistry } from './storage/registry.ts';
 import { createSecretBox, loadSecretKey, type SecretBox } from './secrets.ts';
 import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
@@ -29,6 +31,8 @@ const CLIENT_DIST = join(import.meta.dirname, '../../client/dist');
 
 export interface AppOptions {
   logger?: boolean;
+  /** Log-Ausgabe umleiten (Tests); schaltet das Logging ein */
+  logStream?: { write(line: string): void };
   /** kommagetrennt; Vorgabe ist die Umgebungsvariable ADMIN_EMAILS */
   adminEmails?: string;
   /** Ordner mit den PDF-Dateien der Regelwerke; Vorgabe ist data/rulebooks neben der Datenbank */
@@ -43,8 +47,28 @@ export interface AppOptions {
   secretKey?: Buffer;
 }
 
+/** Query-Parameter, die nie im Log landen dürfen (OAuth-Code und -State, Wiedergabe-Tickets) */
+const SECRET_QUERY_PARAMS = ['code', 'state', 't'];
+
+/** URL fürs Log: geheime Query-Parameter werden durch [entfernt] ersetzt */
+export function redactUrl(url: string): string {
+  const q = url.indexOf('?');
+  if (q < 0) return url;
+  const params = new URLSearchParams(url.slice(q + 1));
+  for (const name of SECRET_QUERY_PARAMS) if (params.has(name)) params.set(name, '[entfernt]');
+  return `${url.slice(0, q)}?${params}`;
+}
+
 export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: opts.logger ?? false });
+  const logging = opts.logger ?? opts.logStream !== undefined;
+  const app = Fastify({
+    logger: logging && {
+      ...(opts.logStream ? { stream: opts.logStream } : {}),
+      serializers: {
+        req: (req: FastifyRequest) => ({ method: req.method, url: redactUrl(req.url), remoteAddress: req.ip }),
+      },
+    },
+  });
   const admins = parseAdminEmails(opts.adminEmails ?? process.env.ADMIN_EMAILS);
   seedPresets(db);
   app.register(cookie);
@@ -75,11 +99,13 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   rulebookRoutes(app, db, opts.rulebookDir ?? rulebookDir(dbPath()));
   settingsRoutes(app, db);
   let secrets: SecretBox | undefined;
-  storageRoutes(app, {
+  const storage: StorageContext = {
     db,
     secrets: () => (secrets ??= createSecretBox(opts.secretKey ?? loadSecretKey(dbPath()))),
     providers: opts.storageProviders ?? defaultStorageProviders(),
-  });
+  };
+  storageRoutes(app, storage);
+  googleDriveRoutes(app, storage);
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {

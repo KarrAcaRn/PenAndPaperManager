@@ -112,12 +112,18 @@ export function requireUser(db: Db, req: FastifyRequest): User {
 /** Login-Seite der SPA (Hash-Router); das Ziel nach dem Login merkt sich der Client selbst */
 export const LOGIN_PAGE = '/#/login';
 
-/** API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout) */
+/**
+ * API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout). Dazu die
+ * Google-Drive-Endpunkte, die selbst prüfen: der OAuth-Callback leitet ohne Login mit Fehlermeldung zurück in die
+ * Einstellungen (statt rohem 401 im Browserfenster), der Stream ist über sein signiertes Ticket berechtigt.
+ */
 export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
   '/api/auth/request-code',
   '/api/auth/verify-code',
   '/api/auth/me',
   '/api/auth/logout',
+  '/api/storage/google-drive/oauth/callback',
+  '/api/storage/google-drive/stream',
 ]);
 
 /**
