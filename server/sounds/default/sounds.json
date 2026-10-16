@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "sounds": [
+    {
+      "id": "fanfare",
+      "title": "Kurze Fanfare",
+      "category": "Musik",
+      "file": "musik/fanfare.wav",
+      "durationSec": 1.5,
+      "tags": ["Sieg", "Auftakt"],
+      "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"
+    },
+    {
+      "id": "glocke",
+      "title": "Glocke",
+      "category": "Effekte",
+      "file": "effekte/glocke.wav",
+      "durationSec": 2,
+      "tags": ["Signal", "Stadt"],
+      "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"
+    },
+    {
+      "id": "trommelwirbel",
+      "title": "Trommelwirbel",
+      "category": "Effekte",
+      "file": "effekte/trommelwirbel.wav",
+      "durationSec": 1.5,
+      "tags": ["Spannung"],
+      "license": "CC0 1.0 – synthetisch erzeugter Platzhalter des Projekts"
+    }
+  ]
+}

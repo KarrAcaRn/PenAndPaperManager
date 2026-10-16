@@ -1,15 +1,49 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="default">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pen &amp; Paper Manager</title>
-    <!-- Zuletzt gewähltes Farbschema vor dem ersten Zeichnen setzen (gleicher Schlüssel wie in lib/userSettings.svelte.ts) -->
+    <!--
+      Design-Tokens: das Basis-Theme ist immer geladen (fehlt ein gewähltes Theme, bleibt die Seite gestaltet).
+      Das Skript darunter setzt vor dem ersten Zeichnen das gemerkte Farbschema und das ausdrücklich gewählte Theme
+      (lib/userSettings.svelte.ts), sonst das aktuelle Vorgabe-Theme der Seite: Der per document.write eingefügte
+      Link blockiert das Rendern wie ein normaler, so blitzt nichts auf. applyTheme() (lib/theme.ts) tauscht
+      #theme-stylesheet später zur Laufzeit aus.
+    -->
+    <link id="theme-base" rel="stylesheet" href="/themes/default/theme.css" vite-ignore />
     <script>
-      try {
-        var t = localStorage.getItem('pnp-theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-      } catch (e) {}
+      (function () {
+        var root = document.documentElement;
+        var id = null;
+        var scheme = null;
+        try {
+          id = localStorage.getItem('pnp-theme-id');
+          scheme = localStorage.getItem('pnp-color-scheme');
+          // früher stand das Farbschema unter pnp-theme
+          var legacy = localStorage.getItem('pnp-theme');
+          if (legacy !== null) {
+            localStorage.removeItem('pnp-theme');
+            if (scheme === null && (legacy === 'light' || legacy === 'dark')) {
+              scheme = legacy;
+              localStorage.setItem('pnp-color-scheme', legacy);
+            }
+          }
+        } catch (e) {}
+        if (scheme === 'light' || scheme === 'dark') root.setAttribute('data-color-scheme', scheme);
+        // Ohne ausdrückliche Wahl das aktuelle Vorgabe-Theme der Seite (Weiterleitung, s. SITE_DEFAULT_STYLESHEET)
+        var explicit = !!id && /^[a-z0-9][a-z0-9-]{0,39}$/.test(id);
+        if (!explicit || id !== 'default') {
+          // Fehlt das Theme inzwischen, bleibt das Basis-Theme; die App wendet danach die Vorgabe der Seite an
+          document.write(
+            '<link id="theme-stylesheet" rel="stylesheet" href="' +
+              (explicit ? '/themes/' + id + '/theme.css' : '/themes/site-default.css') +
+              '" onerror="this.remove(); document.documentElement.setAttribute(\'data-theme\', \'default\')" />',
+          );
+          // ohne ausdrückliche Wahl ist noch offen, welches Theme die Weiterleitung liefert: leer = unbekannt
+          root.setAttribute('data-theme', explicit ? id : '');
+        }
+      })();
     </script>
     <!-- Schriften des FATE-Bogens -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

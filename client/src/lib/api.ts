@@ -1,25 +1,36 @@
-import type {
-  ApiError,
-  Article,
-  ArticleInput,
-  ArticleUpdate,
-  ArticleSummary,
-  Folder,
-  Group,
-  Member,
-  Role,
-  RuleHit,
-  Rulebook,
-  Section,
-  SessionUser,
-  Sheet,
-  SheetData,
-  SheetState,
-  Skill,
-  SkillInput,
-  SkillPreset,
-  SkillPresetInput,
-  UserSettings,
+import {
+  MAX_STORAGE_PAGE_SIZE,
+  type ApiError,
+  type Article,
+  type ArticleInput,
+  type ArticleUpdate,
+  type ArticleSummary,
+  type BuiltinSoundList,
+  type Folder,
+  type Group,
+  type Member,
+  type PlaybackUrl,
+  type Role,
+  type RuleHit,
+  type Rulebook,
+  type Section,
+  type SessionUser,
+  type Sheet,
+  type SheetData,
+  type SheetState,
+  type Skill,
+  type SkillInput,
+  type SkillPreset,
+  type SkillPresetInput,
+  type StorageConnection,
+  type StorageConnectionInput,
+  type StorageFilePage,
+  type StorageFolderPage,
+  type StorageProviderInfo,
+  type UploadRequest,
+  type ThemeInfo,
+  type UploadTarget,
+  type UserSettings,
 } from '@pnp/shared';
 
 export class ApiFailure extends Error {
@@ -131,6 +142,41 @@ export const api = {
   rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
   searchRules: (q: string, rulebookId?: number) =>
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
+  themes: () => request<{ themes: ThemeInfo[]; defaultTheme: string }>('GET', '/themes'),
+  theme: (id: string) => request<{ theme: ThemeInfo }>('GET', `/themes/${encodeURIComponent(id)}`),
+
+  // Externe Speicher fürs Soundboard (docs/soundboard-storage.md); Zugangsdaten gehen nur hinein, nie heraus
+  storageProviders: () => request<StorageProviderInfo[]>('GET', '/storage/providers'),
+  storageConnections: () => request<StorageConnection[]>('GET', '/storage/connections'),
+  /** Der Server prüft die Verbindung vor dem Speichern; schlägt die Prüfung fehl, wird nichts gespeichert */
+  createStorageConnection: (input: StorageConnectionInput) => request<StorageConnection>('POST', '/storage/connections', input),
+  deleteStorageConnection: (cid: number) => request<unknown>('DELETE', `/storage/connections/${cid}`),
+  /** Prüft erneut; der neue Status wird auch bei einem Fehler gespeichert (dann ApiFailure) */
+  testStorageConnection: (cid: number) => request<StorageConnection>('POST', `/storage/connections/${cid}/test`),
+  driveFolders: (cid: number, cursor?: string) =>
+    request<StorageFolderPage>('GET', `/storage/google-drive/connections/${cid}/folders${cursor ? `?${qs({ cursor })}` : ''}`),
+  /** { name } legt einen neuen Ordner an, { folderId } wählt einen vorhandenen */
+  chooseDriveFolder: (cid: number, choice: { name: string } | { folderId: string }) =>
+    request<StorageConnection>('PUT', `/storage/google-drive/connections/${cid}/folder`, choice),
+  /**
+   * Startet die Google-Anmeldung per Seitenwechsel (kein fetch – Google braucht das ganze Fenster). Zurück kommt der
+   * Browser auf #/settings?storageConnected=<id> bzw. ?storageError=<Meldung>.
+   */
+  connectGoogleDrive: async (displayName?: string): Promise<void> => {
+    window.location.assign(`/api/storage/google-drive/oauth/start${displayName ? `?${qs({ displayName })}` : ''}`);
+  },
+
+  // Soundboard: Standard-Sounds und Dateien in den eigenen Speichern
+  builtinSounds: () => request<BuiltinSoundList>('GET', '/sounds/builtin'),
+  storageFiles: (cid: number, cursor?: string) =>
+    request<StorageFilePage>('GET', `/storage/connections/${cid}/files?${qs({ cursor, limit: String(MAX_STORAGE_PAGE_SIZE) })}`),
+  /** Kurzlebige URL, mit der der Browser die Datei direkt beim Anbieter abspielt */
+  playbackUrl: (cid: number, fileId: string) =>
+    request<PlaybackUrl>('GET', `/storage/connections/${cid}/playback-url?${qs({ fileId })}`),
+  /** Ziel für den direkten Upload zum Anbieter; die Datei selbst geht nie über unseren Server */
+  requestUpload: (cid: number, upload: UploadRequest) => request<UploadTarget>('POST', `/storage/connections/${cid}/uploads`, upload),
+  deleteStorageFile: (cid: number, fileId: string) =>
+    request<unknown>('DELETE', `/storage/connections/${cid}/files?${qs({ fileId })}`),
 };
 
 /**

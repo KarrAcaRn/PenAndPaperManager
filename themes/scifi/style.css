@@ -1,0 +1,95 @@
+/*
+ * Zusatz-CSS „SciFi“: Schriften (SIL Open Font License, siehe fonts/OFL-*.txt), abgeschrägte Ecken per clip-path
+ * und Leuchteffekte. Farben kommen aus den Tokens in theme.json.
+ * Gerahmte Kästen (.frame: Kopfleiste, Seitenleisten) werden nicht beschnitten – darin öffnen sich Menüs, die
+ * clip-path abschneiden würde; ihre Schrägen zeichnet frame.svg.
+ */
+@font-face {
+  font-family: 'Orbitron';
+  src: url('fonts/orbitron-600.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Exo 2';
+  src: url('fonts/exo2-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Exo 2';
+  src: url('fonts/exo2-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Exo 2';
+  src: url('fonts/exo2-600.woff2') format('woff2');
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Share Tech Mono';
+  src: url('fonts/share-tech-mono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --scifi-cut: 12px;
+  --scifi-cut-small: 7px;
+  --scifi-magenta: #ff2ec4;
+  --scifi-glow: 0 0 6px rgba(0, 217, 245, 0.55);
+}
+
+/* Abgeschrägte Ecken oben links und unten rechts; die Schräge selbst ist eine Verlaufslinie in Rahmenfarbe */
+.card:not(.frame), button:not(.link), .button {
+  --scifi-c: var(--scifi-cut);
+  --scifi-line: var(--color-border);
+  clip-path: polygon(var(--scifi-c) 0, 100% 0, 100% calc(100% - var(--scifi-c)), calc(100% - var(--scifi-c)) 100%, 0 100%, 0 var(--scifi-c));
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 1.5px), var(--scifi-line) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    linear-gradient(to top left, transparent calc(50% - 1.5px), var(--scifi-line) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    var(--surface-image);
+  background-position: top left, bottom right, 0 0;
+  background-size: var(--scifi-c) var(--scifi-c), var(--scifi-c) var(--scifi-c), 100% 100%;
+  background-repeat: no-repeat;
+}
+button:not(.link), .button { --scifi-c: var(--scifi-cut-small); }
+button:not(.link):hover, .button:hover { --scifi-line: var(--color-accent); box-shadow: inset 0 0 10px rgba(0, 217, 245, 0.25); }
+button.primary, .button.primary { --scifi-line: var(--color-accent); font-weight: 600; letter-spacing: 0.03em; }
+button.primary:hover, .button.primary:hover { box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.45); }
+
+/* Überschriften: technische Schrift mit Leuchten */
+h1, h2, h3 { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; text-shadow: var(--scifi-glow); }
+h1 {
+  font-size: 1.6rem;
+  padding-bottom: 0.35rem;
+  background: linear-gradient(90deg, var(--color-accent), var(--scifi-magenta) 45%, transparent) left bottom / 100% 1px no-repeat;
+}
+
+a:hover { text-shadow: var(--scifi-glow); }
+nav a.active { box-shadow: 0 0 12px rgba(0, 217, 245, 0.55); }
+
+button:focus-visible, .button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: var(--outline-width) solid var(--color-accent);
+  outline-offset: 0;
+  box-shadow: 0 0 10px rgba(0, 217, 245, 0.6);
+}
+/* Beschnittene Knöpfe: Fokusrahmen nach innen, sonst schneidet clip-path ihn ab */
+button:not(.link):focus-visible, .button:focus-visible { outline-offset: calc(-1 * var(--outline-width) - 2px); box-shadow: inset 0 0 12px rgba(0, 217, 245, 0.6); }
+input:focus, select:focus, textarea:focus { border-color: var(--color-accent); }
+
+.badge { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7em; }
+.markdown code, .markdown pre { font-family: var(--font-mono); }
+.badge.private { box-shadow: 0 0 6px rgba(255, 92, 168, 0.45); }
+
+::selection { background: rgba(255, 46, 196, 0.35); color: #fff; }
+
+/* Scrollleisten passend einfärben */
+* { scrollbar-color: var(--color-border) var(--color-bg); }

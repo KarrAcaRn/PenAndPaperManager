@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { ArticleInput, Visibility } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
@@ -34,17 +35,18 @@ export const outbox = new Map<string, string>();
 /** Ohne Rate-Limits, damit Tests beliebig viele Logins machen können */
 export const NO_RATE_LIMITS: LoginRateLimits = { emailPerMinute: Infinity, emailPerHour: Infinity, ipPerHour: Infinity };
 
-/** buildApp mit abgefangenem Mailversand (siehe `outbox`) und ohne Rate-Limits */
+/** buildApp mit abgefangenem Mailversand (siehe `outbox`), ohne Rate-Limits und mit Zufallsschlüssel */
 export function testApp(db = openDb(':memory:'), opts: AppOptions = {}): FastifyInstance {
   return buildApp(db, {
     sendLoginCodeEmail: async (email, code) => void outbox.set(email, code),
     loginRateLimits: NO_RATE_LIMITS,
+    secretKey: randomBytes(32),
     ...opts,
   });
 }
 
-export function makeApp(): FastifyInstance {
-  return testApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL });
+export function makeApp(opts: AppOptions = {}): FastifyInstance {
+  return testApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL, ...opts });
 }
 
 /**

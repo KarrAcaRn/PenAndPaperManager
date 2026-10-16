@@ -1,0 +1,61 @@
+/*
+ * Zusatz-CSS „Fantasy“: Schriften (SIL Open Font License, siehe fonts/OFL-*.txt), Zierüberschriften und goldene
+ * Akzente. Farben, Rahmen und Schatten kommen aus den Tokens in theme.json.
+ */
+@font-face {
+  font-family: 'Cinzel';
+  src: url('fonts/cinzel-700.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('fonts/eb-garamond-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('fonts/eb-garamond-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('fonts/eb-garamond-600.woff2') format('woff2');
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --fantasy-gold: #c9972f;
+  --fantasy-gold-light: #e8c766;
+  /* Garamond hat eine kleine x-Höhe: Grundschrift etwas größer */
+  font-size: 106.25%;
+}
+
+/* Überschriften in Zierschrift mit goldenem Zierstrich */
+h1, h2, h3 { color: var(--color-accent); letter-spacing: 0.02em; font-weight: 700; }
+h1 {
+  padding-bottom: 0.3rem;
+  background: linear-gradient(90deg, var(--fantasy-gold), var(--fantasy-gold-light) 30%, transparent) left bottom / 100% 2px no-repeat;
+}
+
+/* Hauptknöpfe: Holzton mit Goldkante */
+button.primary, .button.primary {
+  border-color: var(--fantasy-gold);
+  box-shadow: inset 0 0 0 1px rgba(255, 230, 160, 0.25), 0 1px 2px rgba(60, 35, 10, 0.35);
+}
+button:hover, .button:hover { border-color: var(--fantasy-gold); }
+button:focus-visible, .button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: var(--outline-width) solid var(--fantasy-gold);
+  outline-offset: 1px;
+}
+
+.badge { font-variant: small-caps; letter-spacing: 0.03em; }
+
+::selection { background: rgba(201, 151, 47, 0.35); }

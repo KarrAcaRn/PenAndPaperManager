@@ -2,6 +2,8 @@
   import { LOGIN_CODE_LENGTH, MAX_EMAIL_LENGTH } from '@pnp/shared';
   import { ApiFailure, api } from '../lib/api.ts';
   import { verifyLoginCode } from '../lib/session.svelte.ts';
+  import { href } from '../lib/router.svelte.ts';
+  import GuestThemePicker from '../lib/GuestThemePicker.svelte';
 
   /** Sekunden, bis ein neuer Code angefordert werden kann */
   const RESEND_COOLDOWN = 60;
@@ -149,6 +151,8 @@
       </div>
     </form>
   {/if}
+  <p class="muted"><a href={href.sounds()}>Soundboard</a> mit den Standard-Sounds geht auch ohne Anmeldung.</p>
+  <GuestThemePicker />
 </main>
 
 <style>

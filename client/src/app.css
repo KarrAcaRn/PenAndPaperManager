@@ -1,149 +1,125 @@
-:root {
-  /* Breite des Zweigrahmens (.vine-frame); er ragt zur Hälfte nach außen, daher braucht alles drumherum --vine-gap */
-  --vine-width: 33px;
-  --vine-gap: calc(var(--vine-width) / 2 + 0.5rem);
-  --bg: #f6f1e7;
-  --surface: #fffdf8;
-  --border: #ddd3c0;
-  --text: #2b2620;
-  --muted: #7a6f60;
-  --accent: #8a3b12;
-  --accent-text: #fff;
-  --danger: #a3261f;
-  --radius: 8px;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-  color-scheme: light;
-}
-
 /*
- * Dunkles Design: per Benutzereinstellung (data-theme="dark" an <html>) oder, ohne feste Wahl, nach dem Browser.
- * color-scheme sorgt dafür, dass Formularelemente, Scrollleisten und das SVG des Zweigrahmens mitziehen.
+ * Alle Farben, Rahmen, Schatten und Schriften kommen aus den Design-Tokens des aktiven Themes
+ * (CSS Custom Properties auf :root, vom Server unter /themes/<id>/theme.css erzeugt; siehe themes/ und
+ * shared/src/theme.ts). Hier und in den Komponenten stehen keine festen Farb- oder Rahmenwerte.
  */
-:root[data-theme='dark'] {
-  --bg: #1d1a17;
-  --surface: #27231f;
-  --border: #423b33;
-  --text: #ece5d9;
-  --muted: #a39887;
-  --accent: #e08a4f;
-  --accent-text: #1d1a17;
-  --danger: #ef7d74;
-  color-scheme: dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --bg: #1d1a17;
-    --surface: #27231f;
-    --border: #423b33;
-    --text: #ece5d9;
-    --muted: #a39887;
-    --accent: #e08a4f;
-    --accent-text: #1d1a17;
-    --danger: #ef7d74;
-    color-scheme: dark;
-  }
+:root {
+  /* abgeleitet: normale Rahmenlinie */
+  --border: var(--border-width) var(--border-style) var(--color-border);
+  /* abgeleitet: Zierrahmen (.frame) ragen nach außen, alles drumherum braucht diesen Abstand */
+  --frame-gap: calc(var(--frame-outset) + 0.5rem);
+  color-scheme: var(--color-scheme);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--bg-image) var(--color-bg);
+  /* Häkchen, Radioknöpfe, Schieberegler und Fortschrittsbalken in der Akzentfarbe des Themes */
+  accent-color: var(--color-accent);
 }
 
 * { box-sizing: border-box; }
 /* Platz für die Scrollleiste immer freihalten, sonst springt die Seite zwischen kurzen und langen Seiten */
 html { scrollbar-gutter: stable; }
 body { margin: 0; }
-a { color: var(--accent); }
-h1, h2, h3 { line-height: 1.2; }
+a { color: var(--color-link); }
+h1, h2, h3 { line-height: 1.2; font-family: var(--font-heading); }
 
 main { max-width: 60rem; margin: 0 auto; padding: 1rem; }
 
 button, .button {
   font: inherit;
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  background: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
 }
-button:hover, .button:hover { border-color: var(--accent); }
+button:hover, .button:hover { border-color: var(--color-accent); }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-button.danger { color: var(--danger); }
-button.link { border: none; background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+button.primary, .button.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+button.danger { color: var(--color-danger); }
+button.link { border: none; background: none; padding: 0; color: var(--color-link); text-decoration: underline; }
 
 input, select, textarea {
   font: inherit;
   width: 100%;
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
-textarea { min-height: 20rem; font-family: ui-monospace, monospace; font-size: 0.95em; resize: vertical; }
+textarea { min-height: 20rem; font-family: var(--font-mono); font-size: 0.95em; resize: vertical; }
 label { display: block; font-weight: 600; margin-bottom: 0.75rem; }
 label > input, label > select, label > textarea { margin-top: 0.25rem; font-weight: 400; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+.card {
+  background: var(--surface-image) var(--color-surface);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-surface);
+  padding: 1rem;
+}
 
 /*
- * Fantasy-Rahmen: knorrige braune Zweige mit grünen Blättern, die auf der Kante des Kastens entlanglaufen.
+ * Zierrahmen des Themes (im Standard-Theme knorrige Zweige), der auf der Kante des Kastens entlangläuft.
  * border-image (9-Slice) statt Pseudo-Element, weil scrollende Kästen (Ordnerbaum) Pseudo-Elemente abschneiden.
- * Die eigentliche Kastenlinie übernimmt der innere Schatten.
+ * Die eigentliche Kastenlinie (und ggf. ein Schatten) kommt aus --frame-line.
  */
-.vine-frame {
-  border: 1px solid transparent;
-  border-image: url('./assets/vine-frame.svg') 32 / var(--vine-width) / calc(var(--vine-width) / 2) round;
-  box-shadow: inset 0 0 0 1px var(--border);
-  /* Platz, damit die nach innen ragenden Blätter nicht unter dem Text liegen */
-  padding: calc(var(--vine-width) / 2 + 0.4rem);
+.frame {
+  border: var(--border-width) solid transparent;
+  border-image: var(--frame-image) var(--frame-slice) / var(--frame-width) / var(--frame-outset) var(--frame-repeat);
+  box-shadow: var(--frame-line), var(--shadow-surface);
+  /* Platz, damit nach innen ragende Teile der Grafik nicht unter dem Text liegen */
+  padding: var(--frame-padding);
 }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
-.muted { color: var(--muted); font-size: 0.9em; }
-.error { color: var(--danger); margin: 0.5rem 0; }
+.muted { color: var(--color-text-muted); font-size: 0.9em; }
+.error { color: var(--color-danger); margin: 0.5rem 0; }
 
 .badge {
   font-size: 0.75em;
   padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border-radius: var(--radius-pill);
+  border: var(--border);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
-.badge.private { border-color: var(--danger); color: var(--danger); }
-.badge.private_gm, .badge.gm { border-color: var(--accent); color: var(--accent); }
+.badge.private { border-color: var(--color-danger); color: var(--color-danger); }
+.badge.private_gm, .badge.gm { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* Seiten einer Gruppe: links Ordnerbaum bzw. Inhaltsverzeichnis, rechts der Inhalt */
-/* Abstände nach --vine-gap: der Rahmen des Baums ragt nach außen und darf weder Inhalt noch Bildrand berühren */
-.split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: calc(var(--vine-gap) + 0.5rem); align-items: start; }
-.split > aside { position: sticky; top: var(--vine-gap); max-height: calc(100vh - 2 * var(--vine-gap)); overflow-y: auto; }
+/* Abstände nach --frame-gap: der Rahmen des Baums ragt nach außen und darf weder Inhalt noch Bildrand berühren */
+.split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: calc(var(--frame-gap) + 0.5rem); align-items: start; }
+.split > aside { position: sticky; top: var(--frame-gap); max-height: calc(100vh - 2 * var(--frame-gap)); overflow-y: auto; }
 @media (max-width: 45rem) {
   .split { grid-template-columns: minmax(0, 1fr); }
   .split > aside { position: static; max-height: 40vh; }
 }
 
 ul.list { list-style: none; margin: 0; padding: 0; }
-ul.list > li { display: flex; gap: 0.75rem; align-items: center; padding: 0.6rem 0.25rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+ul.list > li { display: flex; gap: 0.75rem; align-items: center; padding: 0.6rem 0.25rem; border-bottom: var(--border); flex-wrap: wrap; }
 ul.list > li:last-child { border-bottom: none; }
 ul.list a.title { font-weight: 600; text-decoration: none; }
 
 /* Beim Drucken (FATE-Bogen) bleibt nur der Inhalt ohne App-Rahmen */
 @media print {
   .no-print { display: none !important; }
-  body { background: #fff; }
+  body { background: var(--sheet-paper); }
   main { max-width: none; padding: 0; }
 }
 
 .markdown { overflow-wrap: anywhere; }
 .markdown img { max-width: 100%; }
-.markdown pre { overflow-x: auto; padding: 0.75rem; background: var(--bg); border-radius: var(--radius); }
-.markdown blockquote { margin-left: 0; padding-left: 1rem; border-left: 3px solid var(--border); color: var(--muted); }
+.markdown pre { overflow-x: auto; padding: 0.75rem; background: var(--color-surface-muted); border-radius: var(--border-radius); }
+.markdown blockquote { margin-left: 0; padding-left: 1rem; border-left: var(--border-width-strong) var(--border-style) var(--color-border); color: var(--color-text-muted); }
 .markdown table { border-collapse: collapse; }
 .markdown li > p { margin: 0.15rem 0; }
 /* Checklisten; marked legt die Checkbox bei "lockeren" Listen in ein <p> */
 .markdown li:has(> input[type='checkbox'], > p > input[type='checkbox']) { list-style: none; margin-left: -1.25rem; }
 .markdown li input[type='checkbox'] { width: auto; margin: 0 0.4rem 0 0; }
-.markdown th, .markdown td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; }
+.markdown th, .markdown td { border: var(--border); padding: 0.25rem 0.5rem; }

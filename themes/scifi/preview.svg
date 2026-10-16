@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="150" viewBox="0 0 240 150">
+  <!-- Vorschau „SciFi“ für die Theme-Auswahl. Selbst erstellt, MIT-Lizenz. -->
+  <rect width="240" height="150" fill="#070b14" />
+  <path d="M18 10 H230 V40 H10 V18 Z" fill="#0e1626" stroke="#5eeaff" />
+  <path d="M218 8 H232 V22 M8 128 V142 H22" fill="none" stroke="#ff2ec4" stroke-width="2" />
+  <path d="M24 18 H60 V30 H20 V22 Z" fill="#00d9f5" />
+  <rect x="70" y="22" width="30" height="5" fill="#8fb2c4" />
+  <rect x="108" y="22" width="30" height="5" fill="#8fb2c4" />
+  <path d="M18 52 H76 V140 H10 V60 Z" fill="#0e1626" stroke="#5eeaff" />
+  <text x="90" y="70" font-family="Orbitron, 'Segoe UI', sans-serif" font-size="14" font-weight="700" letter-spacing="1.5" fill="#dff6ff">SCIFI</text>
+  <rect x="90" y="77" width="130" height="1" fill="#ff2ec4" />
+  <rect x="90" y="86" width="130" height="4" fill="#dff6ff" opacity="0.75" />
+  <rect x="90" y="97" width="112" height="4" fill="#dff6ff" opacity="0.75" />
+  <rect x="90" y="108" width="122" height="4" fill="#8fb2c4" opacity="0.8" />
+  <path d="M96 122 H136 V136 H90 V128 Z" fill="#00d9f5" />
+</svg>

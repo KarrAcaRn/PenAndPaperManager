@@ -1,0 +1,36 @@
+/*
+ * Zusatz-CSS des Themes (Feld „css“ im Manifest). Der Server hängt diese Datei an die erzeugten Tokens an
+ * (/themes/mein-theme/theme.css). Für Farben, Rahmen und Schriften reichen meist die Tokens – hier nur das, was
+ * sich mit Tokens nicht ausdrücken lässt.
+ *
+ * Regeln:
+ * - Jeden Selektor mit :root beginnen. Das Grund-CSS der Seite wird nach dem Theme geladen und gewinnt sonst bei
+ *   gleicher Spezifität. Die Datei ist nur geladen, solange das Theme aktiv ist – sie wirkt nie in andere Themes.
+ * - Abweichungen für das dunkle Farbschema über darkTokens im Manifest lösen, nicht über
+ *   @media (prefers-color-scheme) – so bleibt das Theme stimmig, wie auch immer das Farbschema gewählt wird.
+ * - Nur die allgemeinen Klassen nutzen (.card, .frame, .badge, .markdown, button.primary, …), keine mit
+ *   „svelte-…“ – die ändern sich bei jedem Build.
+ * - Eigene Dateien über relative Pfade einbinden; sie müssen im Theme-Ordner liegen (der Validator prüft das,
+ *   auch in Kommentaren).
+ */
+
+/* Überschriften etwas gesperrt und in der Akzentfarbe */
+:root h1,
+:root h2 {
+  color: var(--color-accent);
+  letter-spacing: 0.02em;
+}
+
+/* Hauptknöpfe beim Überfahren leicht aufhellen */
+:root button.primary:hover,
+:root .button.primary:hover {
+  filter: brightness(1.1);
+}
+
+/* Bewegung nur, wenn das System sie nicht abgeschaltet hat */
+@media (prefers-reduced-motion: no-preference) {
+  :root button,
+  :root .button {
+    transition: border-color 0.15s, filter 0.15s;
+  }
+}

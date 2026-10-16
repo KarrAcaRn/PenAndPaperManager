@@ -112,13 +112,27 @@ export function requireUser(db: Db, req: FastifyRequest): User {
 /** Login-Seite der SPA (Hash-Router); das Ziel nach dem Login merkt sich der Client selbst */
 export const LOGIN_PAGE = '/#/login';
 
-/** API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout) */
+/**
+ * API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout, Standard-Sounds).
+ * Dazu die Google-Drive-Endpunkte, die selbst prüfen: der OAuth-Callback leitet ohne Login mit Fehlermeldung zurück in
+ * die Einstellungen (statt rohem 401 im Browserfenster), der Stream ist über sein signiertes Ticket berechtigt.
+ */
 export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
   '/api/auth/request-code',
   '/api/auth/verify-code',
   '/api/auth/me',
   '/api/auth/logout',
+  '/api/storage/google-drive/oauth/callback',
+  '/api/storage/google-drive/stream',
+  '/api/sounds/builtin',
 ]);
+
+/**
+ * Themes (Liste und einzelne) sind öffentlich: auch die Anmeldeseite ist gestaltet, Gäste wählen ihr Design selbst.
+ * Bewusst eng: nur die Liste und genau ein Pfadsegment darunter (also nie z.B. /api/themes/x/../…).
+ */
+const PUBLIC_THEME_PATH = /^\/api\/themes(\/[^/]*)?$/;
+const isPublicApiPrefix = (path: string) => PUBLIC_THEME_PATH.test(path);
 
 /**
  * Guard als preHandler-Hook: API-Aufrufe (/api/…) ohne gültige Session bekommen 401,
@@ -152,7 +166,7 @@ export function apiPath(req: FastifyRequest): string {
 export function requireAuthForApi(db: Db): preValidationHookHandler {
   return async (req) => {
     const path = apiPath(req);
-    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) return;
+    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path) || isPublicApiPrefix(path)) return;
     if (!getCurrentUser(db, req)) throw unauthorized();
   };
 }

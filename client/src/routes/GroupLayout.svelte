@@ -11,9 +11,12 @@
   import GmSkills from './GmSkills.svelte';
   import Rules from './Rules.svelte';
 
-  type ContentRoute = Exclude<Route, { name: 'groups' | 'manage' | 'skills' | 'rules' | 'admin' | 'settings' | 'login' }>;
+  type ContentRoute = Exclude<
+    Route,
+    { name: 'groups' | 'manage' | 'skills' | 'rules' | 'admin' | 'settings' | 'login' | 'sounds' }
+  >;
 
-  let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' | 'settings' | 'login' }> } = $props();
+  let { route }: { route: Exclude<Route, { name: 'groups' | 'admin' | 'settings' | 'login' | 'sounds' }> } = $props();
 
   const group = $derived(session.groups.find((g) => g.id === route.gid));
   // Verwalten und Fertigkeiten sind Reiter des SL-Bereichs; das Regelwerk gehört zu keinem Bereich
@@ -52,7 +55,7 @@
   </main>
 {:else}
   <header class="no-print">
-    <div class="bar vine-frame">
+    <div class="bar frame">
       <div class="row" bind:this={navRow}>
         <a class="name" href={href.groups()} title="Gruppe wechseln">{group.name}</a>
         <nav class="row" aria-label="Bereiche">
@@ -92,7 +95,7 @@
           <Rules />
         {:else}
           <div class="split">
-            <aside class="card vine-frame no-print">
+            <aside class="card frame no-print">
               {#key route.section}<FolderTree {group} section={route.section} current={selection(route)} />{/key}
             </aside>
             <section class="pane">{@render content(route)}</section>
@@ -123,17 +126,17 @@
 <style>
   /* Gleiche Breite, Zentrierung und Seitenabstände wie main, damit Navigation und Inhalt bündig stehen */
   /* Alle Seiten einer Gruppe gleich breit (Platz für Ordnerbaum + Inhalt), auch Fertigkeiten/Verwalten */
-  /* Seitenabstand --vine-gap: die Zweigrahmen ragen nach außen und dürfen nicht am Bildrand abgeschnitten werden */
-  header { max-width: 90rem; margin: 0 auto; padding: var(--vine-gap) var(--vine-gap) 0; }
-  main.wide { max-width: 90rem; padding-left: var(--vine-gap); padding-right: var(--vine-gap); }
-  .bar { background: var(--surface); border-radius: var(--radius); }
+  /* Seitenabstand --frame-gap: die Zierrahmen ragen nach außen und dürfen nicht am Bildrand abgeschnitten werden */
+  header { max-width: 90rem; margin: 0 auto; padding: var(--frame-gap) var(--frame-gap) 0; }
+  main.wide { max-width: 90rem; padding-left: var(--frame-gap); padding-right: var(--frame-gap); }
+  .bar { background: var(--surface-image) var(--color-surface); border-radius: var(--border-radius); }
   /* Abstand, damit sich die Rahmen von Navigation und Ordnerbaum nicht berühren */
-  main { padding-top: calc(var(--vine-width) + 0.75rem); }
+  main { padding-top: calc(var(--frame-width) + 0.75rem); }
   .name { font-weight: 700; font-size: 1.1rem; text-decoration: none; margin-right: 1rem; }
-  nav a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--radius); color: var(--text); }
-  nav a.active { background: var(--accent); color: var(--accent-text); }
+  nav a { text-decoration: none; padding: 0.3rem 0.7rem; border-radius: var(--border-radius); color: var(--color-text); }
+  nav a.active { background: var(--color-accent); color: var(--color-accent-text); }
   /* Unterpunkte: kleiner, aktiver Punkt nur unterstrichen - eine Ebene unter den Bereichen */
   .subnav { margin-top: 0.35rem; gap: 0.25rem; font-size: 0.9rem; width: max-content; max-width: 100%; }
-  .subnav a { padding: 0.15rem 0.7rem; color: var(--muted); }
-  .subnav a.active { background: none; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 0.3em; }
+  .subnav a { padding: 0.15rem 0.7rem; color: var(--color-text-muted); }
+  .subnav a.active { background: none; color: var(--color-accent); font-weight: 600; text-decoration: underline; text-underline-offset: 0.3em; }
 </style>

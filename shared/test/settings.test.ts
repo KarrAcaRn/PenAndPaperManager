@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_USER_SETTINGS, THEMES, USER_SETTING_KEYS, USER_SETTING_OPTIONS, normalizeUserSettings } from '../src/settings.ts';
+import { COLOR_SCHEMES, DEFAULT_USER_SETTINGS, USER_SETTINGS, USER_SETTING_KEYS, normalizeUserSettings } from '../src/settings.ts';
 
 describe('Benutzereinstellungen', () => {
-  it('nimmt den ersten erlaubten Wert als Vorgabe', () => {
-    expect(DEFAULT_USER_SETTINGS).toEqual({ theme: 'system' });
-    for (const key of USER_SETTING_KEYS) expect(DEFAULT_USER_SETTINGS[key]).toBe(USER_SETTING_OPTIONS[key][0]);
-    expect(USER_SETTING_OPTIONS.theme).toBe(THEMES);
+  it('hat Vorgaben für jede Einstellung', () => {
+    expect(DEFAULT_USER_SETTINGS).toEqual({ colorScheme: 'system', theme: null });
+    for (const key of USER_SETTING_KEYS) expect(DEFAULT_USER_SETTINGS[key]).toBe(USER_SETTINGS[key].default);
+    expect(USER_SETTINGS.colorScheme.schema).toEqual({ type: 'string', enum: COLOR_SCHEMES });
   });
 
   it('liefert für fehlende oder kaputte Daten die Vorgaben', () => {
@@ -13,13 +13,15 @@ describe('Benutzereinstellungen', () => {
   });
 
   it('übernimmt erlaubte Werte, verwirft ungültige und unbekannte', () => {
-    expect(normalizeUserSettings({ theme: 'dark' })).toEqual({ theme: 'dark' });
-    expect(normalizeUserSettings({ theme: 'pink', fontSize: 3 })).toEqual({ theme: 'system' });
+    expect(normalizeUserSettings({ colorScheme: 'dark', theme: 'wald' })).toEqual({ colorScheme: 'dark', theme: 'wald' });
+    expect(normalizeUserSettings({ colorScheme: 'pink', theme: 'Kein Theme', fontSize: 3 })).toEqual(DEFAULT_USER_SETTINGS);
+    expect(normalizeUserSettings({ theme: 42 })).toEqual(DEFAULT_USER_SETTINGS);
+    expect(normalizeUserSettings({ theme: null })).toEqual(DEFAULT_USER_SETTINGS);
   });
 
   it('gibt nie das Vorgabe-Objekt selbst heraus', () => {
     const settings = normalizeUserSettings({});
-    settings.theme = 'dark';
-    expect(DEFAULT_USER_SETTINGS.theme).toBe('system');
+    settings.colorScheme = 'dark';
+    expect(DEFAULT_USER_SETTINGS.colorScheme).toBe('system');
   });
 });

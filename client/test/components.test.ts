@@ -131,7 +131,8 @@ describe('App', () => {
     api.requestCode.mockResolvedValue(null);
     api.verifyCode.mockResolvedValue({ user: PLAYER });
     api.groups.mockResolvedValue([playerGroup]);
-    api.settings.mockResolvedValue({ theme: 'dark' });
+    api.settings.mockResolvedValue({ colorScheme: 'dark', theme: null });
+    api.themes.mockResolvedValue({ themes: [], defaultTheme: 'default' });
     render(App);
     await waitFor(() => expect(location.hash).toBe('#/login/%23%2Fsettings'));
     expect(screen.queryByRole('heading', { name: 'Einstellungen' })).toBeNull();
@@ -141,8 +142,8 @@ describe('App', () => {
     await user.type(await screen.findByLabelText('Code aus der E-Mail'), '123456{Enter}');
     await waitFor(() => expect(location.hash).toBe('#/settings'));
     expect(await screen.findByRole('heading', { name: 'Einstellungen' })).toBeTruthy();
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
-    delete document.documentElement.dataset.theme;
+    await waitFor(() => expect(document.documentElement.dataset.colorScheme).toBe('dark'));
+    delete document.documentElement.dataset.colorScheme;
     localStorage.clear();
   });
 
@@ -386,7 +387,8 @@ describe('GroupLayout', () => {
   it('versteckt den Bereich Spielleiter vor Spielern', () => {
     signIn(PLAYER, [playerGroup]);
     renderLayout('#/g/7/notes');
-    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk', 'Einstellungen']);
+    // „Soundboard“ kommt aus dem Benutzermenü, nicht aus der Gruppe
+    expect(nav()).toEqual(['Testrunde', 'Charaktere', 'Notizen', 'Regelwerk', 'Soundboard', 'Einstellungen']);
   });
 
   it('zeigt das Regelwerk allen Mitgliedern, ohne Ordnerbaum und SL-Unterpunkte', async () => {

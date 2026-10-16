@@ -1,0 +1,88 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { THEME_LINK_ID, applyTheme, currentTheme, getTheme, listThemes } from '../src/lib/theme.ts';
+
+const links = () => [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')];
+const pendingLink = (id: string) => document.querySelector<HTMLLinkElement>(`link[data-theme-pending="${id}"]`)!;
+
+beforeEach(() => {
+  document.head.innerHTML = `<link id="${THEME_LINK_ID}" rel="stylesheet" href="/themes/default/theme.css">`;
+  document.documentElement.dataset.theme = 'default';
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe('Theme-API', () => {
+  it('listet Themes und holt einzelne über die API', async () => {
+    const fetch = vi.fn(async (url: string) =>
+      Response.json(url.endsWith('/themes') ? { themes: [{ id: 'default' }, { id: 'sci-fi' }] } : { theme: { id: 'sci-fi' } }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    expect((await listThemes()).map((t) => t.id)).toEqual(['default', 'sci-fi']);
+    expect(await getTheme('sci-fi')).toEqual({ id: 'sci-fi' });
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual(['/api/themes', '/api/themes/sci-fi']);
+  });
+
+  it('wechselt das Theme zur Laufzeit, das alte Stylesheet bleibt bis zum Laden aktiv', async () => {
+    const done = applyTheme('dunkel');
+    expect(links().map((l) => l.getAttribute('href'))).toEqual(['/themes/default/theme.css', '/themes/dunkel/theme.css']);
+    expect(currentTheme()).toBe('default');
+    pendingLink('dunkel').dispatchEvent(new Event('load'));
+    expect(await done).toBe(true);
+    expect(links().map((l) => [l.id, l.getAttribute('href')])).toEqual([[THEME_LINK_ID, '/themes/dunkel/theme.css']]);
+    expect(currentTheme()).toBe('dunkel');
+    expect(document.documentElement.dataset.theme).toBe('dunkel');
+  });
+
+  it('behält das bisherige Theme, wenn das neue nicht lädt', async () => {
+    const done = applyTheme('weg');
+    pendingLink('weg').dispatchEvent(new Event('error'));
+    await expect(done).rejects.toThrow('Das Theme „weg“ konnte nicht geladen werden.');
+    expect(links().map((l) => l.getAttribute('href'))).toEqual(['/themes/default/theme.css']);
+    expect(currentTheme()).toBe('default');
+  });
+
+  it('bei schnellen Wechseln gewinnt der letzte Aufruf, auch wenn ein älterer später lädt', async () => {
+    const first = applyTheme('eins');
+    const second = applyTheme('zwei');
+    const firstLink = pendingLink('eins');
+    pendingLink('zwei').dispatchEvent(new Event('load'));
+    expect(await second).toBe(true);
+    firstLink.dispatchEvent(new Event('load'));
+    expect(await first).toBe(false);
+    expect(links().map((l) => l.getAttribute('href'))).toEqual(['/themes/zwei/theme.css']);
+    expect(currentTheme()).toBe('zwei');
+  });
+
+  it('meldet keinen Fehler für überholte Aufrufe', async () => {
+    const first = applyTheme('eins');
+    const second = applyTheme('zwei');
+    pendingLink('eins').dispatchEvent(new Event('error'));
+    expect(await first).toBe(false);
+    pendingLink('zwei').dispatchEvent(new Event('load'));
+    expect(await second).toBe(true);
+    expect(currentTheme()).toBe('zwei');
+  });
+});
+
+describe('Gestaltung nur über Tokens', () => {
+  const files = import.meta.glob<string>('../src/**/*.{svelte,css}', { query: '?raw', import: 'default', eager: true });
+  // nur die Styles prüfen (Markup kann z.B. #-Anker enthalten)
+  const styles = Object.entries(files).map(([f, text]) => [f, f.endsWith('.css') ? text : (text.match(/<style>[\s\S]*?<\/style>/g) ?? []).join('\n')]);
+  const find = (re: RegExp, skip: (f: string) => boolean = () => false) =>
+    styles.filter(([f]) => !skip(f)).flatMap(([f, css]) => (css.match(re) ?? []).map((m) => `${f}: ${m}`));
+
+  it('enthält in Komponenten und app.css keine festen Farbwerte', () => {
+    expect(styles.length).toBeGreaterThan(10);
+    expect(find(/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|color-mix)\(/gi)).toEqual([]);
+  });
+
+  it('enthält außerhalb des FATE-Bogens keine festen Rahmenlinien', () => {
+    expect(find(/\b\d+(\.\d+)?(px|pt) (solid|dashed|dotted|double)\b/g, (f) => f.endsWith('CharacterSheet.svelte'))).toEqual([]);
+  });
+
+  it('nutzt keine Variablennamen aus der Zeit vor den Themes', () => {
+    // der FATE-Bogen setzt eigene, lokale Kurznamen aus den sheet-Tokens
+    expect(
+      find(/var\(--(bg|surface|text|muted|accent|accent-text|danger|radius|vine-[a-z]+)\)/g, (f) => f.endsWith('CharacterSheet.svelte')),
+    ).toEqual([]);
+  });
+});

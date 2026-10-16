@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!--
+    Zierrahmen „Fantasy“ als 9-Slice für border-image (Slice 32): Ecken 32×32, Kanten-Kachel 64×32.
+    Ein Holzband (y=8…24) mit zwei Goldlinien und einer Perlenreihe; die Ecken tragen eine goldene Rosette mit
+    Rautenblättern. Die Kanten sind Drehungen der oberen Kante um die Bildmitte, die Ecken Spiegelungen.
+    Selbst erstellt für den Pen & Paper Manager, MIT-Lizenz.
+  -->
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a3a1e" />
+      <stop offset="0.45" stop-color="#7a5230" />
+      <stop offset="1" stop-color="#4a2f17" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6e08f" />
+      <stop offset="0.5" stop-color="#c9972f" />
+      <stop offset="1" stop-color="#8f6418" />
+    </linearGradient>
+    <!-- obere Kante: Kachel 64 breit, 32 hoch -->
+    <g id="edge">
+      <rect x="0" y="8" width="64" height="16" fill="url(#wood)" />
+      <path d="M0 9.2 H64 M0 22.8 H64" stroke="#d9b14a" stroke-width="1.4" />
+      <path d="M0 12 H64" stroke="#3a2410" stroke-width="0.6" opacity="0.5" />
+      <path d="M8 17 Q16 15 24 17 T40 17 T56 17" fill="none" stroke="#3a2410" stroke-width="0.5" opacity="0.45" />
+      <g fill="url(#gold)" stroke="#6e4a10" stroke-width="0.4">
+        <circle cx="16" cy="16" r="2.2" />
+        <circle cx="48" cy="16" r="2.2" />
+        <path d="M32 12.4 L35.6 16 L32 19.6 L28.4 16 Z" />
+      </g>
+    </g>
+    <!-- linke obere Ecke 32×32 -->
+    <g id="corner">
+      <path d="M8 32 V8 H32 V24 H24 V32 Z" fill="url(#wood)" />
+      <path d="M9.2 32 V9.2 H32 M22.8 32 V22.8 H32" fill="none" stroke="#d9b14a" stroke-width="1.4" />
+      <g fill="url(#gold)" stroke="#6e4a10" stroke-width="0.5">
+        <path d="M16 2 L19.5 12.5 L30 16 L19.5 19.5 L16 30 L12.5 19.5 L2 16 L12.5 12.5 Z" />
+        <circle cx="16" cy="16" r="4" />
+      </g>
+      <circle cx="16" cy="16" r="1.6" fill="#7a1f12" />
+    </g>
+  </defs>
+  <use xlink:href="#corner" />
+  <use xlink:href="#corner" transform="matrix(-1 0 0 1 128 0)" />
+  <use xlink:href="#corner" transform="matrix(1 0 0 -1 0 128)" />
+  <use xlink:href="#corner" transform="matrix(-1 0 0 -1 128 128)" />
+  <use xlink:href="#edge" x="32" />
+  <use xlink:href="#edge" x="32" transform="rotate(90 64 64)" />
+  <use xlink:href="#edge" x="32" transform="rotate(180 64 64)" />
+  <use xlink:href="#edge" x="32" transform="rotate(270 64 64)" />
+</svg>

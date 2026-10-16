@@ -17,9 +17,12 @@ npm-Workspaces, alles TypeScript (ESM, Imports mit `.ts`-Endung):
     `requireUser`/`requireMember`/`requireGm`. Login per E-Mail-Code in `login-codes.ts` + `routes/login-codes.ts`.
   - `schemas.ts` – JSON-Schema-Bausteine für die Fastify-Validierung.
   - `migrations/NNN_name.sql` – werden beim Start automatisch in Dateinamen-Reihenfolge angewendet.
+  - `storage/` – externe Speicher fürs Soundboard (`StorageProvider`, Registry, Verbindungen), `secrets.ts`
+    verschlüsselt Zugangsdaten. Siehe `docs/soundboard-storage.md`.
 - `client/` – Svelte 5 (Runes, `*.svelte.ts` für reaktiven Zustand), Vite, eigener Router (`lib/router.svelte.ts`),
   API-Zugriff nur über `lib/api.ts`. Markdown-Anzeige via `marked` + `DOMPurify` (`lib/markdown.ts`), Bearbeiten im WYSIWYG-Editor TipTap
   (`lib/MarkdownEditor.svelte`, speichert Markdown, wird per dynamischem Import nachgeladen).
+  Texte neuer Bereiche als Katalog über `createTranslator` (`lib/i18n.ts`, Beispiel `lib/storage/messages.ts`).
 
 ## Befehle
 
@@ -31,8 +34,13 @@ npm run check          # tsc (Server) + svelte-check (Client) – muss fehlerfre
 npm run build && npm start
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`); Mailversand (`server/src/mail.ts`)
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`), Themes über `THEMES_DIR` und
+`DEFAULT_THEME`; Mailversand (`server/src/mail.ts`)
 über `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM` – siehe `.env.example`. Ohne SMTP wird außerhalb von Produktion nur geloggt.
+`APP_SECRET_KEY` (sonst `data/secret.key`), `S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben),
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` (optional, Google Drive fürs Soundboard),
+`SOUNDS_DIR`/`SOUNDS_BASE_URL` (Standard-Sounds in `server/sounds/default/` samt Manifest `sounds.json`, Pflege siehe
+README).
 
 ## Konventionen
 
@@ -49,6 +57,11 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Invarianten aus der README (mindestens ein Spielleiter, verwaiste private Artikel gehen an die Spielleiter)
   nicht brechen.
 - **Stil:** 2 Leerzeichen, einfache Anführungszeichen, Semikolons, Trailing Commas, lange Zeilen (~120) sind ok.
+- **Gestaltung:** keine festen Farb-, Rahmen- oder Schattenwerte in Komponenten oder `app.css`, Schriften der
+  Oberfläche über `--font-…` – nur Design-Tokens (`var(--color-…)`, `var(--border)`, …, siehe README „Themes“;
+  ein Test prüft feste Farben und px-Rahmen). Ausnahme: Linienstärken und Maße des FATE-Bogens (Druckvorlage).
+  Neues Token: in `THEME_TOKENS` (`shared/src/theme.ts`) und `themes/default/theme.json` eintragen, dann
+  `npm run theme:schema -w server`, und in der Token-Referenz von `docs/themes.md` beschreiben (ein Test prüft das).
 
 ## Tests
 
