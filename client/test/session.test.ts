@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiFailure, api as realApi } from '../src/lib/api.ts';
-import { loadSession, login, logout, reloadGroups, session } from '../src/lib/session.svelte.ts';
+import { loadSession, logout, reloadGroups, session, verifyLoginCode } from '../src/lib/session.svelte.ts';
 import { GM, gmGroup, mockApi, signIn } from './helpers.ts';
 
 let api: ReturnType<typeof mockApi>;
@@ -17,22 +17,29 @@ describe('session', () => {
     expect(api.groups).not.toHaveBeenCalled();
   });
 
-  it('lädt nach dem Login Nutzer und Gruppen', async () => {
-    api.login.mockResolvedValue(GM);
-    api.me.mockResolvedValue({ user: GM });
+  it('lädt nach dem Login per Code Nutzer und Gruppen', async () => {
+    api.verifyCode.mockResolvedValue({ user: GM });
     api.groups.mockResolvedValue([gmGroup]);
-    await login(GM.email);
-    expect(api.login).toHaveBeenCalledWith(GM.email);
+    await verifyLoginCode(GM.email, '123456');
+    expect(api.verifyCode).toHaveBeenCalledWith(GM.email, '123456');
     expect(session).toMatchObject({ user: GM, groups: [gmGroup], ready: true });
   });
 
-  it('räumt beim Logout auf', async () => {
+  it('bleibt bei falschem Code ausgeloggt', async () => {
+    signIn(null);
+    api.verifyCode.mockRejectedValue(new ApiFailure(401, 'Code ungültig'));
+    await expect(verifyLoginCode(GM.email, '000000')).rejects.toBeInstanceOf(ApiFailure);
+    expect(session.user).toBeNull();
+    expect(api.groups).not.toHaveBeenCalled();
+  });
+
+  it('räumt beim Logout auf und zeigt den Login', async () => {
     signIn(GM, [gmGroup]);
     location.hash = '#/g/7/notes';
     api.logout.mockResolvedValue({});
     await logout();
     expect(session).toMatchObject({ user: null, groups: [] });
-    expect(location.hash).toBe('#/');
+    expect(location.hash).toBe('#/login');
   });
 
   it('wirkt lokal auch dann, wenn der Server beim Logout nicht antwortet', async () => {

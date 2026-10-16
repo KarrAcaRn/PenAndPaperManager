@@ -97,7 +97,7 @@ export const MAX_TITLE_LENGTH = 200;
 export const MAX_BODY_LENGTH = 200_000;
 export const MAX_GROUP_NAME_LENGTH = 100;
 export const MAX_EMAIL_LENGTH = 254;
-/** Login-Codes per E-Mail: so viele Ziffern */
+/** Anzahl der Ziffern im Login-Code, der per E-Mail verschickt wird */
 export const LOGIN_CODE_LENGTH = 6;
 export const MAX_RULE_QUERY_LENGTH = 200;
 /** Höchstzahl der Suchtreffer, die der Server liefert */
