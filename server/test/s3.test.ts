@@ -9,6 +9,7 @@ import {
   S3StorageProvider,
   parseEndpoint,
   parseS3Input,
+  publicOnlyLookup,
   s3Provider,
   translateS3Error,
   type S3ClientLike,
@@ -65,8 +66,10 @@ class FakeS3 implements S3ClientLike {
         this.add(input.Key, String(input.Body ?? '').length);
         return {};
       case 'HeadObjectCommand': {
+        // Wie AWS bei der empfohlenen, auf das Prefix beschränkten Policy: HEAD auf fehlende Objekte liefert ein
+        // nacktes 403 (ohne Fehlercode), weil s3:ListBucket für HEAD-Anfragen nicht greift
         const obj = this.objects.get(input.Key);
-        if (!obj) throw s3Error('NotFound', 404);
+        if (!obj) throw s3Error('Forbidden', 403);
         return { ContentLength: obj.size };
       }
       case 'DeleteObjectCommand':
@@ -131,13 +134,52 @@ describe('S3: Eingaben (parseInput)', () => {
   });
 
   it('sperrt Endpoints im privaten Netz (SSRF), außer es ist ausdrücklich erlaubt', () => {
-    for (const host of ['localhost', '127.0.0.1', '10.1.2.3', '192.168.0.10', '172.20.0.1', '169.254.169.254', '[::1]', '[fd00::1]', '[::ffff:127.0.0.1]', 'minio', 'nas.local']) {
+    for (const host of [
+      'localhost',
+      'localhost.',
+      'metadata.google.internal.',
+      '127.0.0.1',
+      '10.1.2.3',
+      '192.168.0.10',
+      '172.20.0.1',
+      '169.254.169.254',
+      '198.18.0.1',
+      '[::1]',
+      '[fd00::1]',
+      '[::ffff:127.0.0.1]',
+      '[::7f00:1]',
+      '[64:ff9b::7f00:1]',
+      '[2002:7f00:1::]',
+      'minio',
+      'nas.local',
+    ]) {
       expect(() => parseEndpoint(`https://${host}:9000`, false), host).toThrow('privaten Netz');
     }
     expect(parseEndpoint('https://abc123.r2.cloudflarestorage.com', false)).toBe('https://abc123.r2.cloudflarestorage.com');
     expect(parseEndpoint('https://8.8.8.8', false)).toBe('https://8.8.8.8');
     expect(parseEndpoint('http://localhost:9000', true)).toBe('http://localhost:9000');
     expect(parseEndpoint('', false)).toBeNull();
+  });
+
+  it('lässt beim Verbinden nur öffentliche DNS-Antworten durch (Schutz vor Namen, die auf interne Adressen zeigen)', async () => {
+    const answers: Record<string, { address: string; family: number }[]> = {
+      'oeffentlich.example': [{ address: '93.184.216.34', family: 4 }],
+      'rebind.example': [{ address: '93.184.216.34', family: 4 }, { address: '127.0.0.1', family: 4 }],
+      'v6.example': [{ address: 'fd12::1', family: 6 }],
+    };
+    const lookup = publicOnlyLookup((host, _opts, cb) => cb(null, answers[host] ?? []));
+    const run = (host: string, all: boolean) =>
+      new Promise<{ err: NodeJS.ErrnoException | null; address: unknown; family?: number }>((resolve) =>
+        lookup(host, { all }, (err, address, family) => resolve({ err, address, family })),
+      );
+    expect(await run('oeffentlich.example', false)).toEqual({ err: null, address: '93.184.216.34', family: 4 });
+    expect((await run('oeffentlich.example', true)).address).toEqual(answers['oeffentlich.example']);
+    for (const host of ['rebind.example', 'v6.example', 'leer.example']) {
+      expect((await run(host, true)).err?.code, host).toBe('EPRIVATEADDRESS');
+    }
+    const blocked = translateS3Error((await run('rebind.example', false)).err, 'x', config()) as StorageProviderError;
+    expect(blocked).toMatchObject({ kind: 'permission' });
+    expect(blocked.message).toContain('privaten Netz');
   });
 });
 
@@ -154,22 +196,28 @@ describe('S3: Fehler übersetzen', () => {
     [s3Error('NoSuchKey', 404), 'not_found'],
     [Object.assign(new Error(`connect ECONNREFUSED ${SECRET_KEY}`), { code: 'ECONNREFUSED' }), 'unavailable'],
     [s3Error('InternalError', 500), 'unavailable'],
-    [new Error(SECRET_KEY), 'unavailable'],
+    [Object.assign(new Error('Socket timeout'), { name: 'TimeoutError' }), 'unavailable'],
   ] as const)('%s → %s', (err, kind) => {
-    const translated = translateS3Error(err, 'Dateien auflisten', cfg);
+    const translated = translateS3Error(err, 'Dateien auflisten', cfg) as StorageProviderError;
     expect(translated.kind).toBe(kind);
     expect(translated.message).not.toContain(SECRET_KEY);
     expect(translated.message).not.toContain(ACCESS_KEY);
   });
 
+  it('reicht Programmierfehler unverändert weiter, damit sie im Log landen', () => {
+    const bug = new TypeError('undefined is not a function');
+    expect(translateS3Error(bug, 'x', cfg)).toBe(bug);
+  });
+
   it('nennt Bucket, Region und Endpoint verständlich', () => {
-    expect(translateS3Error(s3Error('NoSuchBucket', 404), 'x', cfg).message).toBe('Bucket "klang" existiert nicht (oder liegt bei einem anderen Endpoint)');
-    expect(translateS3Error(s3Error('AuthorizationHeaderMalformed', 400), 'x', cfg).message).toBe('Region "eu-central-1" passt nicht zum Bucket "klang"');
-    expect(translateS3Error(s3Error('AccessDenied', 403), 'Dateien löschen (s3:DeleteObject)', cfg).message).toBe(
+    const t = (err: unknown, what = 'x') => (translateS3Error(err, what, cfg) as StorageProviderError).message;
+    expect(t(s3Error('NoSuchBucket', 404))).toBe('Bucket "klang" existiert nicht (oder liegt bei einem anderen Endpoint)');
+    expect(t(s3Error('AuthorizationHeaderMalformed', 400))).toBe('Region "eu-central-1" passt nicht zum Bucket "klang"');
+    expect(t(s3Error('AccessDenied', 403), 'Dateien löschen (s3:DeleteObject)')).toBe(
       'Zugriff verweigert: Die Zugangsdaten dürfen Dateien löschen (s3:DeleteObject) nicht',
     );
-    expect(translateS3Error(Object.assign(new Error('x'), { code: 'ENOTFOUND' }), 'x', cfg).message).toBe('S3-Endpoint https://s3.example.com ist nicht erreichbar');
-    expect(translateS3Error(s3Error('SlowDown', 503), 'x', cfg).message).toBe('S3 meldet einen unerwarteten Fehler (SlowDown)');
+    expect(t(Object.assign(new Error('x'), { code: 'ENOTFOUND' }))).toBe('S3-Endpoint https://s3.example.com ist nicht erreichbar');
+    expect(t(s3Error('SlowDown', 503))).toBe('S3 meldet einen unerwarteten Fehler (SlowDown)');
   });
 });
 
@@ -280,15 +328,23 @@ describe('S3StorageProvider', () => {
       expect(third.nextCursor).toBeNull();
     });
 
-    it('ignoriert Cursor außerhalb des Ordners', async () => {
-      await provider(s3).listFiles({ folder: '', limit: 10, cursor: 'andere/x.mp3' });
-      expect(s3.calls[0]!.input).not.toHaveProperty('StartAfter');
+    it('lehnt Cursor außerhalb des Ordners ab', async () => {
+      const err = await rejection(provider(s3).listFiles({ folder: 'kampf', limit: 10, cursor: 'sounds/a.mp3' }));
+      expect(err.kind).toBe('invalid');
+      expect(s3.calls).toEqual([]);
+    });
+
+    it('reicht Programmierfehler unverändert weiter', async () => {
+      const bug = new TypeError('kaputt');
+      s3.failures.ListObjectsV2Command = bug;
+      await expect(provider(s3).listFiles({ folder: '', limit: 10 })).rejects.toBe(bug);
     });
   });
 
   describe('getPlaybackUrl', () => {
     it('erzeugt eine presigned GET-URL, 15 Minuten gültig', async () => {
       s3.add('sounds/kampf/schwert.ogg');
+      s3.add('sounds/kampf/schwert.ogg.bak');
       const { url, expiresAt } = await provider(s3).getPlaybackUrl('sounds/kampf/schwert.ogg');
       const parsed = new URL(url);
       expect(parsed.origin + parsed.pathname).toBe('https://klang.s3.eu-central-1.amazonaws.com/sounds/kampf/schwert.ogg');
@@ -296,7 +352,8 @@ describe('S3StorageProvider', () => {
       expect(parsed.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
       expect(url).not.toContain(SECRET_KEY);
       expect(expiresAt).toBe('2026-10-16T12:15:00.000Z');
-      expect(s3.calls.map((c) => c.command)).toEqual(['HeadObjectCommand']);
+      // Existenz per ListObjectsV2 (funktioniert auch mit Prefix-beschränkter Policy), nicht per HEAD
+      expect(s3.calls).toEqual([{ command: 'ListObjectsV2Command', input: { Bucket: 'klang', Prefix: 'sounds/kampf/schwert.ogg', MaxKeys: 1 } }]);
     });
 
     it('nutzt bei eigenem Endpoint Pfad-Adressierung', async () => {
@@ -314,24 +371,36 @@ describe('S3StorageProvider', () => {
     });
 
     it('meldet fehlende Dateien', async () => {
+      s3.add('sounds/fehlt.mp3.bak');
       expect((await rejection(provider(s3).getPlaybackUrl('sounds/fehlt.mp3'))).kind).toBe('not_found');
+    });
+
+    it('meldet ungültige Schlüssel als auth (Fehlercode kommt per ListObjectsV2 mit)', async () => {
+      s3.failures.ListObjectsV2Command = s3Error('InvalidAccessKeyId', 403);
+      expect((await rejection(provider(s3).getPlaybackUrl('sounds/a.mp3'))).kind).toBe('auth');
     });
   });
 
   describe('upload', () => {
     const request = { fileName: 'Drache brüllt.mp3', contentType: 'audio/mpeg', size: 4321 };
 
-    it('erzeugt eine presigned PUT-URL mit signiertem Content-Type und signierter Größe', async () => {
+    it('erzeugt eine presigned PUT-URL mit signiertem Content-Type, Größe und If-None-Match', async () => {
       const target = await provider(s3).upload(request);
-      expect(target).toMatchObject({ method: 'PUT', headers: { 'Content-Type': 'audio/mpeg' }, fields: {}, fileId: 'sounds/Drache brüllt.mp3', expiresAt: '2026-10-16T12:15:00.000Z' });
+      expect(target).toMatchObject({
+        method: 'PUT',
+        headers: { 'Content-Type': 'audio/mpeg', 'If-None-Match': '*' },
+        fields: {},
+        fileId: 'sounds/Drache brüllt.mp3',
+        expiresAt: '2026-10-16T12:15:00.000Z',
+      });
       const url = new URL(target.url);
       expect(url.pathname).toBe('/sounds/Drache%20br%C3%BCllt.mp3');
-      expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('content-length;content-type;host');
+      expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('content-length;content-type;host;if-none-match');
       expect(url.searchParams.get('X-Amz-Expires')).toBe('900');
       // Keine SDK-Prüfsummen, die der Browser nicht mitschicken würde
       expect([...url.searchParams.keys()].filter((k) => /checksum/i.test(k))).toEqual([]);
       expect(target.url).not.toContain(SECRET_KEY);
-      expect(s3.calls.map((c) => c.command)).toEqual(['HeadObjectCommand']);
+      expect(s3.calls.map((c) => c.command)).toEqual(['ListObjectsV2Command']);
     });
 
     it('überschreibt keine vorhandene Datei', async () => {
@@ -342,8 +411,15 @@ describe('S3StorageProvider', () => {
     });
 
     it('meldet fehlende Rechte statt eine URL zu liefern', async () => {
-      s3.failures.HeadObjectCommand = s3Error('InvalidAccessKeyId', 403);
+      s3.failures.ListObjectsV2Command = s3Error('InvalidAccessKeyId', 403);
       expect((await rejection(provider(s3).upload(request))).kind).toBe('auth');
+    });
+
+    it('lehnt Schlüssel über 1024 Bytes ab', async () => {
+      const longPrefix = 'ä'.repeat(400);
+      const err = await rejection(provider(s3, { prefix: longPrefix }).upload({ ...request, fileName: `${'ö'.repeat(120)}.mp3` }));
+      expect(err).toMatchObject({ kind: 'invalid', message: 'Dateiname ist für diesen Ordner zu lang' });
+      expect(s3.calls).toEqual([]);
     });
 
     it('lädt ohne Prefix in die Bucket-Wurzel', async () => {
@@ -356,7 +432,7 @@ describe('S3StorageProvider', () => {
       s3.add('sounds/a.mp3');
       await provider(s3).delete('sounds/a.mp3');
       expect(s3.objects.has('sounds/a.mp3')).toBe(false);
-      expect(s3.calls.map((c) => c.command)).toEqual(['HeadObjectCommand', 'DeleteObjectCommand']);
+      expect(s3.calls.map((c) => c.command)).toEqual(['ListObjectsV2Command', 'DeleteObjectCommand']);
     });
 
     it('meldet fehlende Dateien und verweigert fremde Schlüssel', async () => {

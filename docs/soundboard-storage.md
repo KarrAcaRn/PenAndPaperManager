@@ -164,11 +164,13 @@ Adapter: `server/src/storage/s3.ts`, registriert unter `s3`. Funktioniert mit AW
 | `credentials.accessKeyId` | credentials (verschlüsselt) | Access Key ID |
 | `credentials.secretAccessKey` | credentials (verschlüsselt) | Secret Access Key |
 
-Endpoints im lokalen/privaten Netz (`localhost`, `10.x`, `192.168.x`, `169.254.x`, einteilige Hostnamen, …) und
-`http://` lehnt der Server ab, damit niemand über ihn interne Dienste ansprechen kann (SSRF). Wer ein eigenes MinIO
-im LAN nutzen will, startet den Server mit `S3_ALLOW_PRIVATE_ENDPOINTS=1`. Hostnamen, die per DNS auf private
-Adressen zeigen, erkennt die Prüfung nicht – auf öffentlich erreichbaren Servern ausgehenden Verkehr ins LAN
-zusätzlich per Firewall sperren.
+Endpoints im lokalen/privaten Netz (`localhost`, `10.x`, `192.168.x`, `169.254.x`, NAT64/6to4, einteilige Hostnamen,
+`*.local`/`*.internal`, …) und `http://` lehnt der Server ab, damit niemand über ihn interne Dienste ansprechen kann
+(SSRF). Zusätzlich prüft der S3-Client bei jedem Verbindungsaufbau die DNS-Antwort und verbindet nur zu öffentlichen
+Adressen – Hostnamen, die (auch per DNS-Rebinding) auf interne Adressen zeigen, scheitern mit „Der Endpoint zeigt auf
+eine Adresse im privaten Netz“. Wer ein eigenes MinIO im LAN nutzen will, startet den Server mit
+`S3_ALLOW_PRIVATE_ENDPOINTS=1` (schaltet beide Prüfungen ab). Endpoint-Vorgaben aus der Umgebung des Servers
+(`AWS_ENDPOINT_URL…`, `~/.aws/config`) ignoriert der Adapter.
 
 ### Verhalten
 
@@ -180,21 +182,25 @@ zusätzlich per Firewall sperren.
   (empfohlenen) Zugangsdaten, die nur für ein Prefix gelten.
 - **listFiles:** alle Audiodateien (Endung mp3/wav/ogg/m4a) unter Prefix/Ordner, **einschließlich Unterordnern**;
   `name` ist der Pfad relativ zum gelisteten Ordner (`kampf/schwert.ogg`), `id` der volle Objektschlüssel.
-  Cursor ist der zuletzt gelieferte Schlüssel (`StartAfter`), daher haben Seiten genau `limit` Einträge, auch
+  Cursor ist der zuletzt gesehene Schlüssel (`StartAfter`), daher haben Seiten bis zu `limit` Einträge, auch
   wenn Nicht-Audio-Dateien übersprungen werden. Nach höchstens 5 S3-Anfragen kommt ggf. eine kürzere (auch leere)
-  Seite mit `nextCursor` – der Client lädt dann einfach weiter.
-- **getPlaybackUrl:** prüft per `HeadObject`, dass die Datei existiert, und liefert eine presigned GET-URL,
-  15 Minuten gültig.
+  Seite mit `nextCursor` – der Client lädt dann einfach weiter. Ein Cursor aus einem anderen Ordner gibt 400.
+- **Existenzprüfung** (Abspielen, Hochladen, Löschen) per `ListObjectsV2` mit dem Schlüssel als Prefix, nicht per
+  `HeadObject`: Bei Prefix-beschränkten Rechten antwortet S3 auf HEAD fehlender Objekte mit 403 statt 404, und
+  HEAD-Antworten haben keinen Fehlercode (ungültige Schlüssel wären nicht von fehlenden Rechten zu unterscheiden).
+- **getPlaybackUrl:** prüft, dass die Datei existiert, und liefert eine presigned GET-URL, 15 Minuten gültig.
 - **upload:** presigned **PUT** (nicht POST – Cloudflare R2 kennt kein presigned POST), 15 Minuten gültig, Ziel
-  `<prefix>/<Dateiname>`. `Content-Type` und `Content-Length` sind mitsigniert: Der Browser muss genau den
-  angemeldeten Typ schicken (Header `Content-Type` aus `headers`), und die Datei muss genau die angemeldete Größe
-  haben (höchstens 50 MB); sonst lehnt S3 den Upload ab. Vorhandene Dateien werden nicht überschrieben (Fehler
-  „gibt es dort schon“ – erst löschen oder umbenennen).
-- **delete:** prüft per `HeadObject` (S3 meldet beim Löschen fehlender Objekte sonst Erfolg) und löscht.
+  `<prefix>/<Dateiname>` (höchstens 1024 Bytes). `Content-Type`, `Content-Length` und `If-None-Match: *` sind
+  mitsigniert: Der Browser muss die `headers` aus der Antwort mitschicken, die Datei muss genau die angemeldete
+  Größe haben (höchstens 50 MB), und S3 überschreibt keine vorhandene Datei – auch nicht beim erneuten Benutzen
+  derselben URL (bedingte Schreibzugriffe: AWS seit 2024, R2, aktuelles MinIO; ältere kompatible Dienste
+  ignorieren den Header, dort schützt nur die Vorabprüfung „gibt es dort schon“).
+- **delete:** prüft die Existenz (S3 meldet beim Löschen fehlender Objekte sonst Erfolg) und löscht.
 - **Datei-IDs:** müssen mit dem Prefix beginnen, eine Audio-Endung haben und dürfen keine leeren, `.`- oder
   `..`-Segmente enthalten; sonst „Datei nicht gefunden“, ohne S3 überhaupt zu fragen.
 - **Zugangsdaten:** werden nur an den S3-Client übergeben (nie Umgebungsvariablen oder `~/.aws` des Servers),
-  nicht geloggt und in keiner Fehlermeldung genannt (SDK-Meldungen werden durch eigene Texte ersetzt).
+  nicht geloggt und in keiner Fehlermeldung genannt (SDK-Meldungen werden durch eigene Texte ersetzt; nur Fehler,
+  die nicht von S3 oder dem Netz stammen – also Programmierfehler –, gehen unverändert als 500 ins Log).
   Hinweis für Nutzer: Die **Access Key ID** steht wie bei S3 üblich in jeder signierten URL
   (`X-Amz-Credential`); der Secret Key nie.
 - Das SDK hängt an PUTs standardmäßig CRC32-Prüfsummen an, die der Browser nicht liefert; der Adapter schaltet
@@ -237,7 +243,7 @@ Wiedergabe mit Web-Audio funktionieren, muss der Bucket Anfragen von der Adresse
   {
     "AllowedOrigins": ["https://pnp.example.org"],
     "AllowedMethods": ["GET", "HEAD", "PUT"],
-    "AllowedHeaders": ["content-type"],
+    "AllowedHeaders": ["content-type", "if-none-match"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
     "MaxAgeSeconds": 3600
   }

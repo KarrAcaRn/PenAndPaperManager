@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { BlockList, isIP } from 'node:net';
 import {
   DeleteObjectCommand,
@@ -20,7 +21,7 @@ import {
 import { StorageProviderError, type ListFilesOptions, type StorageProvider, type StorageProviderDefinition } from './provider.ts';
 
 // S3 und S3-kompatible Dienste (MinIO, Wasabi, Cloudflare R2, …) als Speicher fürs Soundboard.
-// Der Server spricht S3 nur für Auflisten, Prüfen und Löschen an; Abspielen und Hochladen laufen per presigned URL
+// Der Server spricht S3 nur für Prüfen, Auflisten und Löschen an; Abspielen und Hochladen laufen per presigned URL
 // direkt zwischen Browser und Bucket. Nutzer-Anleitung (Rechte, CORS): docs/soundboard-storage.md
 
 /** Nicht geheim: wird unverschlüsselt gespeichert und an den Client geliefert. */
@@ -43,6 +44,8 @@ export interface S3Credentials {
 export const S3_URL_TTL_SECONDS = 15 * 60;
 /** Höchstzahl ListObjectsV2-Aufrufe je Seite (überspringt Nicht-Audio-Dateien, ohne endlos zu laufen) */
 const MAX_LIST_REQUESTS = 5;
+/** S3 begrenzt Objektschlüssel auf 1024 Bytes (UTF-8) */
+const MAX_KEY_BYTES = 1024;
 
 /** Teil von S3Client, den der Adapter nutzt – in Tests durch einen Mock ersetzbar */
 export interface S3ClientLike {
@@ -60,17 +63,107 @@ export interface S3ProviderOptions {
   now?: () => Date;
 }
 
-/** Client-Einstellungen: explizite Zugangsdaten (nie aus Umgebung/~/.aws), kurze Timeouts, Prüfsummen nur wo nötig */
-export function s3ClientConfig(config: S3Config, credentials: S3Credentials): S3ClientConfig {
+// --- Private Netze (SSRF-Schutz) ---------------------------------------------------------------------------------
+
+const PRIVATE_NETWORKS = (() => {
+  const list = new BlockList();
+  const v4: [string, number][] = [
+    ['0.0.0.0', 8],
+    ['10.0.0.0', 8],
+    ['100.64.0.0', 10],
+    ['127.0.0.0', 8],
+    ['169.254.0.0', 16],
+    ['172.16.0.0', 12],
+    ['192.0.0.0', 24],
+    ['192.0.2.0', 24],
+    ['192.168.0.0', 16],
+    ['198.18.0.0', 15],
+    ['198.51.100.0', 24],
+    ['203.0.113.0', 24],
+    ['224.0.0.0', 4],
+    ['240.0.0.0', 4],
+  ];
+  const v6: [string, number][] = [
+    ['::', 96], // ::, ::1 und IPv4-kompatible Adressen
+    // IPv4-gemappte Adressen (::ffff:0:0/96) prüft isPrivateAddress selbst – als Regel hier träfe sie jede IPv4
+    ['64:ff9b::', 96], // NAT64
+    ['64:ff9b:1::', 48],
+    ['100::', 64],
+    ['2001:db8::', 32],
+    ['2002::', 16], // 6to4 (enthält eine IPv4-Adresse)
+    ['fc00::', 7],
+    ['fe80::', 10],
+    ['fec0::', 10],
+    ['ff00::', 8],
+  ];
+  for (const [net, bits] of v4) list.addSubnet(net, bits, 'ipv4');
+  for (const [net, bits] of v6) list.addSubnet(net, bits, 'ipv6');
+  return list;
+})();
+
+/** IP-Adresse in einem lokalen, privaten oder reservierten Netz */
+export function isPrivateAddress(address: string): boolean {
+  const ip = address.replace(/^\[|\]$/g, '').toLowerCase();
+  // IPv4-gemappt (::ffff:127.0.0.1 bzw. ::ffff:7f00:1) hat bei S3-Endpoints nichts zu suchen
+  if (/^(0{0,4}:){0,5}:?ffff:/.test(ip) && isIP(ip) === 6) return true;
+  const version = isIP(ip);
+  if (version === 4) return PRIVATE_NETWORKS.check(ip, 'ipv4');
+  if (version === 6) return PRIVATE_NETWORKS.check(ip, 'ipv6');
+  return false;
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '');
+  if (isIP(host)) return isPrivateAddress(host);
+  if (host === 'localhost' || /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) return true;
+  // Einteilige Namen (z.B. "minio") lösen nur im internen Netz auf
+  return !host.includes('.');
+}
+
+type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
+type LookupFn = (hostname: string, options: { all?: boolean; [key: string]: unknown }, callback: LookupCallback) => void;
+
+/**
+ * DNS-Auflösung, die nur öffentliche Adressen zulässt. Greift bei jeder Verbindung, also auch bei Namen, die
+ * (absichtlich oder per DNS-Rebinding) auf interne Adressen zeigen.
+ */
+export function publicOnlyLookup(resolve: LookupFn = dnsLookup as unknown as LookupFn): LookupFn {
+  return (hostname, options, callback) => {
+    resolve(hostname, { ...options, all: true }, (err, result) => {
+      if (err) return callback(err, options.all ? [] : '', 0);
+      const addresses = result as LookupAddress[];
+      if (addresses.length === 0 || addresses.some((a) => isPrivateAddress(a.address))) {
+        const blocked = Object.assign(new Error(`${hostname} zeigt auf eine Adresse im privaten Netz`), { code: 'EPRIVATEADDRESS' });
+        return callback(blocked, options.all ? [] : '', 0);
+      }
+      if (options.all) return callback(null, addresses);
+      return callback(null, addresses[0]!.address, addresses[0]!.family);
+    });
+  };
+}
+
+/**
+ * Client-Einstellungen: explizite Zugangsdaten (nie aus Umgebung/~/.aws), keine Endpoint-Vorgaben aus der Umgebung
+ * des Servers, kurze Timeouts, Prüfsummen nur wo nötig, ohne `allowPrivate` nur öffentliche Adressen.
+ */
+export function s3ClientConfig(config: S3Config, credentials: S3Credentials, allowPrivate = false): S3ClientConfig {
   return {
     region: config.region,
     credentials: { accessKeyId: credentials.accessKeyId, secretAccessKey: credentials.secretAccessKey },
     ...(config.endpoint ? { endpoint: config.endpoint, forcePathStyle: true } : {}),
+    // AWS_ENDPOINT_URL(_S3), FIPS/Dualstack aus Umgebung oder ~/.aws/config würden Nutzeranfragen umleiten
+    ignoreConfiguredEndpointUrls: true,
+    useFipsEndpoint: false,
+    useDualstackEndpoint: false,
     // Sonst hängt das SDK CRC32-Prüfsummen an presigned PUTs, die der Browser nicht liefert und R2/MinIO teils ablehnen
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
     maxAttempts: 2,
-    requestHandler: { connectionTimeout: 5_000, requestTimeout: 15_000 },
+    requestHandler: {
+      connectionTimeout: 5_000,
+      requestTimeout: 15_000,
+      ...(allowPrivate ? {} : { httpsAgent: { keepAlive: true, lookup: publicOnlyLookup() as never } }),
+    },
   };
 }
 
@@ -89,44 +182,6 @@ function text(value: unknown, field: string, max: number): string {
 /** Bucket-Namen nach S3-Regeln (gilt so auch bei MinIO, Wasabi, R2) */
 const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const REGION_RE = /^[a-z0-9-]{1,32}$/;
-
-const PRIVATE_NETWORKS = (() => {
-  const list = new BlockList();
-  for (const [net, bits] of [
-    ['0.0.0.0', 8],
-    ['10.0.0.0', 8],
-    ['100.64.0.0', 10],
-    ['127.0.0.0', 8],
-    ['169.254.0.0', 16],
-    ['172.16.0.0', 12],
-    ['192.168.0.0', 16],
-    ['224.0.0.0', 4],
-    ['240.0.0.0', 4],
-  ] as const) {
-    list.addSubnet(net, bits, 'ipv4');
-  }
-  for (const [net, bits] of [
-    ['::', 127], // :: und ::1
-    ['fc00::', 7],
-    ['fe80::', 10],
-    ['ff00::', 8],
-  ] as const) {
-    list.addSubnet(net, bits, 'ipv6');
-  }
-  return list;
-})();
-
-function isPrivateHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host)?.[1];
-  if (mapped) return PRIVATE_NETWORKS.check(mapped, 'ipv4');
-  const version = isIP(host);
-  if (version === 4) return PRIVATE_NETWORKS.check(host, 'ipv4');
-  if (version === 6) return PRIVATE_NETWORKS.check(host, 'ipv6');
-  // Einteilige Namen (z.B. "minio") lösen nur im internen Netz auf
-  return !host.includes('.');
-}
 
 export function parseEndpoint(raw: string, allowPrivate: boolean): string | null {
   if (raw === '') return null;
@@ -177,19 +232,24 @@ export function parseS3Input(
 
 const AUTH_CODES = new Set(['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'InvalidToken', 'ExpiredToken', 'TokenRefreshRequired', 'InvalidClientTokenId', 'AccountProblem']);
 const REGION_CODES = new Set(['PermanentRedirect', 'AuthorizationHeaderMalformed', 'IllegalLocationConstraintException', 'Redirect']);
-const NETWORK_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID']);
+/** Netz-/TLS-Fehler von Node (ECONNREFUSED, ENOTFOUND, CERT_HAS_EXPIRED, ERR_TLS_…, …) */
+const NETWORK_CODE_RE = /^(E[A-Z_]+|ERR_TLS_\w+|ERR_SSL_\w+|CERT_\w+|UNABLE_TO_\w+|DEPTH_ZERO_\w+|SELF_SIGNED_\w+)$/;
 
 /**
- * SDK-Fehler → StorageProviderError mit eigenem Text. SDK-Meldungen werden bewusst nicht übernommen (können
- * Header/Anfragedetails enthalten); nur der S3-Fehlercode geht als Hinweis mit.
+ * SDK-/Netzfehler → StorageProviderError mit eigenem Text. SDK-Meldungen werden bewusst nicht übernommen (können
+ * Anfragedetails enthalten); nur der S3-Fehlercode geht als Hinweis mit. Andere Fehler (Programmierfehler) kommen
+ * unverändert zurück, damit sie als 500 im Log landen.
  * `what` beschreibt die Aktion für Rechtefehler, z.B. "Dateien auflisten (s3:ListBucket)".
  */
-export function translateS3Error(err: unknown, what: string, config: S3Config): StorageProviderError {
+export function translateS3Error(err: unknown, what: string, config: S3Config): unknown {
   if (err instanceof StorageProviderError) return err;
   const e = (err ?? {}) as { name?: unknown; Code?: unknown; code?: unknown; $metadata?: { httpStatusCode?: number } };
   const code = typeof e.Code === 'string' ? e.Code : typeof e.name === 'string' ? e.name : '';
   const sysCode = typeof e.code === 'string' ? e.code : '';
   const status = e.$metadata?.httpStatusCode;
+  if (sysCode === 'EPRIVATEADDRESS') {
+    return new StorageProviderError('permission', 'Der Endpoint zeigt auf eine Adresse im privaten Netz – das ist auf diesem Server nicht erlaubt');
+  }
   if (AUTH_CODES.has(code)) {
     return new StorageProviderError('auth', 'Access Key ID oder Secret Access Key werden nicht akzeptiert – bitte prüfen bzw. neu verbinden');
   }
@@ -201,11 +261,14 @@ export function translateS3Error(err: unknown, what: string, config: S3Config): 
     return new StorageProviderError('permission', `Zugriff verweigert: Die Zugangsdaten dürfen ${what} nicht`);
   }
   if (code === 'NoSuchKey' || code === 'NotFound' || status === 404) return new StorageProviderError('not_found', 'Datei nicht gefunden');
-  if (NETWORK_CODES.has(sysCode) || code === 'TimeoutError' || code === 'RequestTimeout' || status === undefined) {
+  if (NETWORK_CODE_RE.test(sysCode) || code === 'TimeoutError' || code === 'RequestTimeout' || code === 'AbortError') {
     return new StorageProviderError('unavailable', config.endpoint ? `S3-Endpoint ${config.endpoint} ist nicht erreichbar` : 'S3 ist nicht erreichbar');
   }
-  const hint = /^[A-Za-z0-9.]{1,64}$/.test(code) ? ` (${code})` : '';
-  return new StorageProviderError('unavailable', `S3 meldet einen unerwarteten Fehler${hint}`);
+  if (status !== undefined) {
+    const hint = /^[A-Za-z0-9.]{1,64}$/.test(code) ? ` (${code})` : '';
+    return new StorageProviderError('unavailable', `S3 meldet einen unerwarteten Fehler${hint}`);
+  }
+  return err;
 }
 
 // --- Anbieter ----------------------------------------------------------------------------------------------------
@@ -216,9 +279,19 @@ function mimeTypeOf(key: string): string | null {
   return ext ? AUDIO_MIME_TYPES[ext][0]! : null;
 }
 
+const notFound = () => new StorageProviderError('not_found', 'Datei nicht gefunden');
+
+interface ListPage {
+  Contents?: { Key?: string; Size?: number; LastModified?: Date }[];
+  IsTruncated?: boolean;
+}
+
+const LIST = 'Dateien auflisten (s3:ListBucket)';
+
 export class S3StorageProvider implements StorageProvider {
   readonly #config: S3Config;
   readonly #credentials: S3Credentials;
+  readonly #allowPrivate: boolean;
   readonly #client: S3ClientLike;
   readonly #now: () => Date;
   /** Prefix samt abschließendem '/' bzw. '' */
@@ -228,7 +301,8 @@ export class S3StorageProvider implements StorageProvider {
   constructor(config: S3Config, credentials: S3Credentials, options: S3ProviderOptions = {}) {
     this.#config = config;
     this.#credentials = credentials;
-    this.#client = options.createClient?.(config, credentials) ?? new S3Client(s3ClientConfig(config, credentials));
+    this.#allowPrivate = options.allowPrivateEndpoints ?? false;
+    this.#client = options.createClient?.(config, credentials) ?? new S3Client(s3ClientConfig(config, credentials, this.#allowPrivate));
     this.#now = options.now ?? (() => new Date());
     this.#root = config.prefix ? `${config.prefix}/` : '';
   }
@@ -236,7 +310,7 @@ export class S3StorageProvider implements StorageProvider {
   /** Echter Client nur zum Signieren (rechnet lokal, ohne Netz) */
   #presigner(): S3Client {
     if (this.#client instanceof S3Client) return this.#client;
-    return (this.#signer ??= new S3Client(s3ClientConfig(this.#config, this.#credentials)));
+    return (this.#signer ??= new S3Client(s3ClientConfig(this.#config, this.#credentials, this.#allowPrivate)));
   }
 
   async #send<T>(what: string, command: object): Promise<T> {
@@ -244,6 +318,14 @@ export class S3StorageProvider implements StorageProvider {
       return (await this.#client.send(command)) as T;
     } catch (err) {
       throw translateS3Error(err, what, this.#config);
+    }
+  }
+
+  async #sign(sign: (client: S3Client) => Promise<string>): Promise<string> {
+    try {
+      return await sign(this.#presigner());
+    } catch (err) {
+      throw translateS3Error(err, 'URLs signieren', this.#config);
     }
   }
 
@@ -257,11 +339,20 @@ export class S3StorageProvider implements StorageProvider {
    */
   #checkKey(fileId: string): string {
     const rest = fileId.startsWith(this.#root) ? fileId.slice(this.#root.length) : null;
-    if (rest === null || rest === '' || audioExtension(rest) === null) throw new StorageProviderError('not_found', 'Datei nicht gefunden');
-    if (rest.split('/').some((p) => p === '' || p === '.' || p === '..') || /[\\\u0000-\u001f\u007f]/.test(rest)) {
-      throw new StorageProviderError('not_found', 'Datei nicht gefunden');
-    }
+    if (rest === null || rest === '' || audioExtension(rest) === null) throw notFound();
+    if (rest.split('/').some((p) => p === '' || p === '.' || p === '..') || /[\\\u0000-\u001f\u007f]/.test(rest)) throw notFound();
     return fileId;
+  }
+
+  /**
+   * Gibt es das Objekt? Per ListObjectsV2 statt HeadObject: Ohne s3:ListBucket auf genau diesen Schlüssel antwortet
+   * S3 auf HEAD fehlender Objekte mit 403 statt 404 – und Prefix-beschränkte Rechte gelten für HEAD nicht. Außerdem
+   * hat eine HEAD-Antwort keinen Fehlercode, ungültige Schlüssel wären dann nicht von fehlenden Rechten zu
+   * unterscheiden.
+   */
+  async #exists(Key: string): Promise<boolean> {
+    const page = await this.#send<ListPage>(LIST, new ListObjectsV2Command({ Bucket: this.#config.bucket, Prefix: Key, MaxKeys: 1 }));
+    return page.Contents?.[0]?.Key === Key;
   }
 
   async validate(): Promise<void> {
@@ -269,10 +360,11 @@ export class S3StorageProvider implements StorageProvider {
     // Kein HeadBucket: es verlangt s3:ListBucket ohne Prefix-Bedingung und scheitert daher bei Zugangsdaten, die
     // (wie empfohlen) nur für ein Prefix freigegeben sind. ListObjectsV2 meldet fehlenden Bucket, falsche Region
     // und ungültige Schlüssel ebenso – mit aussagekräftigem Fehlercode.
-    await this.#send('Dateien auflisten (s3:ListBucket)', new ListObjectsV2Command({ Bucket, Prefix: this.#root, MaxKeys: 1 }));
+    await this.#send(LIST, new ListObjectsV2Command({ Bucket, Prefix: this.#root, MaxKeys: 1 }));
     const Key = `${this.#root}.pnp-zugriffstest-${randomBytes(6).toString('hex')}.txt`;
     await this.#send('Dateien hochladen (s3:PutObject)', new PutObjectCommand({ Bucket, Key, Body: 'Zugriffstest des Pen & Paper Managers – darf gelöscht werden', ContentType: 'text/plain; charset=utf-8' }));
     try {
+      // Das Objekt existiert gerade, HEAD ist hier also eine echte Leseprobe (s3:GetObject)
       await this.#send('Dateien lesen (s3:GetObject)', new HeadObjectCommand({ Bucket, Key }));
     } catch (err) {
       // Testdatei trotzdem wegräumen; der Lesefehler ist die eigentliche Meldung
@@ -284,16 +376,17 @@ export class S3StorageProvider implements StorageProvider {
 
   /**
    * Alle Audiodateien unter Prefix/Ordner, auch in Unterordnern; `name` ist der Pfad relativ zum Ordner.
-   * Cursor = zuletzt gelieferter Schlüssel (StartAfter), damit Seiten trotz übersprungener Nicht-Audio-Dateien
-   * genau `limit` Einträge haben können.
+   * Cursor = zuletzt gesehener Schlüssel (StartAfter), damit Seiten trotz übersprungener Nicht-Audio-Dateien
+   * bis zu `limit` Einträge haben.
    */
   async listFiles({ folder, cursor, limit }: ListFilesOptions): Promise<StorageFilePage> {
     const Prefix = this.#root + (folder ? `${folder}/` : '');
+    if (cursor !== undefined && !cursor.startsWith(Prefix)) throw invalid('Ungültiger Cursor – bitte die Liste neu laden');
     const files: StorageFile[] = [];
-    let startAfter = cursor !== undefined && cursor.startsWith(Prefix) ? cursor : undefined;
+    let startAfter = cursor;
     for (let i = 0; i < MAX_LIST_REQUESTS; i++) {
-      const page = await this.#send<{ Contents?: { Key?: string; Size?: number; LastModified?: Date }[]; IsTruncated?: boolean }>(
-        'Dateien auflisten (s3:ListBucket)',
+      const page = await this.#send<ListPage>(
+        LIST,
         new ListObjectsV2Command({ Bucket: this.#config.bucket, Prefix, MaxKeys: 1000, ...(startAfter ? { StartAfter: startAfter } : {}) }),
       );
       const contents = page.Contents ?? [];
@@ -324,36 +417,36 @@ export class S3StorageProvider implements StorageProvider {
   async getPlaybackUrl(fileId: string) {
     const Key = this.#checkKey(fileId);
     const Bucket = this.#config.bucket;
-    // Vorab prüfen, damit fehlende Dateien und fehlende Rechte als verständlicher Fehler ankommen statt im <audio>
-    await this.#send('Dateien lesen (s3:GetObject)', new HeadObjectCommand({ Bucket, Key }));
-    const url = await getSignedUrl(this.#presigner(), new GetObjectCommand({ Bucket, Key }), { expiresIn: S3_URL_TTL_SECONDS });
+    // Vorab prüfen, damit fehlende Dateien als verständlicher Fehler ankommen statt als Ladefehler im <audio>
+    if (!(await this.#exists(Key))) throw notFound();
+    const url = await this.#sign((client) => getSignedUrl(client, new GetObjectCommand({ Bucket, Key }), { expiresIn: S3_URL_TTL_SECONDS }));
     return { url, expiresAt: this.#expiresAt() };
   }
 
   /**
-   * Presigned PUT (funktioniert auch bei R2, das kein presigned POST kennt). Content-Type und Content-Length sind
-   * signiert: S3 lehnt Uploads mit anderem Typ oder anderer Größe als angemeldet ab.
+   * Presigned PUT (funktioniert auch bei R2, das kein presigned POST kennt). Signiert sind Content-Type,
+   * Content-Length und `If-None-Match: *`: S3 lehnt Uploads mit anderem Typ oder anderer Größe als angemeldet ab
+   * und überschreibt keine vorhandene Datei, auch nicht beim erneuten Benutzen derselben URL.
    */
   async upload(request: { fileName: string; contentType: string; size: number }) {
     const Bucket = this.#config.bucket;
     const Key = this.#checkKey(this.#root + request.fileName);
-    try {
-      await this.#client.send(new HeadObjectCommand({ Bucket, Key }));
-      throw new StorageProviderError('invalid', `Eine Datei "${request.fileName}" gibt es dort schon – bitte umbenennen oder die alte zuerst löschen`);
-    } catch (err) {
-      const translated = translateS3Error(err, 'Dateien lesen (s3:GetObject)', this.#config);
-      if (translated.kind !== 'not_found') throw translated;
+    if (Buffer.byteLength(Key, 'utf8') > MAX_KEY_BYTES) throw invalid('Dateiname ist für diesen Ordner zu lang');
+    // Vorab prüfen für eine verständliche Meldung; verbindlich ist If-None-Match beim Upload selbst
+    if (await this.#exists(Key)) {
+      throw invalid(`Eine Datei "${request.fileName}" gibt es dort schon – bitte umbenennen oder die alte zuerst löschen`);
     }
-    const url = await getSignedUrl(
-      this.#presigner(),
-      new PutObjectCommand({ Bucket, Key, ContentType: request.contentType, ContentLength: request.size }),
-      { expiresIn: S3_URL_TTL_SECONDS, signableHeaders: new Set(['content-type', 'content-length']) },
+    const url = await this.#sign((client) =>
+      getSignedUrl(client, new PutObjectCommand({ Bucket, Key, ContentType: request.contentType, ContentLength: request.size, IfNoneMatch: '*' }), {
+        expiresIn: S3_URL_TTL_SECONDS,
+        signableHeaders: new Set(['content-type', 'content-length', 'if-none-match']),
+      }),
     );
     return {
       method: 'PUT' as const,
       url,
       // Content-Length setzt der Browser selbst (aus der Dateigröße); er muss zur angemeldeten Größe passen
-      headers: { 'Content-Type': request.contentType },
+      headers: { 'Content-Type': request.contentType, 'If-None-Match': '*' },
       fields: {},
       fileId: Key,
       expiresAt: this.#expiresAt(),
@@ -362,10 +455,9 @@ export class S3StorageProvider implements StorageProvider {
 
   async delete(fileId: string): Promise<void> {
     const Key = this.#checkKey(fileId);
-    const Bucket = this.#config.bucket;
     // DeleteObject meldet auch bei fehlenden Dateien Erfolg – vorher prüfen, damit der Nutzer 404 bekommt
-    await this.#send('Dateien lesen (s3:GetObject)', new HeadObjectCommand({ Bucket, Key }));
-    await this.#send('Dateien löschen (s3:DeleteObject)', new DeleteObjectCommand({ Bucket, Key }));
+    if (!(await this.#exists(Key))) throw notFound();
+    await this.#send('Dateien löschen (s3:DeleteObject)', new DeleteObjectCommand({ Bucket: this.#config.bucket, Key }));
   }
 
   /** Nie Zugangsdaten ausgeben, falls das Objekt doch einmal geloggt oder serialisiert wird */

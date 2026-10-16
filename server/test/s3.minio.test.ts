@@ -30,7 +30,7 @@ describe.skipIf(!enabled)('S3 gegen echten Dienst (MinIO)', () => {
     await admin.send(new CreateBucketCommand({ Bucket: config.bucket })).catch((err: { name?: string }) => {
       if (err.name !== 'BucketAlreadyOwnedByYou' && err.name !== 'BucketAlreadyExists') throw err;
     });
-    provider = new S3StorageProvider(config, credentials);
+    provider = new S3StorageProvider(config, credentials, { allowPrivateEndpoints: true });
   });
 
   afterAll(async () => {
@@ -68,7 +68,7 @@ describe.skipIf(!enabled)('S3 gegen echten Dienst (MinIO)', () => {
   });
 
   it.skipIf(!checksSignatures)('meldet falsche Zugangsdaten als auth', async () => {
-    const wrong = new S3StorageProvider(config, { ...credentials, secretAccessKey: 'falsch' });
+    const wrong = new S3StorageProvider(config, { ...credentials, secretAccessKey: 'falsch' }, { allowPrivateEndpoints: true });
     await expect(wrong.validate()).rejects.toMatchObject({ kind: 'auth' });
   });
 });
