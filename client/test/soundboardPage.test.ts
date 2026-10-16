@@ -309,7 +309,7 @@ describe('Soundboard: Playlisten', () => {
     await screen.findByRole('button', { name: 'Glocke' });
     expect(screen.getByText(/Noch keine Playlist/)).toBeTruthy();
     // nur Musik-Kacheln haben „+“
-    expect(screen.queryByRole('button', { name: /„Glocke“ zu/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /„Glocke“ zu.*Playlist/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: '„Fanfare“ zu einer neuen Playlist hinzufügen' }));
     await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 1 von 1 aus „Playlist 1“/));
     expect(audioFor('fanfare').loop).toBe(false);
@@ -474,6 +474,154 @@ describe('Soundboard: Playlisten', () => {
     expect(screen.getByText(/Noch keine Playlist/)).toBeTruthy();
     expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
     expect(tile('Fanfare').closest('li')!.classList.contains('in-playlist')).toBe(false);
+  });
+});
+
+describe('Soundboard: Effekt-Liste', () => {
+  const panel = () => screen.getByRole('region', { name: 'Effekt-Liste' });
+  const entries = () => within(screen.getByRole('list', { name: 'Effekte der Effekt-Liste' })).getAllByRole('listitem');
+  /** Audio-Elemente eines Sounds in Startreihenfolge (auch gestoppte, deren src schon entfernt ist) */
+  let started: { audio: HTMLAudioElement; src: string }[] = [];
+  const audiosFor = (name: string) => started.filter((s) => s.src.endsWith(`/${name}.wav`)).map((s) => s.audio);
+  const stopped = (audio: HTMLAudioElement) => audio.getAttribute('src') === null;
+
+  beforeEach(() => {
+    started = [];
+    play.mockImplementation(function (this: HTMLAudioElement) {
+      started.push({ audio: this, src: this.src });
+      return Promise.resolve();
+    });
+  });
+
+  it('fügt per „+“ hinzu: startet sofort bei Lautstärke 0 in Schleife auf dem Effektkanal, der Regler blendet ein', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    expect(within(panel()).getByText(/Noch keine Effekte/)).toBeTruthy();
+    // nur Effekt-Kacheln haben „+“ für die Effekt-Liste
+    expect(screen.queryByRole('button', { name: '„Fanfare“ zur Effekt-Liste hinzufügen' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '„Glocke“ zur Effekt-Liste hinzufügen' }));
+    expect(entries()).toHaveLength(1);
+    const toggle = within(panel()).getByRole('button', { name: '„Glocke“ in der Effekt-Liste stoppen' });
+    await waitFor(() => expect(toggle.textContent).toBe('■'));
+    const audio = audiosFor('glocke').at(-1)!;
+    expect(audio.volume).toBe(0);
+    expect(audio.loop).toBe(true);
+    // die Kachel selbst bleibt unabhängig (Klick spielt sofort, wie bisher)
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('false');
+    expect(tile('Glocke').closest('li')!.classList.contains('in-playlist')).toBe(true);
+
+    const slider = within(panel()).getByLabelText('Lautstärke von „Glocke“ in der Effekt-Liste') as HTMLInputElement;
+    await fireEvent.input(slider, { target: { value: '0.5' } });
+    expect(audio.volume).toBeCloseTo(0.4); // 0,8 gesamt × 1 Effekte × 0,5
+    // Kanal-Lautstärke gilt
+    await fireEvent.input(screen.getByLabelText('Effekte'), { target: { value: '0.5' } });
+    expect(audio.volume).toBeCloseTo(0.2);
+    // die eigene Lautstärke der Kachel spielt für den Eintrag keine Rolle
+    await fireEvent.input(screen.getByLabelText('Lautstärke von „Glocke“'), { target: { value: '0.1' } });
+    expect(audio.volume).toBeCloseTo(0.2);
+
+    await user.click(within(panel()).getByRole('button', { name: 'Endlosschleife für „Glocke“ in der Effekt-Liste' }));
+    expect(audio.loop).toBe(false);
+
+    // Stopp und Start je Eintrag
+    await user.click(toggle);
+    expect(stopped(audio)).toBe(true);
+    await user.click(within(panel()).getByRole('button', { name: '„Glocke“ in der Effekt-Liste abspielen' }));
+    await waitFor(() => expect(audiosFor('glocke')).toHaveLength(2));
+    expect(audiosFor('glocke')[1].volume).toBeCloseTo(0.2);
+
+    // „Effekte stoppen“ hält auch die Effekt-Liste an
+    await user.click(screen.getByRole('button', { name: 'Effekte stoppen' }));
+    expect(within(panel()).getByRole('button', { name: '„Glocke“ in der Effekt-Liste abspielen' })).toBeTruthy();
+  });
+
+  it('läuft neben der Kachel desselben Sounds und mehrfach; Entfernen stoppt nur den Eintrag', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    const add = () => user.click(screen.getByRole('button', { name: '„Glocke“ zur Effekt-Liste hinzufügen' }));
+    await add();
+    await add();
+    await user.click(tile('Glocke'));
+    await waitFor(() => expect(audiosFor('glocke')).toHaveLength(3));
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true');
+    const [first, second, byTile] = audiosFor('glocke');
+
+    await user.click(within(panel()).getAllByRole('button', { name: '„Glocke“ aus der Effekt-Liste entfernen' })[0]);
+    expect(entries()).toHaveLength(1);
+    expect(stopped(first)).toBe(true);
+    expect(stopped(second)).toBe(false);
+    expect(stopped(byTile)).toBe(false);
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true');
+    await user.click(within(panel()).getByRole('button', { name: '„Glocke“ aus der Effekt-Liste entfernen' }));
+    expect(within(panel()).getByText(/Noch keine Effekte/)).toBeTruthy();
+    expect(stopped(second)).toBe(true);
+    expect(tile('Glocke').closest('li')!.classList.contains('in-playlist')).toBe(false);
+  });
+
+  it('merkt sich Einträge, Regler und Schleife über das Neuladen; danach läuft nichts von selbst', async () => {
+    const { unmount } = render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: '„Trommelwirbel“ zur Effekt-Liste hinzufügen' }));
+    await fireEvent.input(within(panel()).getByLabelText('Lautstärke von „Trommelwirbel“ in der Effekt-Liste'), { target: { value: '0.3' } });
+    await user.click(within(panel()).getByRole('button', { name: 'Endlosschleife für „Trommelwirbel“ in der Effekt-Liste' }));
+    unmount();
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.effects')!).entries).toEqual([
+      expect.objectContaining({ sound: 'builtin:trommel', title: 'Trommelwirbel', volume: 0.3, loop: false }),
+    ]);
+
+    const before = play.mock.calls.length;
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    expect(entries()).toHaveLength(1);
+    expect((within(panel()).getByLabelText('Lautstärke von „Trommelwirbel“ in der Effekt-Liste') as HTMLInputElement).value).toBe('0.3');
+    expect(within(panel()).getByRole('button', { name: 'Endlosschleife für „Trommelwirbel“ in der Effekt-Liste' }).getAttribute('aria-pressed')).toBe('false');
+    expect(within(panel()).getByRole('button', { name: '„Trommelwirbel“ in der Effekt-Liste abspielen' })).toBeTruthy();
+    expect(play.mock.calls.length).toBe(before);
+  });
+
+  it('sortiert per Drag & Drop nur am Griff und per Pfeiltaste auf dem Griff', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    for (const t of ['Glocke', 'Trommelwirbel']) await user.click(screen.getByRole('button', { name: `„${t}“ zur Effekt-Liste hinzufügen` }));
+    const names = () => entries().map((li) => li.querySelector('.name')!.textContent);
+    expect(names()).toEqual(['Glocke', 'Trommelwirbel']);
+    const data: Record<string, string> = {};
+    const dataTransfer = { types: ['application/x-pnp-effect-entry'], setData: (k: string, v: string) => (data[k] = v), effectAllowed: '', dropEffect: '' };
+
+    // Ziehen an der Zeile (z.B. am Regler) verschiebt nichts
+    expect(entries()[1].getAttribute('draggable')).toBe('false');
+    await fireEvent.dragStart(entries()[1], { dataTransfer });
+    await fireEvent.dragOver(entries()[0], { dataTransfer });
+    await fireEvent.drop(entries()[0], { dataTransfer });
+    expect(names()).toEqual(['Glocke', 'Trommelwirbel']);
+
+    // Griff drücken macht die Zeile ziehbar, Loslassen ohne Ziehen wieder nicht
+    const handle = within(panel()).getByRole('button', { name: '„Trommelwirbel“ verschieben' });
+    await fireEvent.mouseDown(handle);
+    expect(entries()[1].getAttribute('draggable')).toBe('true');
+    await fireEvent.mouseUp(window);
+    expect(entries()[1].getAttribute('draggable')).toBe('false');
+
+    await fireEvent.mouseDown(handle);
+    await fireEvent.dragStart(entries()[1], { dataTransfer });
+    expect(Object.keys(data)).toEqual(['application/x-pnp-effect-entry']);
+    expect(await fireEvent.dragOver(entries()[0], { dataTransfer })).toBe(false);
+    await fireEvent.drop(entries()[0], { dataTransfer });
+    expect(names()).toEqual(['Trommelwirbel', 'Glocke']);
+    expect(entries()[0].getAttribute('draggable')).toBe('false');
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.effects')!).entries.map((e: { sound: string }) => e.sound)).toEqual(['builtin:trommel', 'builtin:glocke']);
+
+    // Tastatur: Pfeil runter auf dem Griff, ohne die Musik-Lautstärke zu ändern; der Griff behält den Fokus
+    const music = (screen.getByLabelText('Musik') as HTMLInputElement).value;
+    within(panel()).getByRole('button', { name: '„Trommelwirbel“ verschieben' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(names()).toEqual(['Glocke', 'Trommelwirbel']);
+    expect(document.activeElement).toBe(within(panel()).getByRole('button', { name: '„Trommelwirbel“ verschieben' }));
+    await user.keyboard('{ArrowDown}');
+    expect(names()).toEqual(['Glocke', 'Trommelwirbel']);
+    await user.keyboard('{ArrowUp}');
+    expect(names()).toEqual(['Trommelwirbel', 'Glocke']);
+    expect((screen.getByLabelText('Musik') as HTMLInputElement).value).toBe(music);
   });
 });
 
@@ -659,6 +807,25 @@ describe('Soundboard mit Login', () => {
     expect(JSON.parse(localStorage.getItem('pnp.soundboard.playlists')!).playlists[0].tracks).toEqual([
       expect.objectContaining({ sound: 'builtin:fanfare' }),
     ]);
+  });
+
+  it('nimmt eine gelöschte Datei aus der Effekt-Liste und stoppt ihre Einträge', async () => {
+    api.storageConnections.mockResolvedValue([connection()]);
+    api.storageFiles.mockResolvedValue({ files: [file('Regen.mp3')], nextCursor: null });
+    api.playbackUrl.mockResolvedValue({ url: 'https://bucket.example/sb/Regen.mp3?sig=get', expiresAt: '2099-01-01T00:00:00Z' });
+    api.deleteStorageFile.mockResolvedValue({ ok: true });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(Soundboard);
+    await user.click(await screen.findByRole('button', { name: '„Regen“ zur Effekt-Liste hinzufügen' }));
+    await user.click(screen.getByRole('button', { name: '„Glocke“ zur Effekt-Liste hinzufügen' }));
+    const panel = screen.getByRole('region', { name: 'Effekt-Liste' });
+    await waitFor(() => expect(within(panel).getByRole('button', { name: '„Regen“ in der Effekt-Liste stoppen' }).textContent).toBe('■'));
+    const regen = (play.mock.contexts as HTMLAudioElement[]).find((a) => a.src.includes('Regen.mp3'))!;
+    await user.click(screen.getByRole('button', { name: '„Regen“ löschen' }));
+    await waitFor(() => expect(within(panel).queryByText('Regen')).toBeNull());
+    expect(regen.getAttribute('src')).toBeNull();
+    expect(within(panel).getByRole('button', { name: '„Glocke“ in der Effekt-Liste stoppen' })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.effects')!).entries).toEqual([expect.objectContaining({ sound: 'builtin:glocke' })]);
   });
 
   it('behält beim Aktualisieren eines Speichers die Titel laufender Playlisten', async () => {

@@ -35,12 +35,12 @@ interface Stored {
 }
 
 /** getRandomValues statt randomUUID: das gibt es auch, wenn die Seite über unverschlüsseltes HTTP läuft */
-const newId = (): string => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('');
+export const newId = (): string => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('');
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
-/** Name bzw. Titel: ohne Leerraum außen, höchstens MAX_PLAYLIST_NAME Zeichen */
-const clean = (text: string) => text.trim().slice(0, MAX_PLAYLIST_NAME);
+export const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+export const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
+/** Name bzw. Titel: ohne Leerraum außen, höchstens MAX_PLAYLIST_NAME Zeichen (auch für die Effekt-Liste) */
+export const clean = (text: string) => text.trim().slice(0, MAX_PLAYLIST_NAME);
 
 /** Liest die gespeicherten Playlisten; Kaputtes wird verworfen, doppelte IDs bekommen neue */
 export function loadPlaylists(): Stored {

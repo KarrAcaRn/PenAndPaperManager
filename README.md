@@ -104,7 +104,8 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 Kurz für Spielleiter: Jeder Sound ist entweder **Hintergrundmusik** (läuft allein, ein neuer Titel ersetzt den
 alten) oder **Effekt** (beliebig viele gleichzeitig, auch über der Musik); die Art lässt sich je Kachel umstellen.
 Musik sammelt man über „+“ in benannten **Playlisten** (links neben der Bibliothek), die von selbst weiterschalten –
-mit Pause, Weiter/Zurück, Zufall, Wiederholen und Spulen. Getrennte Regler für Gesamt-, Musik- und
+mit Pause, Weiter/Zurück, Zufall, Wiederholen und Spulen. Effekte stellt man über „+“ in einer **Effekt-Liste**
+zusammen: sie starten bei Lautstärke 0 in Schleife und werden per Regler eingeblendet. Getrennte Regler für Gesamt-, Musik- und
 Effektlautstärke, je Kachel eigene Lautstärke und Endlosschleife. Kategorien, Suche und Tasten (`0–9`, `a–z`,
 `A–Z`, Pfeile, Alt) wie im Referenz-Soundboard. Der Browser merkt sich alles davon. Details:
 
@@ -143,7 +144,17 @@ Effektlautstärke, je Kachel eigene Lautstärke und Endlosschleife. Kategorien, 
   mit Einträgen `{ id, sound: key, title }`, gewählte Playlist, Zufall, Wiederholen), nicht auf dem Server. Auf
   breiten Bildschirmen stehen die Playlisten wie in der Referenz links neben der Bibliothek, schmal darüber. Ein
   Aktualisieren der Speicherliste lässt die alte Liste stehen, bis die neue da ist (laufende Playlisten verlieren
-  dabei keine Titel).
+  dabei keine Titel). Oberfläche: `lib/soundboard/PlaylistPanel.svelte`.
+- **Effekt-Liste** („Szene“, `lib/effectList.svelte.ts`, Oberfläche `lib/soundboard/EffectListPanel.svelte`, unter
+  den Playlisten) wie die Effects-Playlist der Referenz: Effekt-Kacheln haben „+“ (Duplikate erlaubt); ein neuer
+  Eintrag startet sofort bei Lautstärke 0 in Schleife und wird mit seinem Regler eingeblendet. Je Eintrag Regler,
+  Start/Stopp, Endlosschleife (Vorgabe an) und Entfernen (stoppt ihn). Umsortieren per Drag & Drop nur am Griff ⠿
+  (wegen Regler und Knöpfen) oder per Pfeil hoch/runter auf dem Griff. Jeder Eintrag läuft als eigener Sound auf
+  dem Effektkanal (Gesamt × Effekte × Regler des Eintrags; die Einstellungen der Kachel gelten dafür nicht), „Effekte
+  stoppen“ hält auch ihn an. Der Klick auf die Kachel spielt wie bisher sofort. Gespeichert im Browser
+  (`pnp.soundboard.effects`: Einträge `{ id, sound: key, title, volume, loop }`), nach dem Neuladen läuft nichts von
+  selbst; eine gelöschte Datei verschwindet aus der Liste. Kacheln in der Effekt-Liste sind wie Playlist-Titel
+  markiert (☰).
 - Tastatur wie im Referenz-Soundboard (`lib/soundHotkeys.ts`): die sichtbaren Kacheln bekommen der Reihe nach
   `0–9`, `a–z`, `A–Z`; Pfeil links/rechts wechselt die Kategorie, hoch/runter die Musik-Lautstärke, Alt springt in
   die Suche. Beim Tippen in Feldern und bei offenem Dialog ist das aus. Vergleich mit der Referenz:

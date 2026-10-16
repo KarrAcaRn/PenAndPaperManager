@@ -81,11 +81,11 @@ zum Nachbau.
 | 4 | **Master-Lautstärke Musik** (Start 70 %) | `setBackgroundMasterVolume` → `backgroundMasterGain` (`board.js:747`), Slider `#bg-master-volume` | ja – Regler „Musik“ (Start 70 %), dazu Gesamtlautstärke; gespeichert |
 | 5 | **Master-Lautstärke Effekte** (Start 100 %) | `setEffectsMasterVolume` → `effectsMasterGain` (`board.js:760`), Slider `#fx-master-volume` | ja – Regler „Effekte“ (Start 100 %); gespeichert |
 | 6 | **Lautstärke je Effekt** (Slider pro Eintrag, 0–100) | `setEffectItemVolume` (`board.js:773`), Slider in `renderEffectsPlaylist` (`board.js:713`) | **erledigt** – Lautstärke-Regler je Kachel (Faktor zu Gesamt- × Kanallautstärke, wirkt sofort, gespeichert; `soundSettings.svelte.ts`) |
-| 7 | **Effekte starten bei Lautstärke 0** und laufen sofort (zum Einblenden per Slider – die Referenz-Variante von „Fade-in“) | `addToEffectsPlaylist` setzt `volume: 0` und ruft `startEffect` (`board.js:402`) | bewusst nein – setzt die Effekt-Liste voraus (siehe „Offene Punkte“); auf Kacheln hieße es „Klick, und man hört nichts“ |
+| 7 | **Effekte starten bei Lautstärke 0** und laufen sofort (zum Einblenden per Slider – die Referenz-Variante von „Fade-in“) | `addToEffectsPlaylist` setzt `volume: 0` und ruft `startEffect` (`board.js:402`) | **erledigt** – in der **Effekt-Liste** (links unter den Playlisten): „+“ an einer Effekt-Kachel hängt den Effekt an und startet ihn sofort bei Lautstärke 0 in Schleife; der Regler des Eintrags blendet ein (`lib/effectList.svelte.ts`). Ein Klick auf die Kachel spielt weiter sofort mit ihrer eigenen Lautstärke |
 | 8 | **Endlosschleife je Effekt** (Schalter „Endless“, Standard an, wirkt auch während der Wiedergabe) | `toggleEffectLoop` setzt `source.loop` (`board.js:1168`), Vorgabe `loop: true` in `addToEffectsPlaylist` | **erledigt** – Schalter „⟳“ je Kachel, wirkt auch während der Wiedergabe, gespeichert; Standard aus (siehe unten) |
-| 9 | **Effekt einzeln starten/stoppen** (Play/Stop-Knopf je Eintrag, Zustand sichtbar) | `toggleEffectPlayback`, `isEffectPlaying` (`board.js:1151–1166`) | ja – Kachel-Toggle (`player.toggle`) |
-| 10 | **Effekt entfernen** (stoppt ihn) | `removeEffectItem` (`board.js:1181`) | offen – keine Effekt-Liste; Stoppen geht über die Kachel bzw. „Effekte stoppen“ (siehe „Offene Punkte“) |
-| 11 | **Effekte neu anordnen** per Drag & Drop, nur am Griff (wegen Slider/Knöpfen) | `reorderEffectsPlaylist`, `bindEffectDrag`, `bindPlaylistDrag`, `ensureDragDisarm` (`board.js:881–957`) | offen – keine Effekt-Liste; die Kachel-Reihenfolge kommt aus Kategorie/Ordner und bestimmt die Tasten (siehe „Offene Punkte“) |
+| 9 | **Effekt einzeln starten/stoppen** (Play/Stop-Knopf je Eintrag, Zustand sichtbar) | `toggleEffectPlayback`, `isEffectPlaying` (`board.js:1151–1166`) | ja – Kachel-Toggle (`player.toggle`); in der Effekt-Liste ▶/■ je Eintrag, dazu ⟳ je Eintrag (Vorgabe an) |
+| 10 | **Effekt entfernen** (stoppt ihn) | `removeEffectItem` (`board.js:1181`) | **erledigt** – ✕ je Eintrag der Effekt-Liste stoppt und entfernt ihn (`effects.remove`); eine gelöschte Datei verschwindet aus der Liste |
+| 11 | **Effekte neu anordnen** per Drag & Drop, nur am Griff (wegen Slider/Knöpfen) | `reorderEffectsPlaylist`, `bindEffectDrag`, `bindPlaylistDrag`, `ensureDragDisarm` (`board.js:881–957`) | **erledigt** – Drag & Drop nur am Griff ⠿ (die Zeile wird erst beim Drücken des Griffs ziehbar, Loslassen macht sie wieder unziehbar), per Tastatur Pfeil hoch/runter auf dem Griff (ändert dann nicht die Musik-Lautstärke). Die Kachel-Reihenfolge und damit die Tasten bleiben unberührt |
 
 ### Playlist Hintergrundmusik
 
@@ -113,7 +113,7 @@ zum Nachbau.
 | 26 | **Kategorien aus Ordnern**, auch verschachtelt (`packs/rain` → „PACKS / RAIN“), als Tabs | `generateSoundJson.js`; `gotSoundJson`, `createCategoryTabs`, `createCategoryTab`, `catLabel` (`board.js:219`, `1281–1308`, `314`) | **erledigt** – Kategorie-Leiste statt Auswahlliste über alle angezeigten Quellen; Unterordner im eigenen Speicher werden Kategorien („packs / regen“, `fileCategory`). Google Drive listet weiter nur den verbundenen Ordner ohne Unterordner (siehe unten) |
 | 27 | **Kategorie wechseln** per Knöpfen und Pfeil links/rechts, ringsum | `nextCat`, `previousCat`, `setCurrentCat` (`board.js:1361–1374`), `#previous-cat`/`#next-cat` | **erledigt** – Knöpfe ‹ › und Pfeil links/rechts, ringsum („Alle“ gehört zur Reihe) |
 | 28 | **Suche** über alle Kategorien, mehrere Wörter (UND), trifft den ganzen Pfad (also auch den Kategorienamen); Treffer in eigenem Tab „SEARCH“ mit eigenen Hotkeys | `search`, `searchTerm`, `createSearchSoundButtons` (`board.js:245–259`, `1331`); `init` bindet `#search` | **erledigt** – sucht in Titel, Kategorie/Ordner und Schlagwörtern (UND, ohne Akzente); bei aktiver Suche über alle Kategorien, Bereich „Suche“ in der Kategorie-Leiste, eigene Tasten; Suche leeren führt zur gewählten Kategorie zurück |
-| 29 | **Markierung „in einer Playlist“** auf Bibliotheks-Kacheln | `refreshLibraryMarks`, Klasse `in-playlist` (`board.js:416–428`) | **erledigt** – Kacheln in einer Playlist haben ☰ und einen Akzent-Rahmen |
+| 29 | **Markierung „in einer Playlist“** auf Bibliotheks-Kacheln | `refreshLibraryMarks`, Klasse `in-playlist` (`board.js:416–428`) | **erledigt** – Kacheln in einer Playlist oder der Effekt-Liste haben ☰ und einen Akzent-Rahmen |
 | 30 | **Lange Titel kürzen** (> 33 Zeichen → „…“, voller Name im Tooltip) | `createSoundButton` (`board.js:1254`) | ja – anderer Weg: Umbruch im Kachelraster |
 | 31 | Tags | nicht in der Referenz | **erledigt** (soweit sinnvoll) – Schlagwörter werden durchsucht (`BoardSound.tags`) |
 | 32 | Favoriten, Farben je Sound | nicht in der Referenz | nein |
@@ -221,8 +221,6 @@ Einstellungen nach dem Neuladen, Unterordner).
 
 | # | Funktion | Grund |
 | --- | --- | --- |
-| 7 | Effekte starten bei Lautstärke 0 | Ergibt nur in der Effekt-Liste der Referenz Sinn, in der der Regler direkt neben dem laufenden Eintrag steht. Auf unseren Kacheln hieße das: Klick, und man hört nichts. Gehört zur Effekt-Liste (Aufgabe Musik/Effekte); die Schleife steht deshalb auch standardmäßig auf aus. |
-| 10, 11 | Effekt entfernen, Effekte neu anordnen | setzen die Effekt-Liste voraus, die mit dem Hinzufügen-Dialog kommt (Aufgabe Musik/Effekte bzw. Playlisten) |
 | 26 (Drive) | Unterordner bei Google Drive | Drive listet nur direkte Kinder eines Ordners. Rekursives Auflisten braucht eine Änderung am Server-Anbieter (`googleDrive.ts` `listFiles`, Ordnerpfade, seitenweises Laden über mehrere Ordner). S3 liefert Unterordner schon heute. Kann bei Bedarf eine eigene Aufgabe werden. |
 | 32 | Favoriten, Farben je Sound | nicht in der Referenz |
 | 38 | Frei belegbare Tasten je Sound | nicht in der Referenz (dort hängen die Tasten an der Position) |
@@ -272,10 +270,8 @@ Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen al
 
 | Punkt | Worum es geht | Warum offen |
 | --- | --- | --- |
-| Effekt-Liste (#7, #10, #11) | Die Referenz legt Effekte in eine eigene Liste: Start bei Lautstärke 0 zum Einblenden, Entfernen, Umsortieren am Griff. | Bei uns sind die Kacheln selbst die Effekt-Steuerung (Start/Stopp, Lautstärke und Schleife je Kachel, „Effekte stoppen“). Eine zusätzliche Effekt-Liste („Szene“: zusammengestellte Effekte mit eigenen Reglern) ist ein eigenes Feature mit Oberfläche, Speicherung und Tastenbelegung – zu groß für diese Prüfaufgabe. Bei Bedarf eigene Aufgabe. |
 | Unterordner bei Google Drive (#26) | Kategorien aus Unterordnern gehen bei S3, bei Drive nur der verbundene Ordner. | Braucht rekursives Auflisten im Server-Anbieter (`server/src/storage/googleDrive.ts`, `listFiles`). |
 | Echte Wiedergabe aus S3/Drive im Browser | Im Browser geprüft wurde mit den Standard-Sounds; Dateien aus eigenem Speicher nur in den Client-Tests (gemockte API). | In der Prüfumgebung gibt es keinen erreichbaren S3-/Drive-Speicher. |
-| `Soundboard.svelte` aufteilen | Die Seite hat ~900 Zeilen (Playlisten, Upload, Kacheln, Tastatur). | Reiner Umbau ohne Verhaltensänderung; sinnvoll vor der nächsten größeren Soundboard-Erweiterung (z.B. Komponente `PlaylistPanel`). |
 
 ## Paritätsbericht (Aufgabe t_0fc28287, 2026-10-16)
 
@@ -317,8 +313,24 @@ Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen al
 Alle 49 Punkte haben einen Status: vorhanden bzw. erledigt (#2–#6, #8, #9, #12–#23, #25–#31, #33–#35, #37, #39,
 #41–#44, #46, #47, #49), bewusst anders mit Begründung (#1 Typ am Sound statt Dialog, #24 kein Crossfade, #36 ohne
 eigenen Dialog, #40 Audio-Elemente statt dekodierter Puffer, #45 Titel über Themes), nicht in der Referenz und
-deshalb nicht nachgebaut (#32, #38, #48) oder offen mit Grund (#7, #10, #11 Effekt-Liste; Drive-Teil von #26).
+deshalb nicht nachgebaut (#32, #38, #48) oder offen mit Grund (Drive-Teil von #26). Die Effekt-Liste (#7, #10, #11)
+kam mit Aufgabe t_4eec55ac dazu (siehe unten).
 
 Der wichtigste bewusste Unterschied: In der Referenz öffnet ein Klick auf einen Sound den Dialog „Background music /
 Effects“, der Typ hängt an der Liste. Bei uns hat jeder Sound einen Typ und ein Klick spielt sofort – am Spieltisch
 ist das ein Klick statt zwei, und Tasten lösen Sounds direkt aus. Musik kommt über „+“ in eine Playlist.
+
+## Effekt-Liste (Aufgabe t_4eec55ac, 2026-10-16)
+
+- **Umbau vorab:** `Soundboard.svelte` (~900 Zeilen) ist aufgeteilt: Playlisten in `lib/soundboard/PlaylistPanel.svelte`,
+  Effekt-Liste in `lib/soundboard/EffectListPanel.svelte`; die Seite behält Mischpult, Bibliothek, Upload und Tastatur.
+- **Effekt-Liste** (`lib/effectList.svelte.ts`, links unter den Playlisten) wie die Effects-Playlist der Referenz:
+  „+“ an einer Effekt-Kachel hängt den Effekt an (Duplikate erlaubt) und startet ihn sofort bei Lautstärke 0 in
+  Schleife (#7); je Eintrag Regler (Einblenden), ▶/■, ⟳ und ✕ (stoppt und entfernt, #10); Umsortieren per Drag & Drop
+  nur am Griff, per Tastatur Pfeil hoch/runter auf dem Griff (#11).
+- Jeder Eintrag läuft als eigener Sound (Player-Schlüssel `effect-list:<id>`) auf dem Effektkanal:
+  Gesamt × Effekte × Regler des Eintrags; die eigene Lautstärke/Schleife der Kachel gilt dafür nicht. „Effekte
+  stoppen“ und „Alle stoppen“ halten auch die Einträge an. Ein Klick auf die Kachel spielt wie bisher sofort und
+  unabhängig vom Eintrag.
+- Abweichung von der Referenz: Der Browser merkt sich die Liste samt Reglern und Schleife (`pnp.soundboard.effects`),
+  nach dem Neuladen läuft aber nichts von selbst. Eine gelöschte Datei verschwindet aus der Liste.
