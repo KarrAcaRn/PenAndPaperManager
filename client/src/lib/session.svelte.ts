@@ -1,6 +1,7 @@
 import type { Group, SessionUser } from '@pnp/shared';
 import { api, onAuthError } from './api.ts';
 import { href, navigate } from './router.svelte.ts';
+import { loadUserSettings, resetUserSettings } from './userSettings.svelte.ts';
 
 export const session = $state<{ user: SessionUser | null; groups: Group[]; ready: boolean }>({
   user: null,
@@ -11,6 +12,7 @@ export const session = $state<{ user: SessionUser | null; groups: Group[]; ready
 function clear(): void {
   session.user = null;
   session.groups = [];
+  resetUserSettings();
 }
 
 // 401: Session abgelaufen oder woanders ausgeloggt -> Login zeigen.
@@ -22,6 +24,8 @@ onAuthError((status) => {
 
 export async function loadSession(): Promise<void> {
   session.user = (await api.me()).user;
+  // Nicht abwarten: Fehlen die Einstellungen, läuft die App mit den Vorgaben (bzw. dem zuletzt gespeicherten Theme)
+  if (session.user) loadUserSettings().catch(() => {});
   session.groups = session.user ? await api.groups() : [];
   session.ready = true;
 }

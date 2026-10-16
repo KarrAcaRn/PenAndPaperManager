@@ -15,10 +15,26 @@
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
+  color-scheme: light;
 }
 
+/*
+ * Dunkles Design: per Benutzereinstellung (data-theme="dark" an <html>) oder, ohne feste Wahl, nach dem Browser.
+ * color-scheme sorgt dafür, dass Formularelemente, Scrollleisten und das SVG des Zweigrahmens mitziehen.
+ */
+:root[data-theme='dark'] {
+  --bg: #1d1a17;
+  --surface: #27231f;
+  --border: #423b33;
+  --text: #ece5d9;
+  --muted: #a39887;
+  --accent: #e08a4f;
+  --accent-text: #1d1a17;
+  --danger: #ef7d74;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #1d1a17;
     --surface: #27231f;
     --border: #423b33;
@@ -27,6 +43,7 @@
     --accent: #e08a4f;
     --accent-text: #1d1a17;
     --danger: #ef7d74;
+    color-scheme: dark;
   }
 }
 
