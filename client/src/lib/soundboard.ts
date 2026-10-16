@@ -123,6 +123,12 @@ export function groupByCategory(sounds: readonly BoardSound[]): { category: stri
 export const formatBytes = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('de', { maximumFractionDigits: 1 })} MB` : `${Math.ceil(bytes / 1024)} kB`;
 
+/** Spielzeit als m:ss wie in der Referenz (`formatPlayTime`); Unsinn wird 0:00 */
+export function formatPlayTime(seconds: number): string {
+  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 export const ACCEPT_AUDIO = [...AUDIO_EXTENSIONS.map((e) => `.${e}`), ...new Set(Object.values(AUDIO_MIME_TYPES).flat())].join(',');
 
 /**

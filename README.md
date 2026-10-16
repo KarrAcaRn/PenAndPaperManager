@@ -121,6 +121,19 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
   Einstellungen: `volume` gilt als Gesamtlautstärke, der frühere Schalter „Mehrere Sounds gleichzeitig“ entfällt)
   sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe, Schlüssel =
   Kachel-`key`).
+- **Playlisten** für Hintergrundmusik (`lib/playlists.svelte.ts`, Warteschlange ohne Oberfläche in
+  `lib/playlistQueue.ts`): mehrere benannte Playlisten anlegen, umbenennen, löschen; Musik-Kacheln haben „+“
+  (hängt an die gewählte Playlist an, ohne Playlist entsteht eine neue; Duplikate erlaubt; der erste Titel startet
+  sofort, wenn keine Musik läuft – wie in der Referenz). Kacheln in einer Playlist sind markiert (☰). Titel lassen
+  sich per Drag & Drop oder ↑/↓ umsortieren (der laufende bleibt der laufende), entfernen (traf es den laufenden,
+  spielt der nächste) und per Doppelklick bzw. Klick auf den Namen anspringen. Wiedergabe auf dem Musikkanal ohne
+  Schleife; am Titelende automatisch weiter. Steuerung: Zurück, Play/Pause (Fortsetzen an derselben Stelle),
+  Weiter, Stopp, „Zufall“ (jeder Titel einmal je Durchgang) und „Wiederholen“ aus / alle (Vorgabe, wie in der
+  Referenz) / einen Titel. Anzeige von Playlist, Titel „n von m“, Fortschritt mit Zeit und Spulen. Kein Crossfade
+  (harter Wechsel wie in der Referenz). Effekte laufen über der Playlist weiter; Musik per Kachel oder „Musik
+  stoppen“ beendet sie. Nicht verfügbare Titel (z.B. Speicher noch nicht geladen) werden übersprungen; eine
+  gelöschte Datei verschwindet aus allen Playlisten. Gespeichert im Browser (`pnp.soundboard.playlists`: Playlisten
+  mit Einträgen `{ id, sound: key, title }`, gewählte Playlist, Zufall, Wiederholen), nicht auf dem Server.
 - Tastatur wie im Referenz-Soundboard (`lib/soundHotkeys.ts`): die sichtbaren Kacheln bekommen der Reihe nach
   `0–9`, `a–z`, `A–Z`; Pfeil links/rechts wechselt die Kategorie, hoch/runter die Musik-Lautstärke, Alt springt in
   die Suche. Beim Tippen in Feldern und bei offenem Dialog ist das aus. Vergleich mit der Referenz:

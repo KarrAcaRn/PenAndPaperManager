@@ -28,6 +28,45 @@ export const connection = (over: Partial<StorageConnection> = {}): StorageConnec
   ...over,
 });
 
+/** Audio-Element ohne Wiedergabe für den Player; `end()`/`failLoading()` spielen Ende bzw. Ladefehler nach */
+export class FakeAudio {
+  static all: FakeAudio[] = [];
+  src = '';
+  volume = 1;
+  loop = false;
+  /** src vor dem Stoppen, damit Tests gestoppte Elemente wiederfinden */
+  removedSrc = '';
+  preload = '';
+  paused = true;
+  currentTime = 0;
+  duration = NaN;
+  error: { code: number } | null = null;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  playResult: Promise<void> = Promise.resolve();
+  constructor() {
+    FakeAudio.all.push(this);
+  }
+  play() {
+    this.paused = false;
+    return this.playResult;
+  }
+  pause() {
+    this.paused = true;
+  }
+  removeAttribute(name: string) {
+    if (name === 'src') [this.removedSrc, this.src] = [this.src, ''];
+  }
+  failLoading() {
+    this.error = { code: 4 };
+    this.onerror?.();
+  }
+  end() {
+    this.paused = true;
+    this.onended?.();
+  }
+}
+
 /** Nachbau von XMLHttpRequest, der nichts verschickt; `last` ist die zuletzt erzeugte Anfrage */
 export class FakeXhr {
   static last: FakeXhr | null = null;

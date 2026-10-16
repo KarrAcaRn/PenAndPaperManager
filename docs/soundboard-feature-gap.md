@@ -88,20 +88,20 @@ zum Nachbau.
 
 | # | Funktion | Referenz (Datei / Funktion) | Unseres |
 | --- | --- | --- | --- |
-| 12 | **Playlist anlegen/füllen**: Titel aus der Bibliothek anhängen, Duplikate erlaubt; der erste Titel startet automatisch | `addToBackgroundPlaylist` (`board.js:387`) | nein |
-| 13 | **Automatisch weiter**: am Titelende folgt der nächste, nach dem letzten wieder der erste (Wiederholen der ganzen Liste ist fest eingebaut) | `onBackgroundTrackEnded` (`board.js:1053`) | nein |
-| 14 | **Play/Pause** mit Fortsetzen an der gemerkten Stelle | `toggleBackgroundPlayback`, `pauseBackgroundPlayback`, `startBackgroundPlayback` (`board.js:804–836`), `#bg-play-pause` | nein (nur Stopp, kein Pause/Fortsetzen) |
-| 15 | **Nächster Titel** (Skip) | `skipBackgroundTrack` (`board.js:838`), `#bg-skip` | nein |
-| 16 | **Zu Titel springen** per Doppelklick | `jumpToBackgroundItem` (`board.js:847`), `ondblclick` in `renderBackgroundPlaylist` | nein |
-| 17 | **Titel entfernen**; trifft es den laufenden, spielt der nächste, bei leerer Liste ist Ruhe | `removeBackgroundItem` (`board.js:1061`) | nein |
-| 18 | **Reihenfolge per Drag & Drop** (ganze Zeile greifbar), laufender Titel bleibt aktuell | `reorderBackgroundPlaylist`, `movePlaylistItem`, `bindBackgroundDrag` (`board.js:856–894`) | nein |
-| 19 | **Fortschrittsbalken** mit Zeit `m:ss / m:ss` beim laufenden Titel, alle 250 ms aktualisiert | `createBackgroundProgress`, `updateBackgroundProgress`, `formatPlayTime`, `backgroundElapsed` (`board.js:511–666`) | nein |
-| 20 | **Spulen**: Klick oder Ziehen im Balken; im Pausenzustand wird nur die Startposition gesetzt | `startBackgroundSeek`, `seekBackgroundToRatio`, `seekBackgroundTo` (`board.js:546–602`) | nein |
-| 21 | **Markierung des laufenden/ladenden/fehlerhaften Titels** (`is-current`, `is-loading`, `is-error`) | `renderBackgroundPlaylist` (`board.js:452`) | teilweise – Kacheln zeigen lädt/spielt/Fehler, aber keine Liste |
-| 22 | Shuffle | nicht in der Referenz | nein |
-| 23 | Wiederholen aus / einzelnen Titel wiederholen | nicht in der Referenz (Liste wiederholt immer, Musiktitel selbst nie in Schleife) | nein |
-| 24 | Fades/Crossfades zwischen Musiktiteln, Fade-out beim Stoppen | nicht in der Referenz (harter Wechsel; einziges „Einblenden“ ist #7) | nein |
-| 25 | Mehrere benannte Playlisten | nicht in der Referenz (genau eine Musik- und eine Effektliste) | nein |
+| 12 | **Playlist anlegen/füllen**: Titel aus der Bibliothek anhängen, Duplikate erlaubt; der erste Titel startet automatisch | `addToBackgroundPlaylist` (`board.js:387`) | **erledigt** – „+“ auf Musik-Kacheln hängt an die gewählte Playlist an (ohne Playlist entsteht eine), Duplikate erlaubt; der erste Titel startet sofort, sofern keine Musik läuft |
+| 13 | **Automatisch weiter**: am Titelende folgt der nächste, nach dem letzten wieder der erste (Wiederholen der ganzen Liste ist fest eingebaut) | `onBackgroundTrackEnded` (`board.js:1053`) | **erledigt** – „Wiederholen: alle“ ist Vorgabe (`nextTrack` in `playlistQueue.ts`, `ended` in `playlists.svelte.ts`) |
+| 14 | **Play/Pause** mit Fortsetzen an der gemerkten Stelle | `toggleBackgroundPlayback`, `pauseBackgroundPlayback`, `startBackgroundPlayback` (`board.js:804–836`), `#bg-play-pause` | **erledigt** – `player.pause`/`player.resume` behalten das Audio-Element und damit die Stelle |
+| 15 | **Nächster Titel** (Skip) | `skipBackgroundTrack` (`board.js:838`), `#bg-skip` | **erledigt** – „Nächster Titel“, dazu „Vorheriger Titel“ (nicht in der Referenz) |
+| 16 | **Zu Titel springen** per Doppelklick | `jumpToBackgroundItem` (`board.js:847`), `ondblclick` in `renderBackgroundPlaylist` | **erledigt** – Doppelklick auf die Zeile, per Tastatur Klick auf den Namen |
+| 17 | **Titel entfernen**; trifft es den laufenden, spielt der nächste, bei leerer Liste ist Ruhe | `removeBackgroundItem` (`board.js:1061`) | **erledigt** – `afterRemove`; angehalten bleibt angehalten |
+| 18 | **Reihenfolge per Drag & Drop** (ganze Zeile greifbar), laufender Titel bleibt aktuell | `reorderBackgroundPlaylist`, `movePlaylistItem`, `bindBackgroundDrag` (`board.js:856–894`) | **erledigt** – Drag & Drop der Zeile und ↑/↓; Einträge haben eigene IDs, der laufende bleibt der laufende |
+| 19 | **Fortschrittsbalken** mit Zeit `m:ss / m:ss` beim laufenden Titel, alle 250 ms aktualisiert | `createBackgroundProgress`, `updateBackgroundProgress`, `formatPlayTime`, `backgroundElapsed` (`board.js:511–666`) | **erledigt** – Schieberegler „Position im Titel“ mit `formatPlayTime`, alle 250 ms |
+| 20 | **Spulen**: Klick oder Ziehen im Balken; im Pausenzustand wird nur die Startposition gesetzt | `startBackgroundSeek`, `seekBackgroundToRatio`, `seekBackgroundTo` (`board.js:546–602`) | **erledigt** – `player.seek`, auch angehalten |
+| 21 | **Markierung des laufenden/ladenden/fehlerhaften Titels** (`is-current`, `is-loading`, `is-error`) | `renderBackgroundPlaylist` (`board.js:452`) | **erledigt** – Zeile mit `aria-current`, Symbol ♪/…/❚❚, Fehlertext am Titel, „(nicht verfügbar)“ für nicht geladene Sounds |
+| 22 | Shuffle | nicht in der Referenz | **erledigt** – „Zufall“: jeder Titel einmal je Durchgang, neuer Durchgang beginnt nicht mit dem letzten |
+| 23 | Wiederholen aus / einzelnen Titel wiederholen | nicht in der Referenz (Liste wiederholt immer, Musiktitel selbst nie in Schleife) | **erledigt** – „Wiederholen“ aus / alle (Vorgabe) / einen Titel |
+| 24 | Fades/Crossfades zwischen Musiktiteln, Fade-out beim Stoppen | nicht in der Referenz (harter Wechsel; einziges „Einblenden“ ist #7) | bewusst nein – harter Wechsel wie in der Referenz |
+| 25 | Mehrere benannte Playlisten | nicht in der Referenz (genau eine Musik- und eine Effektliste) | **erledigt** – anlegen, umbenennen, löschen, Auswahl |
 
 ### Bibliothek, Suche, Kategorien
 
@@ -110,7 +110,7 @@ zum Nachbau.
 | 26 | **Kategorien aus Ordnern**, auch verschachtelt (`packs/rain` → „PACKS / RAIN“), als Tabs | `generateSoundJson.js`; `gotSoundJson`, `createCategoryTabs`, `createCategoryTab`, `catLabel` (`board.js:219`, `1281–1308`, `314`) | **erledigt** – Kategorie-Leiste statt Auswahlliste über alle angezeigten Quellen; Unterordner im eigenen Speicher werden Kategorien („packs / regen“, `fileCategory`). Google Drive listet weiter nur den verbundenen Ordner ohne Unterordner (siehe unten) |
 | 27 | **Kategorie wechseln** per Knöpfen und Pfeil links/rechts, ringsum | `nextCat`, `previousCat`, `setCurrentCat` (`board.js:1361–1374`), `#previous-cat`/`#next-cat` | **erledigt** – Knöpfe ‹ › und Pfeil links/rechts, ringsum („Alle“ gehört zur Reihe) |
 | 28 | **Suche** über alle Kategorien, mehrere Wörter (UND), trifft den ganzen Pfad (also auch den Kategorienamen); Treffer in eigenem Tab „SEARCH“ mit eigenen Hotkeys | `search`, `searchTerm`, `createSearchSoundButtons` (`board.js:245–259`, `1331`); `init` bindet `#search` | **erledigt** – sucht in Titel, Kategorie/Ordner und Schlagwörtern (UND, ohne Akzente); bei aktiver Suche über alle Kategorien, Bereich „Suche“ in der Kategorie-Leiste, eigene Tasten; Suche leeren führt zur gewählten Kategorie zurück |
-| 29 | **Markierung „in einer Playlist“** auf Bibliotheks-Kacheln | `refreshLibraryMarks`, Klasse `in-playlist` (`board.js:416–428`) | nein |
+| 29 | **Markierung „in einer Playlist“** auf Bibliotheks-Kacheln | `refreshLibraryMarks`, Klasse `in-playlist` (`board.js:416–428`) | **erledigt** – Kacheln in einer Playlist haben ☰ und einen Akzent-Rahmen |
 | 30 | **Lange Titel kürzen** (> 33 Zeichen → „…“, voller Name im Tooltip) | `createSoundButton` (`board.js:1254`) | ja – anderer Weg: Umbruch im Kachelraster |
 | 31 | Tags | nicht in der Referenz | **erledigt** (soweit sinnvoll) – Schlagwörter werden durchsucht (`BoardSound.tags`) |
 | 32 | Favoriten, Farben je Sound | nicht in der Referenz | nein |
@@ -142,7 +142,7 @@ zum Nachbau.
 | 43 | **Sounds hinzufügen**: Dateien in `sounds/<kategorie>/` legen, `npm start` erzeugt `sounds.json` | `generateSoundJson.js`, `package.json` Skript `updateSounds` | ja, und mehr – Standard-Sounds per Manifest; Upload in eigenen S3-/Drive-Speicher mit Fortschritt, Drag & Drop, Löschen (`Soundboard.svelte`, `lib/upload.ts`) |
 | 44 | **Auslieferung mit HTTP-Range**, Symlinks, Schutz vor Pfad-Traversal | `soundsMiddleware` in `start-server.js` | ja – `@fastify/static` mit `allowedPath` (`server/src/routes/sounds.ts`), Speicher-Anbieter liefern selbst |
 | 45 | **Eigener Titel** der Seite | `js/customizations.json` (`title`), `init` (`board.js:233`) | nein – fest „Soundboard“ (für uns unwichtig) |
-| 46 | **Persistenz** | keine: Playlisten, Lautstärken und Schleifen gehen beim Neuladen verloren | teilweise – Gesamt-, Musik- und Effektlautstärke, „Musik wiederholen“, Typ je Sound (`pnp.soundboard.types`) sowie Lautstärke/Schleife je Sound (`pnp.soundboard.sounds`) in `localStorage`; Playlisten gehören zur Playlist-Aufgabe |
+| 46 | **Persistenz** | keine: Playlisten, Lautstärken und Schleifen gehen beim Neuladen verloren | **erledigt** (mehr als die Referenz) – Gesamt-, Musik- und Effektlautstärke, „Musik wiederholen“, Typ je Sound (`pnp.soundboard.types`) sowie Lautstärke/Schleife je Sound (`pnp.soundboard.sounds`) in `localStorage`; Playlisten samt gewählter Playlist, Zufall und Wiederholen unter `pnp.soundboard.playlists` |
 | 47 | **Zweispaltiges Layout**: Playlisten links, Bibliothek rechts | `index.html` `.app-layout`, `css/custom.css` | nein – eine Spalte mit Kachelraster |
 | 48 | Import/Export der Board-Konfiguration | nicht in der Referenz | nein |
 | 49 | Mehrere Quellen, Anmeldung, eigener Speicher, Löschen, „Weitere laden“ | nicht in der Referenz | ja (nur bei uns) |
@@ -226,3 +226,40 @@ Einstellungen nach dem Neuladen, Unterordner).
 | 40 | Puffer-Cache mit dekodierten Dateien | bewusst anders: `Audio`-Elemente mit Browser-Cache und Playback-URL-Cache; ganze Musikstücke zu dekodieren kostet viel Speicher und Startzeit |
 | 45 | Eigener Seitentitel | für uns unwichtig; das Aussehen passt der Betreiber über Themes an |
 | 48 | Import/Export der Konfiguration | nicht in der Referenz |
+
+## Umsetzung: Playlisten (Aufgabe t_9ae3600d)
+
+Umgesetzt sind #12–#25 (außer #24) und #29, in der Tabelle oben als „**erledigt**“ markiert.
+
+| Teil | Wo |
+| --- | --- |
+| Warteschlange ohne Oberfläche: weiter, zurück, Zufall, Wiederholen, Entfernen, Verschieben | `client/src/lib/playlistQueue.ts` (`nextTrack`, `previousTrack`, `afterRemove`, `moveItem`) |
+| Playlisten speichern (`pnp.soundboard.playlists`) | `createPlaylists` in `client/src/lib/playlists.svelte.ts` |
+| Wiedergabe auf dem Musikkanal | `createPlaylistPlayer` ebenda; spielt per `player.play(sound, { channel: 'music', loop: false })`, schaltet über `createPlayer({ onEnded })` weiter |
+| Pause/Fortsetzen, Position, Spulen | `pause`, `resume`, `position`, `seek` in `client/src/lib/soundPlayer.svelte.ts` (neuer Zustand `paused`) |
+| Oberfläche | Abschnitt „Playlisten“ und „+“ auf Musik-Kacheln in `client/src/routes/Soundboard.svelte` |
+
+Entscheidungen:
+
+- **Mehrere benannte Playlisten** statt der einen Liste der Referenz; ein Eintrag ist `{ id, sound, title }` (eigene ID,
+  damit Duplikate und Umsortieren sicher sind; `title` zeigt den Namen, solange der Sound noch nicht geladen ist).
+- **Gespeichert im Browser** wie die übrigen Soundboard-Einstellungen (das Soundboard geht auch ohne Login); nach
+  dem Neuladen sind Playlisten, Auswahl, Zufall und Wiederholen wieder da, die Wiedergabe startet aber nicht von
+  selbst (das ließe der Browser ohne Klick ohnehin nicht zu).
+- **Wiederholen „alle“ ist Vorgabe** (Verhalten der Referenz), dazu „aus“ und „einen Titel“. Bei „einen Titel“
+  wiederholt das Titelende, „Weiter“ schaltet trotzdem um. **Zufall** spielt jeden Titel einmal je Durchgang;
+  „Zurück“ geht dann zum zuvor gespielten.
+- **Kein Crossfade**: harter Wechsel wie in der Referenz.
+- **Effekte** laufen über der Playlist (eigener Kanal). Musik per Kachel ersetzt den Playlist-Titel, dessen Ende
+  schaltet dann nicht mehr weiter; „Abspielen“ setzt beim gemerkten Titel wieder ein. „Musik stoppen“ und „Alle
+  stoppen“ beenden die Playlist.
+- **Ladefehler** eines Titels: Fehlertext am Titel, die Playlist bleibt stehen (wie in der Referenz). Titel, deren
+  Sound gar nicht verfügbar ist (Speicher nicht geladen, Datei weg), werden übersprungen.
+- **Gelöschte Datei**: verschwindet aus allen Playlisten; lief sie gerade, spielt der nächste Titel.
+- Ein Musik-Sound, der auf „Effekt“ umgestellt wird, bleibt in seinen Playlisten und spielt dort weiter auf dem
+  Musikkanal. Ein laufender Sound stoppt beim Typwechsel nur noch, wenn er auf dem anderen Kanal läuft.
+
+Tests: `client/test/playlists.test.ts` (Warteschlange, Speichern, Wiedergabe mit dem echten Player) und
+`client/test/soundboardPage.test.ts` (Bereich „Soundboard: Playlisten“, Löschen einer Datei aus einer Playlist).
+
+Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen als eigener Abschnitt über den Kacheln.

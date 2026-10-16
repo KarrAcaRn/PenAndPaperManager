@@ -20,7 +20,7 @@ import { HOTKEYS, assignHotkeys, hotkeyAction, isTypingTarget, stepCategory } fr
 import { SOUND_SETTINGS_KEY, createSoundSettings } from '../src/lib/soundSettings.svelte.ts';
 import { UploadError, uploadDirect } from '../src/lib/upload.ts';
 import { DEFAULT_SETTINGS, createPlayer, createSoundTypes, loadSettings } from '../src/lib/soundPlayer.svelte.ts';
-import { FakeXhr, builtinSound } from './soundHelpers.ts';
+import { FakeAudio, FakeXhr, builtinSound } from './soundHelpers.ts';
 
 const putTarget = (over: Partial<UploadTarget> = {}): UploadTarget => ({
   method: 'PUT',
@@ -246,43 +246,6 @@ describe('Direkter Upload', () => {
     await expect(failed).rejects.toBeInstanceOf(UploadError);
   });
 });
-
-/** Audio-Element ohne Wiedergabe: play() wartet, bis der Test es per resolvePlay/fail beendet */
-class FakeAudio {
-  static all: FakeAudio[] = [];
-  src = '';
-  volume = 1;
-  loop = false;
-  /** src vor dem Stoppen, damit Tests gestoppte Elemente wiederfinden */
-  removedSrc = '';
-  preload = '';
-  paused = true;
-  error: { code: number } | null = null;
-  onended: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  playResult: Promise<void> = Promise.resolve();
-  constructor() {
-    FakeAudio.all.push(this);
-  }
-  play() {
-    this.paused = false;
-    return this.playResult;
-  }
-  pause() {
-    this.paused = true;
-  }
-  removeAttribute(name: string) {
-    if (name === 'src') [this.removedSrc, this.src] = [this.src, ''];
-  }
-  failLoading() {
-    this.error = { code: 4 };
-    this.onerror?.();
-  }
-  end() {
-    this.paused = true;
-    this.onended?.();
-  }
-}
 
 describe('Player', () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));

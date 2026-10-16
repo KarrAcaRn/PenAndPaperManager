@@ -108,6 +108,8 @@ export interface PlayerOptions {
   soundOptions?: (key: string) => { volume: number; loop: boolean };
 }
 
+export type SoundState = 'loading' | 'playing' | 'paused';
+
 /** MediaError.MEDIA_ERR_NETWORK (als Zahl, weil nicht jede Umgebung MediaError kennt) */
 const MEDIA_ERR_NETWORK = 2;
 
@@ -123,8 +125,8 @@ export function createPlayer(options: PlayerOptions) {
   const createAudio = options.createAudio ?? (() => new Audio());
   const typeOf = options.typeOf ?? ((sound: BoardSound) => sound.type);
   const settings = $state<PlayerSettings>(loadSettings());
-  /** Zustand je Kachel (key): lädt, spielt oder Fehlermeldung */
-  const states = $state<Record<string, 'loading' | 'playing'>>({});
+  /** Zustand je Kachel (key): lädt, spielt, angehalten (Musik-Playlist) oder Fehlermeldung */
+  const states = $state<Record<string, SoundState>>({});
   const errors = $state<Record<string, string>>({});
   /** Kanal je laufendem oder ladendem Sound */
   const channels = $state<Record<string, Channel>>({});
@@ -216,6 +218,8 @@ export function createPlayer(options: PlayerOptions) {
         fail(new Error(mediaErrorMessage(audio)));
       };
       audio.src = url;
+      // während des Ladens angehalten: gar nicht erst losspielen, `resume` startet dann
+      if (states[sound.key] === 'paused') return;
       try {
         await audio.play();
       } catch (err) {
@@ -227,7 +231,11 @@ export function createPlayer(options: PlayerOptions) {
         if (audio.error) return;
         throw err;
       }
-      if (current() && audios.get(sound.key) === audio) states[sound.key] = 'playing';
+      if (current() && audios.get(sound.key) === audio) {
+        // während des Ladens angehalten: dabei bleibt es
+        if (states[sound.key] === 'paused') audio.pause();
+        else states[sound.key] = 'playing';
+      }
     };
 
     const fail = (err: unknown) => {
@@ -283,6 +291,48 @@ export function createPlayer(options: PlayerOptions) {
     },
     clearError(key: string): void {
       delete errors[key];
+    },
+    /** Anhalten mit Fortsetzen an derselben Stelle (Referenz: `pauseBackgroundPlayback`) */
+    pause(key: string): void {
+      if (!(key in states) || states[key] === 'paused') return;
+      audios.get(key)?.pause();
+      states[key] = 'paused';
+    },
+    async resume(key: string): Promise<void> {
+      if (states[key] !== 'paused') return;
+      const audio = audios.get(key);
+      if (!audio) {
+        // beim Laden angehalten: einfach weiter laden lassen
+        states[key] = 'loading';
+        return;
+      }
+      const gen = generation.get(key);
+      states[key] = 'playing';
+      try {
+        await audio.play();
+      } catch (err) {
+        if (generation.get(key) !== gen || (err as DOMException)?.name === 'AbortError') return;
+        // Ladefehler meldet onerror (samt Neuversuch mit frischer URL)
+        if (audio.error) return;
+        stop(key);
+        errors[key] =
+          (err as DOMException)?.name === 'NotAllowedError'
+            ? 'Der Browser hat die Wiedergabe blockiert – bitte noch einmal klicken.'
+            : ((err as Error)?.message ?? String(err));
+      }
+    },
+    /** Stelle und Länge in Sekunden (Länge 0, solange unbekannt); null, solange keine Datei geladen ist */
+    position(key: string): { current: number; duration: number } | null {
+      const audio = audios.get(key);
+      if (!audio) return null;
+      return { current: audio.currentTime || 0, duration: Number.isFinite(audio.duration) ? audio.duration : 0 };
+    },
+    /** Spulen (Referenz: `seekBackgroundTo`); wirkt auch im angehaltenen Zustand */
+    seek(key: string, seconds: number): void {
+      const audio = audios.get(key);
+      if (!audio) return;
+      const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Infinity;
+      audio.currentTime = Math.min(Math.max(0, seconds), duration);
     },
   };
 }

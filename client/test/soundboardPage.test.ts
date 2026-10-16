@@ -292,6 +292,182 @@ describe('Soundboard: Musik und Effekte', () => {
   });
 });
 
+describe('Soundboard: Playlisten', () => {
+  const audioFor = (name: string) => [...(play.mock.contexts as HTMLAudioElement[])].reverse().find((a) => a.src.endsWith(`/${name}.wav`))!;
+  const playlistStatus = () => within(screen.getByRole('region', { name: 'Playlisten' })).getByRole('status');
+  const tracks = () => within(screen.getByRole('list', { name: /^Titel von/ })).getAllByRole('listitem');
+  const control = (name: string) => within(screen.getByRole('group', { name: 'Steuerung der Playlist' })).getByRole('button', { name });
+  /** der laufende Titel ist von selbst zu Ende */
+  const finish = (name: string) => audioFor(name).onended!(new Event('ended'));
+
+  beforeEach(() => {
+    api.builtinSounds.mockResolvedValue({ sounds: [...BUILTIN, builtinSound('hymne', 'Hymne', 'Musik')] });
+  });
+
+  it('füllt per „+“ eine neue Playlist, spielt den ersten Titel sofort und schaltet am Ende weiter', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    expect(screen.getByText(/Noch keine Playlist/)).toBeTruthy();
+    // nur Musik-Kacheln haben „+“
+    expect(screen.queryByRole('button', { name: /„Glocke“ zu/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '„Fanfare“ zu einer neuen Playlist hinzufügen' }));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 1 von 1 aus „Playlist 1“/));
+    expect(audioFor('fanfare').loop).toBe(false);
+    await user.click(screen.getByRole('button', { name: '„Hymne“ zu „Playlist 1“ hinzufügen' }));
+    expect(tracks().map((li) => li.textContent)).toEqual([expect.stringContaining('Fanfare'), expect.stringContaining('Hymne')]);
+    expect(tracks()[0].getAttribute('aria-current')).toBe('true');
+    expect(tile('Hymne').closest('li')!.classList.contains('in-playlist')).toBe(true);
+
+    // Effekt darüber unterbricht die Playlist nicht
+    await user.click(tile('Glocke'));
+    await waitFor(() => expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true'));
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('true');
+
+    finish('fanfare');
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Hymne · Titel 2 von 2/));
+    expect(tile('Glocke').getAttribute('aria-pressed')).toBe('true');
+    finish('hymne');
+    // Wiederholen „alle“ ist Vorgabe (wie in der Referenz)
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 1 von 2/));
+  });
+
+  it('bedient Pause, Weiter, Zurück, Zufall, Wiederholen und Reihenfolge und merkt sich alles über das Neuladen', async () => {
+    const { unmount } = render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: 'Neue Playlist' }));
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Taverne{Enter}');
+    await user.click(screen.getByRole('button', { name: '„Fanfare“ zu „Taverne“ hinzufügen' }));
+    await user.click(screen.getByRole('button', { name: '„Hymne“ zu „Taverne“ hinzufügen' }));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare/));
+
+    await user.click(control('Anhalten'));
+    expect(playlistStatus().textContent).toMatch(/Angehalten: Fanfare/);
+    await user.click(control('Abspielen'));
+    expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare/);
+    await user.click(control('Nächster Titel'));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Hymne/));
+    await user.click(control('Vorheriger Titel'));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare/));
+
+    // Hymne nach oben: der laufende Titel bleibt, steht jetzt an Stelle 2
+    await user.click(screen.getByRole('button', { name: '„Hymne“ nach oben' }));
+    expect(tracks()[0].textContent).toMatch(/Hymne/);
+    expect(playlistStatus().textContent).toMatch(/Fanfare · Titel 2 von 2/);
+
+    await user.click(control('Zufall'));
+    expect(control('Zufall').getAttribute('aria-pressed')).toBe('true');
+    await user.click(control('Wiederholen: alle'));
+    expect(control('Wiederholen: einen Titel')).toBeTruthy();
+    finish('fanfare');
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 2 von 2/));
+    await user.click(control('Wiederholen: einen Titel'));
+    expect(control('Wiederholen: aus')).toBeTruthy();
+
+    unmount();
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    expect((screen.getByRole('combobox', { name: 'Playlist' }) as HTMLSelectElement).selectedOptions[0].textContent).toBe('Taverne (2)');
+    expect(tracks().map((li) => li.textContent)).toEqual([expect.stringContaining('Hymne'), expect.stringContaining('Fanfare')]);
+    expect(control('Zufall').getAttribute('aria-pressed')).toBe('true');
+    expect(control('Wiederholen: aus')).toBeTruthy();
+    // ohne Zufall der Reihe nach von vorn
+    await user.click(control('Zufall'));
+    await user.click(control('Abspielen'));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Hymne · Titel 1 von 2 aus „Taverne“/));
+  });
+
+  it('Doppelklick springt zu einem Titel, Entfernen spielt den nächsten, Musik per Kachel übernimmt', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: 'Neue Playlist' }));
+    for (const t of ['Fanfare', 'Hymne', 'Fanfare']) await user.click(screen.getByRole('button', { name: `„${t}“ zu „Playlist 1“ hinzufügen` }));
+    await user.dblClick(tracks()[1]);
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Hymne · Titel 2 von 3/));
+    await user.click(screen.getAllByRole('button', { name: '„Hymne“ aus der Playlist entfernen' })[0]);
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 2 von 2/));
+
+    // Musik per Kachel ersetzt den Titel; dessen Ende schaltet nicht weiter
+    await user.click(tile('Hymne'));
+    await waitFor(() => expect(tile('Hymne').getAttribute('aria-pressed')).toBe('true'));
+    expect(playlistStatus().textContent).toMatch(/Gestoppt: Fanfare/);
+    finish('hymne');
+    await waitFor(() => expect(tile('Hymne').getAttribute('aria-pressed')).toBe('false'));
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
+
+    // „Musik stoppen“ beendet auch die Playlist
+    await user.click(control('Abspielen'));
+    await waitFor(() => expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('true'));
+    await user.click(screen.getByRole('button', { name: 'Musik stoppen' }));
+    expect(within(screen.getByRole('region', { name: 'Playlisten' })).queryByRole('status')).toBeNull();
+  });
+
+  it('Doppelklick auf die Knöpfe einer Zeile springt nicht; Typwechsel des laufenden Titels hält die Playlist nicht an', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: 'Neue Playlist' }));
+    for (const t of ['Fanfare', 'Hymne']) await user.click(screen.getByRole('button', { name: `„${t}“ zu „Playlist 1“ hinzufügen` }));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 1 von 2/));
+    await user.dblClick(screen.getByRole('button', { name: '„Hymne“ nach oben' }));
+    expect(tracks()[0].textContent).toMatch(/Hymne/);
+    expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare · Titel 2 von 2/);
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Typ von „Fanfare“' }), 'sfx');
+    expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare/);
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('true');
+    // der Titel bleibt in der Playlist, das Ende schaltet weiter
+    finish('fanfare');
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Hymne · Titel 1 von 2/));
+  });
+
+  it('zeigt den Fortschritt und spult beim Loslassen des Reglers', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: '„Fanfare“ zu einer neuen Playlist hinzufügen' }));
+    await waitFor(() => expect(playlistStatus().textContent).toMatch(/Läuft: Fanfare/));
+    const audio = audioFor('fanfare');
+    Object.defineProperty(audio, 'duration', { configurable: true, value: 125 });
+    audio.currentTime = 61;
+    const slider = (await screen.findByRole('slider', { name: 'Position im Titel' })) as HTMLInputElement;
+    await waitFor(() => expect(slider.getAttribute('aria-valuetext')).toBe('1:01 von 2:05'));
+    slider.value = '90';
+    await fireEvent.input(slider);
+    await fireEvent.change(slider);
+    expect(audio.currentTime).toBe(90);
+  });
+
+  it('sortiert Titel per Drag & Drop', async () => {
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: 'Neue Playlist' }));
+    for (const t of ['Fanfare', 'Hymne']) await user.click(screen.getByRole('button', { name: `„${t}“ zu „Playlist 1“ hinzufügen` }));
+    const data: Record<string, string> = {};
+    const dataTransfer = { types: ['application/x-pnp-playlist-entry'], setData: (k: string, v: string) => (data[k] = v), effectAllowed: '', dropEffect: '' };
+    await fireEvent.dragStart(tracks()[1], { dataTransfer });
+    expect(Object.keys(data)).toEqual(['application/x-pnp-playlist-entry']);
+    expect(await fireEvent.dragOver(tracks()[0], { dataTransfer })).toBe(false);
+    await fireEvent.drop(tracks()[0], { dataTransfer });
+    expect(tracks().map((li) => li.textContent)).toEqual([expect.stringContaining('Hymne'), expect.stringContaining('Fanfare')]);
+    // ohne laufendes Ziehen einer Zeile nimmt die Liste nichts an
+    expect(await fireEvent.dragOver(tracks()[0], { dataTransfer: { types: ['Files'] } })).toBe(true);
+  });
+
+  it('löscht Playlisten erst nach Bestätigung, die Sounds bleiben', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(Soundboard);
+    await screen.findByRole('button', { name: 'Glocke' });
+    await user.click(screen.getByRole('button', { name: '„Fanfare“ zu einer neuen Playlist hinzufügen' }));
+    await user.click(screen.getByRole('button', { name: 'Playlist löschen' }));
+    expect(tracks()).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Playlist löschen' }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/Noch keine Playlist/)).toBeTruthy();
+    expect(tile('Fanfare').getAttribute('aria-pressed')).toBe('false');
+    expect(tile('Fanfare').closest('li')!.classList.contains('in-playlist')).toBe(false);
+  });
+});
+
 describe('Soundboard mit Login', () => {
   beforeEach(() => signIn(PLAYER));
 
@@ -398,6 +574,11 @@ describe('Soundboard mit Login', () => {
     render(Soundboard);
     await screen.findByText(/Noch keine Sounds/);
     const zone = screen.getByRole('region', { name: 'Hochladen' });
+    // gezogene Playlist-Zeilen (keine Dateien) nimmt die Fläche nicht an
+    expect(await fireEvent.dragOver(zone, { dataTransfer: { types: ['application/x-pnp-playlist-entry'] } })).toBe(true);
+    expect(zone.classList.contains('dragging')).toBe(false);
+    expect(await fireEvent.dragOver(zone, { dataTransfer: { types: ['Files'] } })).toBe(false);
+    expect(zone.classList.contains('dragging')).toBe(true);
     const dropped = new File(['abc'], 'neu.mp3', { type: 'audio/mpeg' });
     const event = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', { value: { files: [dropped] } });
@@ -449,6 +630,26 @@ describe('Soundboard mit Login', () => {
     await user.click(screen.getByRole('button', { name: '„Regen“ löschen' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /Regen/ })).toBeNull());
     expect(JSON.parse(localStorage.getItem('pnp.soundboard.types')!)).toEqual({});
+  });
+
+  it('nimmt eine gelöschte Datei aus allen Playlisten; lief sie gerade, spielt der nächste Titel', async () => {
+    localStorage.setItem('pnp.soundboard.types', JSON.stringify({ '3:sb/Regen.mp3': 'music' }));
+    api.storageConnections.mockResolvedValue([connection()]);
+    api.storageFiles.mockResolvedValue({ files: [file('Regen.mp3')], nextCursor: null });
+    api.playbackUrl.mockResolvedValue({ url: 'https://bucket.example/sb/Regen.mp3?sig=get', expiresAt: '2099-01-01T00:00:00Z' });
+    api.deleteStorageFile.mockResolvedValue({ ok: true });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(Soundboard);
+    await user.click(await screen.findByRole('button', { name: '„Regen“ zu einer neuen Playlist hinzufügen' }));
+    await user.click(screen.getByRole('button', { name: '„Fanfare“ zu „Playlist 1“ hinzufügen' }));
+    const status = () => within(screen.getByRole('region', { name: 'Playlisten' })).getByRole('status').textContent;
+    await waitFor(() => expect(status()).toMatch(/Läuft: Regen · Titel 1 von 2/));
+    await user.click(screen.getByRole('button', { name: '„Regen“ löschen' }));
+    await waitFor(() => expect(status()).toMatch(/Läuft: Fanfare · Titel 1 von 1/));
+    expect(within(screen.getByRole('list', { name: /^Titel von/ })).getAllByRole('listitem')).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem('pnp.soundboard.playlists')!).playlists[0].tracks).toEqual([
+      expect.objectContaining({ sound: 'builtin:fanfare' }),
+    ]);
   });
 
   it('meldet getrennte Speicher verständlich und lädt deren Status neu', async () => {
