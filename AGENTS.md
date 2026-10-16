@@ -17,6 +17,8 @@ npm-Workspaces, alles TypeScript (ESM, Imports mit `.ts`-Endung):
     `requireUser`/`requireMember`/`requireGm`. Login per E-Mail-Code in `login-codes.ts` + `routes/login-codes.ts`.
   - `schemas.ts` – JSON-Schema-Bausteine für die Fastify-Validierung.
   - `migrations/NNN_name.sql` – werden beim Start automatisch in Dateinamen-Reihenfolge angewendet.
+  - `storage/` – externe Speicher fürs Soundboard (`StorageProvider`, Registry, Verbindungen), `secrets.ts`
+    verschlüsselt Zugangsdaten. Siehe `docs/soundboard-storage.md`.
 - `client/` – Svelte 5 (Runes, `*.svelte.ts` für reaktiven Zustand), Vite, eigener Router (`lib/router.svelte.ts`),
   API-Zugriff nur über `lib/api.ts`. Markdown-Anzeige via `marked` + `DOMPurify` (`lib/markdown.ts`), Bearbeiten im WYSIWYG-Editor TipTap
   (`lib/MarkdownEditor.svelte`, speichert Markdown, wird per dynamischem Import nachgeladen).
@@ -33,6 +35,7 @@ npm run build && npm start
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`); Mailversand (`server/src/mail.ts`)
 über `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM` – siehe `.env.example`. Ohne SMTP wird außerhalb von Produktion nur geloggt.
+`APP_SECRET_KEY` (sonst `data/secret.key`), `S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben).
 
 ## Konventionen
 

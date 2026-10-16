@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { ArticleInput, Visibility } from '@pnp/shared';
 import { openDb } from '../src/db.ts';
@@ -39,12 +40,13 @@ export function testApp(db = openDb(':memory:'), opts: AppOptions = {}): Fastify
   return buildApp(db, {
     sendLoginCodeEmail: async (email, code) => void outbox.set(email, code),
     loginRateLimits: NO_RATE_LIMITS,
+    secretKey: randomBytes(32),
     ...opts,
   });
 }
 
-export function makeApp(): FastifyInstance {
-  return testApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL });
+export function makeApp(opts: AppOptions = {}): FastifyInstance {
+  return testApp(openDb(':memory:'), { adminEmails: ADMIN_EMAIL, ...opts });
 }
 
 /**

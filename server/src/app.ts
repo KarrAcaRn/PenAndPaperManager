@@ -18,6 +18,9 @@ import { skillRoutes } from './routes/skills.ts';
 import { sheetRoutes } from './routes/sheets.ts';
 import { rulebookRoutes } from './routes/rulebooks.ts';
 import { settingsRoutes } from './routes/settings.ts';
+import { storageRoutes } from './routes/storage.ts';
+import { defaultStorageProviders, type StorageProviderRegistry } from './storage/registry.ts';
+import { createSecretBox, loadSecretKey, type SecretBox } from './secrets.ts';
 import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
 import { seedPresets } from './presets.ts';
 import { dbPath, rulebookDir } from './paths.ts';
@@ -34,6 +37,10 @@ export interface AppOptions {
   sendLoginCodeEmail?: SendLoginCodeEmail;
   /** Rate-Limits für das Anfordern von Login-Codes; Vorgabe RATE_LIMITS (Tests mit vielen Logins lockern sie) */
   loginRateLimits?: LoginRateLimits;
+  /** Anbieter externer Speicher (Soundboard); Vorgabe sind die eingebauten (defaultStorageProviders) */
+  storageProviders?: StorageProviderRegistry;
+  /** Schlüssel für gespeicherte Zugangsdaten; Vorgabe APP_SECRET_KEY bzw. data/secret.key, erst bei Bedarf geladen */
+  secretKey?: Buffer;
 }
 
 export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
@@ -67,6 +74,12 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   sheetRoutes(app, db);
   rulebookRoutes(app, db, opts.rulebookDir ?? rulebookDir(dbPath()));
   settingsRoutes(app, db);
+  let secrets: SecretBox | undefined;
+  storageRoutes(app, {
+    db,
+    secrets: () => (secrets ??= createSecretBox(opts.secretKey ?? loadSecretKey(dbPath()))),
+    providers: opts.storageProviders ?? defaultStorageProviders(),
+  });
 
   // Produktion: gebautes Frontend ausliefern (im Dev-Betrieb übernimmt das Vite).
   if (existsSync(CLIENT_DIST)) {
