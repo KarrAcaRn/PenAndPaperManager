@@ -32,6 +32,12 @@ const UPLOAD_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOKEN_LEEWAY_MS = 60 * 1000;
 /** Tiefe, bis zu der beim Prüfen einer Datei-ID nach dem verbundenen Ordner gesucht wird */
 const MAX_FOLDER_DEPTH = 10;
+/** Unterordner-Ebenen unter dem gelisteten Ordner, die listFiles noch durchsucht (Kategorien wie bei S3) */
+export const LIST_MAX_DEPTH = 5;
+/** Höchstzahl Ordner (einschließlich des gelisteten) je listFiles; hält die Drive-Suchanfrage kurz */
+export const LIST_MAX_FOLDERS = 50;
+/** Elternordner je Suchanfrage beim Einlesen des Ordnerbaums */
+const LIST_PARENTS_PER_QUERY = 25;
 /** Pfad des Streaming-Endpunkts (routes/googleDrive.ts) */
 export const STREAM_PATH = '/api/storage/google-drive/stream';
 
@@ -109,6 +115,9 @@ function checkId(id: string, what = 'Datei'): string {
 
 /** Literal in einer Drive-Suchanfrage (q) */
 const q = (value: string) => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+/** „liegt direkt in einem dieser Ordner“ */
+const inParents = (ids: string[]) =>
+  ids.length === 1 ? `${q(ids[0]!)} in parents` : `(${ids.map((id) => `${q(id)} in parents`).join(' or ')})`;
 
 const notConnectedFolder = () => new StorageProviderError('invalid', 'Bitte zuerst einen Google-Drive-Ordner wählen');
 const revoked = () =>
@@ -362,22 +371,70 @@ export class GoogleDriveStorageProvider implements StorageProvider {
     throw new StorageProviderError('not_found', 'Datei nicht gefunden');
   }
 
+  /**
+   * Ordnerbaum unter `root` (Breitensuche, eine Anfrage je Ebene und Block von Elternordnern): Drive-ID → Pfad
+   * relativ zu `root` ('' = root selbst, Namen per '/'). Begrenzt auf LIST_MAX_DEPTH Ebenen und LIST_MAX_FOLDERS
+   * Ordner; was darüber hinausgeht, wird nicht gelistet. Reihenfolge nach Namen, damit der Baum (und damit die
+   * Dateianfrage, an die Drives pageToken gebunden ist) zwischen zwei Seiten gleich bleibt.
+   */
+  async #folderTree(root: string): Promise<Map<string, string>> {
+    const paths = new Map<string, string>([[root, '']]);
+    let level = [root];
+    for (let depth = 0; depth < LIST_MAX_DEPTH && level.length > 0 && paths.size < LIST_MAX_FOLDERS; depth++) {
+      const next: string[] = [];
+      for (let i = 0; i < level.length && paths.size < LIST_MAX_FOLDERS; i += LIST_PARENTS_PER_QUERY) {
+        const chunk = level.slice(i, i + LIST_PARENTS_PER_QUERY);
+        let pageToken: string | undefined;
+        do {
+          const page = await this.#list(
+            `${inParents(chunk)} and mimeType = ${q(DRIVE_FOLDER_MIME)} and trashed = false`,
+            'nextPageToken, files(id, name, parents)',
+            1000,
+            pageToken,
+          );
+          for (const folder of page.files ?? []) {
+            if (paths.size >= LIST_MAX_FOLDERS) break;
+            const parent = folder.parents?.find((p) => paths.has(p));
+            if (parent === undefined || paths.has(folder.id) || !isDriveId(folder.id)) continue;
+            // '/' trennt im Pfad die Ebenen (Kategorien im Client), darf also nicht im Ordnernamen stehen
+            const name = folder.name.replace(/\//g, '-');
+            const parentPath = paths.get(parent)!;
+            paths.set(folder.id, parentPath ? `${parentPath}/${name}` : name);
+            next.push(folder.id);
+          }
+          pageToken = paths.size < LIST_MAX_FOLDERS ? page.nextPageToken : undefined;
+        } while (pageToken);
+      }
+      level = next;
+    }
+    return paths;
+  }
+
+  /**
+   * Audiodateien im Ordner und seinen Unterordnern (wie bei S3): `name` ist der Pfad relativ zum angefragten Ordner
+   * (`packs/regen/tropfen.mp3`), der Client macht aus den Ordnern die Kategorie. Eine einzige Dateianfrage über alle
+   * Ordner des Baums, darum bleibt der Cursor Drives pageToken.
+   */
   async listFiles(options: ListFilesOptions): Promise<StorageFilePage> {
     const folder = await this.#resolveFolder(options.folder);
+    const paths = await this.#folderTree(folder);
     // Drive filtert serverseitig nach Audio-MIME-Types; Dateien ohne erkannten Typ (application/octet-stream) fehlen.
     const page = await this.#list(
-      `${q(folder)} in parents and trashed = false and (mimeType contains 'audio/' or mimeType = 'application/ogg')`,
-      'nextPageToken, files(id, name, mimeType, size, modifiedTime)',
+      `${inParents([...paths.keys()])} and trashed = false and (mimeType contains 'audio/' or mimeType = 'application/ogg')`,
+      'nextPageToken, files(id, name, mimeType, size, modifiedTime, parents)',
       options.limit,
       options.cursor,
     );
-    const files: StorageFile[] = (page.files ?? []).map((f) => ({
-      id: f.id,
-      name: f.name,
-      size: f.size === undefined ? null : Number(f.size),
-      mimeType: f.mimeType ?? null,
-      updatedAt: f.modifiedTime ?? null,
-    }));
+    const files: StorageFile[] = (page.files ?? []).map((f) => {
+      const dir = paths.get(f.parents?.find((p) => paths.has(p)) ?? folder) ?? '';
+      return {
+        id: f.id,
+        name: dir ? `${dir}/${f.name}` : f.name,
+        size: f.size === undefined ? null : Number(f.size),
+        mimeType: f.mimeType ?? null,
+        updatedAt: f.modifiedTime ?? null,
+      };
+    });
     return { files: files.filter(isAudioFile), nextCursor: page.nextPageToken ?? null };
   }
 

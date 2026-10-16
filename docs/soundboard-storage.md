@@ -361,10 +361,16 @@ Für die Ordnerauswahl reicht `drive.file`, weil der empfohlene Weg ist, den Ord
 
 ### Dateien
 
-- `listFiles`: Drive-Suche `'<ordner>' in parents and trashed = false and (mimeType contains 'audio/' or
-  mimeType = 'application/ogg')`, sortiert nach Name, `pageSize` = `limit`, Cursor = Drive-`nextPageToken`.
-  Unterordner (`folder=a/b`) werden per Namen aufgelöst. Dateien, die Drive nicht als Audio erkennt
-  (`application/octet-stream`), fehlen – beim Upload über die App setzen wir den MIME-Type immer.
+- `listFiles`: listet wie bei S3 **einschließlich Unterordnern**; `name` ist der Pfad relativ zum gelisteten Ordner
+  (`packs/regen/tropfen.mp3`), daraus macht der Client die Kategorie. Zuerst wird der Ordnerbaum eingelesen
+  (Breitensuche, je Ebene eine Suche `('<a>' in parents or '<b>' in parents …) and mimeType = '<folder>'`), begrenzt
+  auf 5 Ebenen und 50 Ordner (`LIST_MAX_DEPTH`, `LIST_MAX_FOLDERS`); was darüber liegt, fehlt. Dann eine einzige
+  Dateisuche über alle Ordner des Baums `(… in parents …) and trashed = false and (mimeType contains 'audio/' or
+  mimeType = 'application/ogg')`, sortiert nach Name, `pageSize` = `limit`, Cursor = Drive-`nextPageToken`
+  (ändert sich der Baum zwischen zwei Seiten, lehnt Drive den Cursor ab → Liste neu laden). `/` in Ordnernamen wird
+  zu `-`, weil es die Ebenen trennt. Unterordner als Ausgangspunkt (`folder=a/b`) werden per Namen aufgelöst.
+  Dateien, die Drive nicht als Audio erkennt (`application/octet-stream`), fehlen – beim Upload über die App setzen
+  wir den MIME-Type immer.
 - Datei-IDs vom Client werden geprüft: nur `[A-Za-z0-9_-]`, nicht im Papierkorb, und der verbundene Ordner muss
   unter den Vorfahren sein (höchstens 10 Ebenen). Sonst 404.
 - `delete` verschiebt die Datei in den **Papierkorb** des Nutzers (30 Tage wiederherstellbar) statt endgültig zu

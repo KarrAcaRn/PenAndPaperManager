@@ -91,8 +91,8 @@ export function fakeGoogleDrive() {
   function matches(file: FakeDriveFile, q: string): boolean {
     const unq = (s: string) => s.replace(/\\(.)/g, '$1');
     const lit = "'((?:[^'\\\\]|\\\\.)*)'";
-    const parent = new RegExp(`${lit} in parents`).exec(q);
-    if (parent && !file.parents.includes(unq(parent[1]!))) return false;
+    const parents = [...q.matchAll(new RegExp(`${lit} in parents`, 'g'))].map((m) => unq(m[1]!));
+    if (parents.length > 0 && !file.parents.some((p) => parents.includes(p))) return false;
     const name = new RegExp(`name = ${lit}`).exec(q);
     if (name && file.name !== unq(name[1]!)) return false;
     if (/trashed = false/.test(q) && file.trashed) return false;

@@ -110,7 +110,7 @@ zum Nachbau.
 
 | # | Funktion | Referenz (Datei / Funktion) | Unseres |
 | --- | --- | --- | --- |
-| 26 | **Kategorien aus Ordnern**, auch verschachtelt (`packs/rain` → „PACKS / RAIN“), als Tabs | `generateSoundJson.js`; `gotSoundJson`, `createCategoryTabs`, `createCategoryTab`, `catLabel` (`board.js:219`, `1281–1308`, `314`) | **erledigt** – Kategorie-Leiste statt Auswahlliste über alle angezeigten Quellen; Unterordner im eigenen Speicher werden Kategorien („packs / regen“, `fileCategory`). Google Drive listet weiter nur den verbundenen Ordner ohne Unterordner (siehe unten) |
+| 26 | **Kategorien aus Ordnern**, auch verschachtelt (`packs/rain` → „PACKS / RAIN“), als Tabs | `generateSoundJson.js`; `gotSoundJson`, `createCategoryTabs`, `createCategoryTab`, `catLabel` (`board.js:219`, `1281–1308`, `314`) | **erledigt** – Kategorie-Leiste statt Auswahlliste über alle angezeigten Quellen; Unterordner im eigenen Speicher werden Kategorien („packs / regen“, `fileCategory`), bei S3 und seit t_f86273e6 auch bei Google Drive (rekursives `listFiles`, bis 5 Ebenen/50 Ordner) |
 | 27 | **Kategorie wechseln** per Knöpfen und Pfeil links/rechts, ringsum | `nextCat`, `previousCat`, `setCurrentCat` (`board.js:1361–1374`), `#previous-cat`/`#next-cat` | **erledigt** – Knöpfe ‹ › und Pfeil links/rechts, ringsum („Alle“ gehört zur Reihe) |
 | 28 | **Suche** über alle Kategorien, mehrere Wörter (UND), trifft den ganzen Pfad (also auch den Kategorienamen); Treffer in eigenem Tab „SEARCH“ mit eigenen Hotkeys | `search`, `searchTerm`, `createSearchSoundButtons` (`board.js:245–259`, `1331`); `init` bindet `#search` | **erledigt** – sucht in Titel, Kategorie/Ordner und Schlagwörtern (UND, ohne Akzente); bei aktiver Suche über alle Kategorien, Bereich „Suche“ in der Kategorie-Leiste, eigene Tasten; Suche leeren führt zur gewählten Kategorie zurück |
 | 29 | **Markierung „in einer Playlist“** auf Bibliotheks-Kacheln | `refreshLibraryMarks`, Klasse `in-playlist` (`board.js:416–428`) | **erledigt** – Kacheln in einer Playlist oder der Effekt-Liste haben ☰ und einen Akzent-Rahmen |
@@ -221,7 +221,6 @@ Einstellungen nach dem Neuladen, Unterordner).
 
 | # | Funktion | Grund |
 | --- | --- | --- |
-| 26 (Drive) | Unterordner bei Google Drive | Drive listet nur direkte Kinder eines Ordners. Rekursives Auflisten braucht eine Änderung am Server-Anbieter (`googleDrive.ts` `listFiles`, Ordnerpfade, seitenweises Laden über mehrere Ordner). S3 liefert Unterordner schon heute. Kann bei Bedarf eine eigene Aufgabe werden. |
 | 32 | Favoriten, Farben je Sound | nicht in der Referenz |
 | 38 | Frei belegbare Tasten je Sound | nicht in der Referenz (dort hängen die Tasten an der Position) |
 | 40 | Puffer-Cache mit dekodierten Dateien | bewusst anders: `Audio`-Elemente mit Browser-Cache und Playback-URL-Cache; ganze Musikstücke zu dekodieren kostet viel Speicher und Startzeit |
@@ -270,7 +269,6 @@ Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen al
 
 | Punkt | Worum es geht | Warum offen |
 | --- | --- | --- |
-| Unterordner bei Google Drive (#26) | Kategorien aus Unterordnern gehen bei S3, bei Drive nur der verbundene Ordner. | Braucht rekursives Auflisten im Server-Anbieter (`server/src/storage/googleDrive.ts`, `listFiles`). |
 | Echte Wiedergabe aus S3/Drive im Browser | Im Browser geprüft wurde mit den Standard-Sounds; Dateien aus eigenem Speicher nur in den Client-Tests (gemockte API). | In der Prüfumgebung gibt es keinen erreichbaren S3-/Drive-Speicher. |
 
 ## Paritätsbericht (Aufgabe t_0fc28287, 2026-10-16)
@@ -313,8 +311,8 @@ Offen: #47 (Playlisten-Spalte neben der Bibliothek) – die Playlisten stehen al
 Alle 49 Punkte haben einen Status: vorhanden bzw. erledigt (#2–#6, #8, #9, #12–#23, #25–#31, #33–#35, #37, #39,
 #41–#44, #46, #47, #49), bewusst anders mit Begründung (#1 Typ am Sound statt Dialog, #24 kein Crossfade, #36 ohne
 eigenen Dialog, #40 Audio-Elemente statt dekodierter Puffer, #45 Titel über Themes), nicht in der Referenz und
-deshalb nicht nachgebaut (#32, #38, #48) oder offen mit Grund (Drive-Teil von #26). Die Effekt-Liste (#7, #10, #11)
-kam mit Aufgabe t_4eec55ac dazu (siehe unten).
+deshalb nicht nachgebaut (#32, #38, #48). Offen ist keiner mehr: Der Drive-Teil von #26 kam mit Aufgabe t_f86273e6,
+die Effekt-Liste (#7, #10, #11) mit Aufgabe t_4eec55ac (siehe unten).
 
 Der wichtigste bewusste Unterschied: In der Referenz öffnet ein Klick auf einen Sound den Dialog „Background music /
 Effects“, der Typ hängt an der Liste. Bei uns hat jeder Sound einen Typ und ein Klick spielt sofort – am Spieltisch
