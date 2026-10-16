@@ -4,6 +4,7 @@ import type {
   ArticleInput,
   ArticleUpdate,
   ArticleSummary,
+  BuiltinSoundList,
   Folder,
   Group,
   Member,
@@ -124,6 +125,8 @@ export const api = {
   rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
   searchRules: (q: string, rulebookId?: number) =>
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
+
+  builtinSounds: () => request<BuiltinSoundList>('GET', '/sounds/builtin'),
 };
 
 /**

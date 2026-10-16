@@ -112,12 +112,13 @@ export function requireUser(db: Db, req: FastifyRequest): User {
 /** Login-Seite der SPA (Hash-Router); das Ziel nach dem Login merkt sich der Client selbst */
 export const LOGIN_PAGE = '/#/login';
 
-/** API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout) */
+/** API-Pfade, die ohne Login erreichbar sein müssen (Login selbst, Abfrage des Login-Status, Logout, Standard-Sounds) */
 export const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
   '/api/auth/request-code',
   '/api/auth/verify-code',
   '/api/auth/me',
   '/api/auth/logout',
+  '/api/sounds/builtin',
 ]);
 
 /**
