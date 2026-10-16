@@ -5,9 +5,9 @@ import { openDb, type Db } from '../src/db.ts';
 import { redactUrl } from '../src/app.ts';
 import { SESSION_COOKIE } from '../src/auth.ts';
 import { OAUTH_COOKIE } from '../src/routes/googleDrive.ts';
-import { GOOGLE_DRIVE_SCOPE, googleDriveOptionsFromEnv, googleDriveProvider } from '../src/storage/googleDrive.ts';
+import { GOOGLE_DRIVE_SCOPE, LIST_MAX_DEPTH, LIST_MAX_FOLDERS, googleDriveOptionsFromEnv, googleDriveProvider } from '../src/storage/googleDrive.ts';
 import { StorageProviderRegistry, defaultStorageProviders } from '../src/storage/registry.ts';
-import { FAKE_CLIENT, fakeGoogleDrive } from './fakeGoogleDrive.ts';
+import { FAKE_CLIENT, fakeGoogleDrive, type FakeDriveFile } from './fakeGoogleDrive.ts';
 import { loginWithCode, sidOf, testApp } from './helpers.ts';
 
 type Fake = ReturnType<typeof fakeGoogleDrive>;
@@ -313,6 +313,77 @@ describe('Google Drive', () => {
       const res = await alice.call('GET', `${BASE}/${cid}/files?folder=${encodeURIComponent("Kampf 'laut'")}`);
       expect(res.body.files.map((f: { name: string }) => f.name)).toEqual(['trommel.mp3']);
       expect((await alice.call('GET', `${BASE}/${cid}/files?folder=fehlt`)).status).toBe(404);
+    });
+
+    it('listet Unterordner mit, Namen als Pfad relativ zum Ordner (Kategorien wie bei S3)', async () => {
+      const alice = await login();
+      const { cid, folderId } = await connectWithFolder(alice);
+      const folder = (name: string, parent: string, extra: Partial<FakeDriveFile> = {}) =>
+        fake.addFile({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent], ...extra });
+      const packs = folder('packs', folderId);
+      const rain = folder('regen', packs.id);
+      const slash = folder('Tag/Nacht', folderId);
+      const trashed = folder('alt', folderId, { trashed: true });
+      fake.addFile({ name: 'a-oben.mp3', parents: [folderId] });
+      fake.addFile({ name: 'b-pack.mp3', parents: [packs.id] });
+      fake.addFile({ name: 'c-tropfen.ogg', parents: [rain.id] });
+      fake.addFile({ name: 'd-eule.mp3', parents: [slash.id] });
+      fake.addFile({ name: 'e-weg.mp3', parents: [trashed.id] });
+      fake.addFile({ name: 'f-notiz.txt', mimeType: 'text/plain', parents: [rain.id] });
+
+      const all = await alice.call('GET', `${BASE}/${cid}/files`);
+      expect(all.status).toBe(200);
+      expect(all.body.files.map((f: { name: string }) => f.name)).toEqual([
+        'a-oben.mp3',
+        'packs/b-pack.mp3',
+        'packs/regen/c-tropfen.ogg',
+        'Tag-Nacht/d-eule.mp3',
+      ]);
+
+      // seitenweise über mehrere Ordner hinweg
+      const first = await alice.call('GET', `${BASE}/${cid}/files?limit=2`);
+      expect(first.body.files.map((f: { name: string }) => f.name)).toEqual(['a-oben.mp3', 'packs/b-pack.mp3']);
+      const second = await alice.call('GET', `${BASE}/${cid}/files?limit=2&cursor=${first.body.nextCursor}`);
+      expect(second.body).toEqual({
+        files: [expect.objectContaining({ name: 'packs/regen/c-tropfen.ogg' }), expect.objectContaining({ name: 'Tag-Nacht/d-eule.mp3' })],
+        nextCursor: null,
+      });
+
+      // Unterordner als Ausgangspunkt: Pfade relativ dazu
+      const sub = await alice.call('GET', `${BASE}/${cid}/files?folder=packs`);
+      expect(sub.body.files.map((f: { name: string }) => f.name)).toEqual(['b-pack.mp3', 'regen/c-tropfen.ogg']);
+
+      // Dateien aus Unterordnern lassen sich abspielen
+      const deep = all.body.files.find((f: { name: string }) => f.name === 'packs/regen/c-tropfen.ogg');
+      expect((await alice.call('GET', `${BASE}/${cid}/playback-url?fileId=${deep.id}`)).status).toBe(200);
+    });
+
+    it('begrenzt Tiefe und Anzahl der durchsuchten Unterordner', async () => {
+      const alice = await login();
+      const { cid, folderId } = await connectWithFolder(alice);
+      const FOLDER_MIME = 'application/vnd.google-apps.folder';
+      // Kette tiefer als LIST_MAX_DEPTH
+      let parent = folderId;
+      for (let depth = 1; depth <= LIST_MAX_DEPTH + 2; depth++) {
+        parent = fake.addFile({ name: `e${depth}`, mimeType: FOLDER_MIME, parents: [parent] }).id;
+        fake.addFile({ name: `tiefe${depth}.mp3`, parents: [parent] });
+      }
+      const deep = await alice.call('GET', `${BASE}/${cid}/files?limit=100`);
+      expect(deep.body.files.map((f: { name: string }) => f.name.split('/').length - 1).sort()).toEqual(
+        Array.from({ length: LIST_MAX_DEPTH }, (_, i) => i + 1),
+      );
+
+      // viele Geschwisterordner: höchstens LIST_MAX_FOLDERS Ordner in der Dateianfrage
+      for (let i = 0; i < LIST_MAX_FOLDERS + 10; i++) {
+        const sibling = fake.addFile({ name: `z${String(i).padStart(3, '0')}`, mimeType: FOLDER_MIME, parents: [folderId] });
+        fake.addFile({ name: `geschwister${i}.mp3`, parents: [sibling.id] });
+      }
+      fake.state.requests.length = 0;
+      const wide = await alice.call('GET', `${BASE}/${cid}/files?limit=100`);
+      expect(wide.status).toBe(200);
+      const fileQuery = fake.state.requests.map((r) => new URL(r.url).searchParams.get('q') ?? '').find((q) => q.includes('audio'))!;
+      expect(fileQuery.match(/ in parents/g)).toHaveLength(LIST_MAX_FOLDERS);
+      expect(wide.body.files.length).toBeLessThan(LIST_MAX_FOLDERS + 10 + LIST_MAX_DEPTH);
     });
 
     it('liefert eine kurzlebige Wiedergabe-URL ohne Token und streamt die Datei inklusive Range', async () => {
