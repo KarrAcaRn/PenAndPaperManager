@@ -181,15 +181,22 @@
     const selected = [...list];
     if (selected.length === 0) return;
     const started = nextUploadId;
+    const before = new Set((files[cid]?.sounds ?? []).map((s) => s.key));
     await Promise.all(selected.map((file) => uploadOne(file, cid, type)));
     const finished = uploads.filter((u) => u.id >= started && u.cid === cid && u.done);
     if (finished.length === 0) return;
     await loadFiles(cid);
-    // gewählten Typ den neuen Dateien zuordnen
+    // gewählten Typ den neuen Dateien zuordnen (bei mehrdeutigem Namen bleibt die Vorgabe)
     for (const u of finished) {
-      const sound = uploadedSound(files[cid]?.sounds ?? [], u);
+      const sound = uploadedSound(files[cid]?.sounds ?? [], u, before);
       if (sound) types.set(sound, u.type);
     }
+  }
+
+  /** Neuer Typ für einen Sound; läuft er gerade, wird er gestoppt (er gehört dann zum anderen Kanal) */
+  function changeType(sound: BoardSound, type: Channel): void {
+    if (player.isActive(sound.key)) player.stop(sound.key);
+    types.set(sound, type);
   }
 
   function onDrop(event: DragEvent): void {
@@ -219,7 +226,7 @@
       aria-label="Typ von „{sound.title}“"
       title="Typ: Musik läuft allein und ersetzt die laufende Musik, Effekte laufen gleichzeitig"
       value={type}
-      onchange={(e) => types.set(sound, (e.currentTarget as HTMLSelectElement).value as Channel)}
+      onchange={(e) => changeType(sound, (e.currentTarget as HTMLSelectElement).value as Channel)}
     >
       <option value="sfx">{SOUND_TYPE_LABELS.sfx}</option>
       <option value="music">{SOUND_TYPE_LABELS.music}</option>
@@ -309,9 +316,9 @@
     </div>
   </section>
 
-  <div class="tabs" role="tablist" aria-label="Art der Sounds">
+  <div class="tabs" role="group" aria-label="Art der Sounds">
     {#each viewTabs as tab (tab.value)}
-      <button role="tab" class:active={view === tab.value} aria-selected={view === tab.value} onclick={() => (view = tab.value)}>{tab.label}</button>
+      <button class:active={view === tab.value} aria-pressed={view === tab.value} onclick={() => (view = tab.value)}>{tab.label}</button>
     {/each}
   </div>
 

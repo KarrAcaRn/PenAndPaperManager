@@ -109,12 +109,13 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 - Zwei Kanäle wie im Referenz-Soundboard (`lib/soundPlayer.svelte.ts`): **Hintergrundmusik** – immer nur ein Titel,
   ein neuer ersetzt den laufenden (harter Wechsel), auf Wunsch in Schleife; **Effekte** – beliebig viele
   gleichzeitig, auch über der Musik. Regler für Gesamt-, Musik- und Effektlautstärke (Sound = Gesamt × Kanal),
-  „Musik stoppen“, „Effekte stoppen“, „Alle stoppen“ und eine Anzeige des laufenden Musiktitels. Reiter „Alle /
+  „Musik stoppen“, „Effekte stoppen“, „Alle stoppen“ und eine Anzeige des laufenden Musiktitels. Umschalter „Alle /
   Hintergrundmusik / Effekte“ filtern die Kacheln.
 - Typ je Sound (`sfx` | `music`): Vorgabe aus dem Manifest (`type`), eigene Dateien sind zunächst Effekte. Jede
-  Kachel hat eine Typ-Auswahl, beim Upload wählt man den Typ für die neuen Dateien. Der Browser merkt sich
+  Kachel hat eine Typ-Auswahl (ein laufender Sound stoppt beim Umstellen), beim Upload wählt man den Typ für die
+  neuen Dateien. Der Browser merkt sich
   Lautstärken und Schleife (`localStorage` `pnp.soundboard`; ältere Einstellungen: `volume` gilt als
-  Gesamtlautstärke) sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe,
+  Gesamtlautstärke, der frühere Schalter „Mehrere Sounds gleichzeitig“ entfällt) sowie die vom Nutzer geänderten Typen (`pnp.soundboard.types`, nur Abweichungen von der Vorgabe,
   Schlüssel = Kachel-`key`).
 - Nutzer-Dateien holen ihre Playback-URL erst beim Abspielen, behalten sie bis 30 s vor Ablauf und holen bei einem
   Ladefehler einmal eine neue (`createPlaybackUrlCache` in `lib/soundboard.ts`).

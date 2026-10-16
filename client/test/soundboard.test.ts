@@ -281,6 +281,10 @@ describe('Player', () => {
     await player.play(trommel, { channel: 'music', loop: false });
     expect(player.music?.key).toBe(trommel.key);
     expect(audioOf(trommel).loop).toBe(false);
+    // eine eigene Schleifen-Angabe beim Start bleibt, auch wenn „Musik wiederholen“ umgestellt wird
+    player.setMusicLoop(false);
+    player.setMusicLoop(true);
+    expect(audioOf(trommel).loop).toBe(false);
   });
 
   it('Musik läuft je nach Einstellung in Schleife, Effekte nicht; meldet das Ende', async () => {
@@ -442,10 +446,16 @@ describe('Typen der Sounds', () => {
     expect(createSoundTypes().typeOf(glocke)).toBe('sfx');
   });
 
-  it('findet die Kachel einer hochgeladenen Datei über die ID oder den Namen', () => {
-    const sounds = [datei, fileToBoard(3, { id: 'drive-123', name: 'Wind.ogg', size: 1, mimeType: null, updatedAt: null })];
+  it('findet die Kachel einer hochgeladenen Datei über die ID oder einen eindeutigen neuen Namen', () => {
+    const wind = fileToBoard(3, { id: 'drive-123', name: 'Wind.ogg', size: 1, mimeType: null, updatedAt: null });
+    const sounds = [datei, wind];
     expect(uploadedSound(sounds, { name: 'Regen.mp3', fileId: 'sb/Regen.mp3' })).toBe(datei);
     expect(uploadedSound(sounds, { name: 'Wind.ogg', fileId: null })?.id).toBe('drive-123');
     expect(uploadedSound(sounds, { name: 'Fehlt.mp3', fileId: null })).toBeUndefined();
+    // gleicher Titel wie eine ältere Datei (Drive erlaubt doppelte Namen, a.mp3/a.wav): nur die neue zählt
+    const windNeu = fileToBoard(3, { id: 'drive-456', name: 'Wind.mp3', size: 1, mimeType: null, updatedAt: null });
+    expect(uploadedSound([wind, windNeu], { name: 'Wind.mp3', fileId: null }, new Set([wind.key]))).toBe(windNeu);
+    // nicht eindeutig: lieber keine Zuordnung als eine falsche
+    expect(uploadedSound([wind, windNeu], { name: 'Wind.mp3', fileId: null })).toBeUndefined();
   });
 });

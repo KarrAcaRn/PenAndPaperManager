@@ -129,6 +129,8 @@ export function createPlayer(options: PlayerOptions) {
   /** der Titel im Musikkanal (lädt oder spielt) */
   let music = $state<BoardSound | null>(null);
   const audios = new Map<string, HTMLAudioElement>();
+  /** Sounds mit eigener Schleifen-Angabe beim Start; die Einstellung „Musik wiederholen“ lässt sie in Ruhe */
+  const explicitLoop = new Set<string>();
   /** Zählt Starts je Kachel, damit ein später fertig gewordener alter Start nichts mehr anrichtet */
   const generation = new Map<string, number>();
 
@@ -149,6 +151,7 @@ export function createPlayer(options: PlayerOptions) {
     }
     delete states[key];
     delete channels[key];
+    explicitLoop.delete(key);
     if (music?.key === key) music = null;
   }
 
@@ -173,6 +176,7 @@ export function createPlayer(options: PlayerOptions) {
     delete errors[sound.key];
     states[sound.key] = 'loading';
     channels[sound.key] = channel;
+    if (playOptions.loop !== undefined) explicitLoop.add(sound.key);
     if (channel === 'music') music = sound;
 
     const start = async (retry: boolean): Promise<void> => {
@@ -253,12 +257,12 @@ export function createPlayer(options: PlayerOptions) {
       applyVolumes();
       save();
     },
-    /** wirkt auch auf den laufenden Musiktitel */
+    /** wirkt auch auf den laufenden Musiktitel, außer er wurde mit eigener Schleifen-Angabe gestartet */
     setMusicLoop(loop: boolean): void {
       settings.musicLoop = loop;
       for (const key of keysIn('music')) {
         const audio = audios.get(key);
-        if (audio) audio.loop = loop;
+        if (audio && !explicitLoop.has(key)) audio.loop = loop;
       }
       save();
     },

@@ -66,11 +66,19 @@ export const SOUND_TYPE_LABELS: Record<SoundType, string> = { music: 'Musik', sf
 
 /**
  * Die Kachel einer gerade hochgeladenen Datei in der neu geladenen Liste: über die Datei-ID, wenn der Anbieter sie
- * vorab genannt hat (S3), sonst über den Dateinamen (Google Drive vergibt die ID erst beim Upload).
+ * vorab genannt hat (S3), sonst über den Dateinamen (Google Drive vergibt die ID erst beim Upload). Beim Namen
+ * zählen nur Dateien, die vor dem Upload noch nicht in der Liste standen (`before` = deren Keys) – Drive erlaubt
+ * doppelte Namen, und `a.mp3`/`a.wav` haben denselben Titel.
  */
-export function uploadedSound(sounds: readonly BoardSound[], upload: { name: string; fileId: string | null }): BoardSound | undefined {
+export function uploadedSound(
+  sounds: readonly BoardSound[],
+  upload: { name: string; fileId: string | null },
+  before: ReadonlySet<string> = new Set(),
+): BoardSound | undefined {
   if (upload.fileId !== null) return sounds.find((s) => s.id === upload.fileId);
-  return sounds.find((s) => s.title === fileTitle(upload.name));
+  const title = fileTitle(upload.name);
+  const fresh = sounds.filter((s) => s.title === title && !before.has(s.key));
+  return fresh.length === 1 ? fresh[0] : undefined;
 }
 
 const normalize = (text: string) => text.toLocaleLowerCase('de').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
