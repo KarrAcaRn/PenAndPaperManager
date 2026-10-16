@@ -30,7 +30,8 @@ npm run check          # tsc (Server) + svelte-check (Client) – muss fehlerfre
 npm run build && npm start
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`).
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`), `SOUNDS_DIR`/`SOUNDS_BASE_URL`
+(Standard-Sounds in `server/sounds/default/` samt Manifest `sounds.json`, Pflege siehe README).
 
 ## Konventionen
 

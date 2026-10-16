@@ -19,7 +19,8 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
-`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen).
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen),
+`SOUNDS_DIR` und `SOUNDS_BASE_URL` (Standard-Sounds, siehe unten).
 
 ## Regeln
 
@@ -74,3 +75,46 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Impressum für den privaten Gebrauch vervielfältigt werden.
 - Suche: alle eingegebenen Wörter müssen auf der Seite vorkommen, jedes als Wortanfang („konseq“ findet
   „Konsequenzen“), Umlaute sind egal („uberwinden“). Seitenzahlen werden wie im Buch gedruckt angezeigt.
+
+## Soundboard: Standard-Sounds
+
+Der Betreiber stellt eine kleine, kuratierte Bibliothek bereit, die alle nutzen können (auch ohne Login). Eigene
+Sounds der Nutzer liegen dagegen in deren externem Storage; der Server speichert keine Nutzer-Uploads. In die
+Standardbibliothek lädt die Web-App nichts hoch – sie wird nur auf dem Server gepflegt.
+
+- Ordner: `server/sounds/default/` (anderer Ort per `SOUNDS_DIR`). Darin die Audio-Dateien (`.mp3`, `.wav`, `.ogg`,
+  `.m4a`, gern in Unterordnern wie `musik/` und `effekte/`) und das Manifest `sounds.json`.
+- Manifest – je Sound ein Eintrag, Pfad relativ zum Ordner:
+
+  ```json
+  {
+    "version": 1,
+    "sounds": [
+      { "id": "glocke", "title": "Glocke", "category": "Effekte", "file": "effekte/glocke.wav",
+        "durationSec": 2, "tags": ["Signal"], "license": "CC0 1.0, Quelle: …" }
+    ]
+  }
+  ```
+
+  Pflicht sind `id` (eindeutig, nur `a–z`, `0–9`, `-`, `_`; nach dem Veröffentlichen nicht mehr ändern, Nutzer
+  können sich darauf beziehen), `title`, `category` (z.B. „Musik“, „Effekte“) und `file` (ohne `; ? : @ & = + $ , #`
+  im Namen). Optional: `durationSec` (Sekunden), `tags` (höchstens 10) und `license` (Lizenz und Quelle – bei
+  fremden Dateien immer angeben; nur Dateien aufnehmen, die öffentlich weitergegeben werden dürfen, das Repository
+  ist öffentlich).
+- Prüfung: Der Server prüft das Manifest beim Start (Aufbau, Längen, doppelte IDs, Pfade nur innerhalb des Ordners –
+  auch Symlinks dürfen nicht hinausführen –, Datei vorhanden) und startet bei Fehlern nicht, ebenso wenn der Ordner
+  fehlt. Ohne `sounds.json` ist die Bibliothek leer. Änderungen an `sounds.json` übernimmt er ohne Neustart beim
+  nächsten Abruf; ist die neue Fassung fehlerhaft oder gelöscht, bleibt die alte Liste aktiv und der Fehler steht im
+  Server-Log (der Server versucht es bei jedem Abruf erneut, eine nachgereichte Datei wirkt also sofort).
+- Auslieferung: `GET /api/sounds/builtin` liefert `{ sounds: [...] }` im gemeinsamen Soundboard-Format
+  (`source: 'builtin'`, `id`, `title`, `url`, dazu `category`, `durationSec`, `tags`, `license`, `mimeType`;
+  Typen in `shared/src/sounds.ts`). Die Dateien selbst liefert der Server unter `/sounds/default/…` statisch aus –
+  nur die im Manifest eingetragenen, mit `Cache-Control: max-age` ein Tag und Teilabrufen für das Spulen. Eine Datei
+  unter gleichem Namen zu ersetzen wirkt deshalb erst nach bis zu einem Tag – bei echten Änderungen lieber einen
+  neuen Dateinamen wählen.
+- CDN: `SOUNDS_BASE_URL` (Pfad ab `/` oder `http(s)://`-URL, z.B. `https://cdn.example.org/pnp-sounds/`) auf die
+  Kopie des Ordners setzen; die URLs im Manifest zeigen dann dorthin. Das Manifest liest der Server weiterhin aus
+  `SOUNDS_DIR`, beides muss also zusammen aktualisiert werden. Das CDN sollte die Dateien mit `Cache-Control` und,
+  falls die Seite auf einer anderen Domain läuft, mit CORS-Header (`Access-Control-Allow-Origin`) ausliefern.
+- Mitgeliefert sind drei kurze, synthetisch erzeugte Platzhalter (CC0): „Kurze Fanfare“, „Glocke“, „Trommelwirbel“.
+  Der Betreiber ersetzt oder ergänzt sie durch echte Dateien.
