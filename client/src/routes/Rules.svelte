@@ -81,7 +81,7 @@
   </div>
 {:else if book}
   <div class="split">
-    <aside class="card vine-frame no-print">
+    <aside class="card frame no-print">
       {#if rulebooks.length > 1}
         <label>
           Regelwerk
@@ -159,16 +159,16 @@
   .entries { list-style: none; margin: 0; padding: 0; }
   .entry {
     display: flex; flex-direction: column; align-items: stretch; gap: 0.1rem; width: 100%;
-    text-align: left; border: none; background: none; padding: 0.35rem 0.4rem; border-radius: var(--radius);
-    color: var(--text); font: inherit;
+    text-align: left; border: none; background: none; padding: 0.35rem 0.4rem; border-radius: var(--border-radius);
+    color: var(--color-text); font: inherit;
   }
-  .entry:hover { background: var(--bg); }
-  .entry.current { background: var(--bg); box-shadow: inset 3px 0 var(--accent); }
+  .entry:hover { background: var(--color-surface-muted); }
+  .entry.current { background: var(--color-surface-muted); box-shadow: inset var(--border-width-strong) 0 var(--color-accent); }
   .entry.toc { flex-direction: row; justify-content: space-between; gap: 0.5rem; }
   .entry.chapter { font-weight: 600; margin-top: 0.3rem; }
-  .entries > li + li .entry:not(.toc) { border-top: 1px solid var(--border); border-radius: 0; }
+  .entries > li + li .entry:not(.toc) { border-top: var(--border); border-radius: 0; }
   .head { font-size: 0.9rem; }
   .snippet { font-size: 0.9rem; overflow-wrap: anywhere; }
-  mark { background: color-mix(in srgb, var(--accent) 25%, transparent); color: inherit; border-radius: 2px; }
-  .pdf { display: block; width: 100%; height: calc(100vh - 10rem); min-height: 30rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  mark { background: var(--color-highlight); color: inherit; border-radius: var(--border-radius-small); }
+  .pdf { display: block; width: 100%; height: calc(100vh - 10rem); min-height: 30rem; border: var(--border); border-radius: var(--border-radius); background: var(--color-surface); }
 </style>

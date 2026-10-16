@@ -19,7 +19,8 @@ npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
-`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen).
+`ADMIN_EMAILS` (kommagetrennte Logins, die den Admin-Bereich nutzen dürfen),
+`THEMES_DIR` (eigene Themes, Vorgabe `themes/` neben der Datenbank, also `data/themes`).
 
 ## Regeln
 
@@ -74,3 +75,22 @@ Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`)
   Impressum für den privaten Gebrauch vervielfältigt werden.
 - Suche: alle eingegebenen Wörter müssen auf der Seite vorkommen, jedes als Wortanfang („konseq“ findet
   „Konsequenzen“), Umlaute sind egal („uberwinden“). Seitenzahlen werden wie im Buch gedruckt angezeigt.
+
+## Themes
+
+- Farben, Rahmen, Schatten, Zierrahmen-Grafiken und Schriften der ganzen Oberfläche kommen aus Design-Tokens
+  (CSS Custom Properties). Liste und Bedeutung aller Tokens: `THEME_TOKENS` in `shared/src/theme.ts`.
+- Ein Theme ist ein Ordner mit `theme.json` (Schema: `themes/theme.schema.json`, erzeugt per
+  `npm run theme:schema -w server`) und optional Zusatz-CSS, Grafiken und Schriften. Die ID im Manifest muss dem
+  Ordnernamen entsprechen; Ordner, die mit `_` oder `.` beginnen, werden übersprungen (Vorlagen).
+- Mitgelieferte Themes liegen in `themes/`, eigene legt der Seitenbetreiber in `THEMES_DIR` (`data/themes`) ab –
+  ohne Codeänderung und ohne Neustart. Ungültige Manifeste werden mit Begründung im Server-Log abgelehnt, doppelte
+  IDs ebenso.
+- Basis-Theme ist `default` (das bisherige Aussehen, hell/dunkel nach System). Es setzt jedes Token; fehlende
+  Tokens anderer Themes werden daraus ergänzt. `darkTokens` (Abweichungen bei dunklem System-Farbschema) werden
+  nicht ergänzt, sonst mischten sich fremde Farben ein.
+- Der Server erzeugt je Theme `/themes/<id>/theme.css` (Tokens auf `:root`, `darkTokens` per Media Query, danach
+  das Zusatz-CSS) und liefert Theme-Dateien unter `/themes/<id>/…` aus (nur Grafiken, Schriften, CSS).
+  Relative `url(…)` in Token-Werten werden dabei absolut gemacht. API: `GET /api/themes`, `GET /api/themes/:id`.
+- Im Client (`client/src/lib/theme.ts`): `listThemes()`, `getTheme(id)`, `applyTheme(id)` – tauscht das
+  Stylesheet zur Laufzeit und setzt `data-theme` am `<html>`-Element.

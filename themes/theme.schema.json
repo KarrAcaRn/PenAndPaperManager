@@ -1,0 +1,726 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/KarrAcaRn/PenAndPaperManager/themes/theme.schema.json",
+  "title": "Pen & Paper Manager – Theme-Manifest (theme.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "id",
+    "name",
+    "author",
+    "version",
+    "tokens"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "manifestVersion": {
+      "const": 1,
+      "description": "Version des Manifest-Formats, derzeit 1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,39}$",
+      "description": "Kleinbuchstaben, Ziffern und Bindestriche (höchstens 40 Zeichen, nicht mit Bindestrich beginnend); gleich dem Ordnernamen"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60,
+      "description": "Anzeigename"
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Autor bzw. Herausgeber"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Versionsnummer im Format MAJOR.MINOR.PATCH, z.B. 1.0.0"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "kurze Beschreibung"
+    },
+    "license": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Lizenz des Themes und seiner Grafiken"
+    },
+    "preview": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.(png|jpg|jpeg|webp|gif|svg)$",
+      "description": "relativer Pfad eines Bildes (png, jpg, jpeg, webp, gif, svg) im Theme-Ordner"
+    },
+    "css": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.(css)$",
+      "description": "relativer Pfad einer .css-Datei im Theme-Ordner"
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Token-Werte; fehlende werden aus dem Basis-Theme übernommen",
+      "additionalProperties": false,
+      "properties": {
+        "color-scheme": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Farbschema der nativen Bedienelemente (normal, light, dark, light dark)"
+        },
+        "color-bg": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Seitenhintergrund"
+        },
+        "color-surface": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Flächen: Karten, Kopfleiste, Eingabefelder, Knöpfe, Menüs"
+        },
+        "color-surface-muted": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "zurückgenommene Flächen: Hover, Codeblöcke, Editor-Werkzeugleiste"
+        },
+        "color-border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Rahmen- und Trennlinien"
+        },
+        "color-text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Fließtext"
+        },
+        "color-text-muted": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Nebentext, Hinweise, Zitate, Abzeichen"
+        },
+        "color-link": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Links und Link-Knöpfe"
+        },
+        "color-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Akzent: Hauptknöpfe, aktiver Reiter, gewählter Ordner, Hover-Rahmen"
+        },
+        "color-accent-text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Text und Symbole auf Akzentflächen"
+        },
+        "color-accent-hover": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hover-Überlagerung für Symbolknöpfe auf Akzentflächen"
+        },
+        "color-danger": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Fehlermeldungen, Löschen-Knöpfe, „privat“-Abzeichen"
+        },
+        "color-highlight": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hervorhebung von Suchtreffern"
+        },
+        "color-selection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Auswahl im Editor (z.B. markierte Tabellenzellen)"
+        },
+        "border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite normaler Rahmen (Karten, Knöpfe, Felder, Trennlinien)"
+        },
+        "border-style": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Linienart normaler Rahmen (solid, dashed, …)"
+        },
+        "border-width-strong": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite betonter Linien (Zitatbalken, Markierung im Inhaltsverzeichnis)"
+        },
+        "outline-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite von Fokus- und Ablage-Markierungen"
+        },
+        "border-radius": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Eckenradius von Karten, Knöpfen, Feldern und Menüs"
+        },
+        "border-radius-small": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "kleiner Eckenradius (Suchtreffer)"
+        },
+        "radius-pill": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Eckenradius der Abzeichen"
+        },
+        "shadow-surface": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten von Karten und Kopfleiste"
+        },
+        "shadow-popup": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten aufklappender Menüs"
+        },
+        "frame-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Rahmengrafik (border-image, 9-Slice) um Kopfleiste und Seitenleisten; none für keinen"
+        },
+        "frame-slice": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Slice-Wert der Rahmengrafik (border-image-slice)"
+        },
+        "frame-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite der Rahmengrafik; 0px ohne Grafik"
+        },
+        "frame-outset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "wie weit die Rahmengrafik über den Kasten hinausragt"
+        },
+        "frame-repeat": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Wiederholung der Rahmengrafik (round, repeat, stretch, space)"
+        },
+        "frame-line": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Kastenlinie innerhalb des Zierrahmens (box-shadow)"
+        },
+        "frame-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Innenabstand gerahmter Kästen"
+        },
+        "bg-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrundbild/Textur der Seite; none für keines"
+        },
+        "surface-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrundbild/Textur von Karten und Kopfleiste; none für keines"
+        },
+        "font-body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift für Fließtext und Bedienelemente"
+        },
+        "font-heading": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift der Überschriften"
+        },
+        "font-mono": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift für Markdown-Quelltext"
+        },
+        "sheet-paper": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Papierfarbe des FATE-Bogens (auch Druckhintergrund)"
+        },
+        "sheet-ink": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift- und Linienfarbe des Bogens"
+        },
+        "sheet-line": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schreiblinien des Bogens"
+        },
+        "sheet-faded": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "deaktivierte Stresskästchen"
+        },
+        "sheet-focus": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrund fokussierter Bogenfelder"
+        },
+        "sheet-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Balken, Kästchen und Trennlinie des Bogens"
+        },
+        "sheet-on-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Text auf Bogen-Akzentflächen"
+        },
+        "sheet-logo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrund des Logos oben rechts"
+        },
+        "sheet-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten des Bogens auf der Seite"
+        },
+        "sheet-font": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift des Bogens"
+        },
+        "sheet-font-heading": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift der Bogen-Überschriften und Werte"
+        }
+      }
+    },
+    "darkTokens": {
+      "type": "object",
+      "description": "Abweichende Token-Werte bei dunklem Farbschema des Systems",
+      "additionalProperties": false,
+      "properties": {
+        "color-scheme": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Farbschema der nativen Bedienelemente (normal, light, dark, light dark)"
+        },
+        "color-bg": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Seitenhintergrund"
+        },
+        "color-surface": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Flächen: Karten, Kopfleiste, Eingabefelder, Knöpfe, Menüs"
+        },
+        "color-surface-muted": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "zurückgenommene Flächen: Hover, Codeblöcke, Editor-Werkzeugleiste"
+        },
+        "color-border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Rahmen- und Trennlinien"
+        },
+        "color-text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Fließtext"
+        },
+        "color-text-muted": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Nebentext, Hinweise, Zitate, Abzeichen"
+        },
+        "color-link": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Links und Link-Knöpfe"
+        },
+        "color-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Akzent: Hauptknöpfe, aktiver Reiter, gewählter Ordner, Hover-Rahmen"
+        },
+        "color-accent-text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Text und Symbole auf Akzentflächen"
+        },
+        "color-accent-hover": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hover-Überlagerung für Symbolknöpfe auf Akzentflächen"
+        },
+        "color-danger": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Fehlermeldungen, Löschen-Knöpfe, „privat“-Abzeichen"
+        },
+        "color-highlight": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hervorhebung von Suchtreffern"
+        },
+        "color-selection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Auswahl im Editor (z.B. markierte Tabellenzellen)"
+        },
+        "border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite normaler Rahmen (Karten, Knöpfe, Felder, Trennlinien)"
+        },
+        "border-style": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Linienart normaler Rahmen (solid, dashed, …)"
+        },
+        "border-width-strong": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite betonter Linien (Zitatbalken, Markierung im Inhaltsverzeichnis)"
+        },
+        "outline-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite von Fokus- und Ablage-Markierungen"
+        },
+        "border-radius": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Eckenradius von Karten, Knöpfen, Feldern und Menüs"
+        },
+        "border-radius-small": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "kleiner Eckenradius (Suchtreffer)"
+        },
+        "radius-pill": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Eckenradius der Abzeichen"
+        },
+        "shadow-surface": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten von Karten und Kopfleiste"
+        },
+        "shadow-popup": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten aufklappender Menüs"
+        },
+        "frame-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Rahmengrafik (border-image, 9-Slice) um Kopfleiste und Seitenleisten; none für keinen"
+        },
+        "frame-slice": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Slice-Wert der Rahmengrafik (border-image-slice)"
+        },
+        "frame-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Breite der Rahmengrafik; 0px ohne Grafik"
+        },
+        "frame-outset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "wie weit die Rahmengrafik über den Kasten hinausragt"
+        },
+        "frame-repeat": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Wiederholung der Rahmengrafik (round, repeat, stretch, space)"
+        },
+        "frame-line": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Kastenlinie innerhalb des Zierrahmens (box-shadow)"
+        },
+        "frame-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Innenabstand gerahmter Kästen"
+        },
+        "bg-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrundbild/Textur der Seite; none für keines"
+        },
+        "surface-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrundbild/Textur von Karten und Kopfleiste; none für keines"
+        },
+        "font-body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift für Fließtext und Bedienelemente"
+        },
+        "font-heading": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift der Überschriften"
+        },
+        "font-mono": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift für Markdown-Quelltext"
+        },
+        "sheet-paper": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Papierfarbe des FATE-Bogens (auch Druckhintergrund)"
+        },
+        "sheet-ink": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift- und Linienfarbe des Bogens"
+        },
+        "sheet-line": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schreiblinien des Bogens"
+        },
+        "sheet-faded": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "deaktivierte Stresskästchen"
+        },
+        "sheet-focus": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrund fokussierter Bogenfelder"
+        },
+        "sheet-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Balken, Kästchen und Trennlinie des Bogens"
+        },
+        "sheet-on-accent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Text auf Bogen-Akzentflächen"
+        },
+        "sheet-logo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Hintergrund des Logos oben rechts"
+        },
+        "sheet-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schatten des Bogens auf der Seite"
+        },
+        "sheet-font": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift des Bogens"
+        },
+        "sheet-font-heading": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?!.*/\\*)(?:url\\((?:'[^'{}<>\\\\]*'|\"[^\"{}<>\\\\]*\"|[^'\"()\\s{}<>\\\\]*)\\)|[^;{}<>\\\\])*$",
+          "description": "Schrift der Bogen-Überschriften und Werte"
+        }
+      }
+    }
+  }
+}

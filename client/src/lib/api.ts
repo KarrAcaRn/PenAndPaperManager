@@ -19,6 +19,7 @@ import type {
   SkillInput,
   SkillPreset,
   SkillPresetInput,
+  ThemeInfo,
 } from '@pnp/shared';
 
 export class ApiFailure extends Error {
@@ -113,6 +114,8 @@ export const api = {
   rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
   searchRules: (q: string, rulebookId?: number) =>
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
+  themes: () => request<{ themes: ThemeInfo[] }>('GET', '/themes'),
+  theme: (id: string) => request<{ theme: ThemeInfo }>('GET', `/themes/${encodeURIComponent(id)}`),
 };
 
 /**
