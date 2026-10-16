@@ -11,11 +11,26 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('api', () => {
   it('sendet JSON und liefert die Antwort', async () => {
-    const fetch = mockFetch(200, { id: 1, email: 'a@test.de' });
-    expect(await api.login('a@test.de')).toEqual({ id: 1, email: 'a@test.de' });
+    const fetch = mockFetch(200, { user: { id: 1, email: 'a@test.de' } });
+    expect(await api.verifyCode('a@test.de', '123456')).toEqual({ user: { id: 1, email: 'a@test.de' } });
     const [url, init] = fetch.mock.calls[0];
-    expect(url).toBe('/api/auth/login');
-    expect(init).toMatchObject({ method: 'POST', body: '{"email":"a@test.de"}' });
+    expect(url).toBe('/api/auth/verify-code');
+    expect(init).toMatchObject({ method: 'POST', body: '{"email":"a@test.de","code":"123456"}' });
+  });
+
+  it('fordert einen Login-Code an und kommt mit 204 ohne Inhalt zurecht', async () => {
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    await expect(api.requestCode('a@test.de')).resolves.toBeNull();
+    expect(fetch.mock.calls[0][0]).toBe('/api/auth/request-code');
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST', body: '{"email":"a@test.de"}' });
+  });
+
+  it('wertet 401 bei /auth/me als "nicht eingeloggt", andere Fehler nicht', async () => {
+    mockFetch(401, { error: 'Nicht eingeloggt' });
+    expect(await api.me()).toEqual({ user: null });
+    mockFetch(500, { error: 'kaputt' });
+    await expect(api.me()).rejects.toMatchObject({ status: 500 });
   });
 
   it('sendet bei GET keinen Body', async () => {

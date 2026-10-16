@@ -96,21 +96,192 @@ describe('App', () => {
     render(App);
     expect(await screen.findByText(/Server nicht erreichbar/)).toBeTruthy();
   });
+
+  it('leitet ohne Session zum Login um und nach dem Login zurück zur angefragten Seite', async () => {
+    location.hash = '#/g/7/notes';
+    router.route = parseHash(location.hash);
+    api.me.mockResolvedValue({ user: null });
+    api.requestCode.mockResolvedValue(null);
+    api.verifyCode.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([gmGroup]);
+    mockEmptyFolder(api);
+    render(App);
+    await waitFor(() => expect(location.hash).toBe('#/login/%23%2Fg%2F7%2Fnotes'));
+    await waitFor(() => expect(router.route).toEqual({ name: 'login', next: '#/g/7/notes' }));
+    await user.type(screen.getByLabelText('E-Mail-Adresse'), GM.email);
+    await user.click(screen.getByRole('button', { name: 'Code senden' }));
+    await user.type(await screen.findByLabelText('Code aus der E-Mail'), '123456{Enter}');
+    await waitFor(() => expect(location.hash).toBe('#/g/7/notes'));
+    expect(await screen.findByRole('link', { name: 'Testrunde' })).toBeTruthy();
+  });
+
+  it('schickt Eingeloggte von der Login-Seite weiter', async () => {
+    location.hash = '#/login';
+    router.route = parseHash(location.hash);
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([gmGroup]);
+    render(App);
+    expect(await screen.findByText('Deine Gruppen')).toBeTruthy();
+    expect(location.hash).toBe('#/');
+  });
+
+  it('zeigt nach dem Logout wieder den Login', async () => {
+    api.me.mockResolvedValue({ user: GM });
+    api.groups.mockResolvedValue([gmGroup]);
+    api.logout.mockResolvedValue({});
+    render(App);
+    await user.click(await screen.findByRole('button', { name: 'Logout' }));
+    expect(await screen.findByLabelText('E-Mail-Adresse')).toBeTruthy();
+    await waitFor(() => expect(location.hash).toBe('#/login'));
+  });
 });
 
 describe('Login', () => {
-  it('loggt ein und zeigt Fehler an', async () => {
-    api.login.mockRejectedValueOnce(new ApiFailure(400, 'Ungültige Eingabe'));
-    render(Login);
-    await user.type(screen.getByLabelText('E-Mail-Adresse'), 'sl@test.de');
-    await user.click(screen.getByRole('button', { name: 'Einloggen' }));
-    expect(await screen.findByText('Ungültige Eingabe')).toBeTruthy();
+  const sendCodeFor = async (email: string) => {
+    await user.type(screen.getByLabelText('E-Mail-Adresse'), email);
+    await user.click(screen.getByRole('button', { name: 'Code senden' }));
+  };
 
-    api.login.mockResolvedValue(GM);
-    api.me.mockResolvedValue({ user: GM });
-    api.groups.mockResolvedValue([]);
-    await user.click(screen.getByRole('button', { name: 'Einloggen' }));
-    await waitFor(() => expect(session.user).toEqual(GM));
+  describe('Schritt 1: E-Mail', () => {
+    it('prüft die E-Mail-Adresse, bevor ein Code angefordert wird', async () => {
+      render(Login);
+      await sendCodeFor('keine-adresse');
+      expect(screen.getByRole('alert').textContent).toBe('Bitte gib eine gültige E-Mail-Adresse ein.');
+      expect(screen.getByLabelText('E-Mail-Adresse').getAttribute('aria-invalid')).toBe('true');
+      expect(api.requestCode).not.toHaveBeenCalled();
+    });
+
+    it('fordert einen Code an und wechselt zur Code-Eingabe', async () => {
+      api.requestCode.mockResolvedValue(null);
+      render(Login);
+      await sendCodeFor('  sl@test.de ');
+      expect(api.requestCode).toHaveBeenCalledWith('sl@test.de');
+      const input = await screen.findByLabelText('Code aus der E-Mail');
+      expect(screen.getByText('sl@test.de')).toBeTruthy();
+      expect(input.getAttribute('inputmode')).toBe('numeric');
+      expect(input.getAttribute('autocomplete')).toBe('one-time-code');
+      expect(input.getAttribute('maxlength')).toBe('6');
+      await waitFor(() => expect(document.activeElement).toBe(input));
+    });
+
+    it('meldet zu viele Anfragen und andere Fehler', async () => {
+      api.requestCode.mockRejectedValueOnce(new ApiFailure(429, 'Too Many Requests'));
+      render(Login);
+      await sendCodeFor('sl@test.de');
+      expect((await screen.findByRole('alert')).textContent).toMatch(/Zu viele Anfragen/);
+      api.requestCode.mockRejectedValueOnce(new Error('Failed to fetch'));
+      await user.click(screen.getByRole('button', { name: 'Code senden' }));
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Failed to fetch'));
+      expect(screen.queryByLabelText('Code aus der E-Mail')).toBeNull();
+    });
+
+    it('sperrt den Button, solange der Code angefordert wird', async () => {
+      let resolve!: () => void;
+      api.requestCode.mockReturnValue(new Promise<void>((r) => (resolve = r)));
+      render(Login);
+      await sendCodeFor('sl@test.de');
+      const button = screen.getByRole('button', { name: 'Code wird gesendet …' }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      resolve();
+      expect(await screen.findByLabelText('Code aus der E-Mail')).toBeTruthy();
+    });
+  });
+
+  describe('Schritt 2: Code', () => {
+    beforeEach(() => {
+      api.requestCode.mockResolvedValue(null);
+    });
+
+    it('loggt mit dem Code ein und lässt nur Ziffern zu', async () => {
+      api.verifyCode.mockResolvedValue({ user: GM });
+      api.groups.mockResolvedValue([gmGroup]);
+      render(Login);
+      await sendCodeFor('sl@test.de');
+      const input = (await screen.findByLabelText('Code aus der E-Mail')) as HTMLInputElement;
+      await user.type(input, '12 34-56');
+      expect(input.value).toBe('123456');
+      await user.click(screen.getByRole('button', { name: 'Einloggen' }));
+      await waitFor(() => expect(session.user).toEqual(GM));
+      expect(api.verifyCode).toHaveBeenCalledWith('sl@test.de', '123456');
+      expect(session.groups).toEqual([gmGroup]);
+    });
+
+    it('verlangt sechs Ziffern und meldet ungültige oder abgelaufene Codes', async () => {
+      render(Login);
+      await sendCodeFor('sl@test.de');
+      const input = await screen.findByLabelText('Code aus der E-Mail');
+      await user.type(input, '123');
+      await user.click(screen.getByRole('button', { name: 'Einloggen' }));
+      expect(screen.getByRole('alert').textContent).toBe('Der Code besteht aus 6 Ziffern.');
+      expect(api.verifyCode).not.toHaveBeenCalled();
+
+      for (const status of [400, 401]) {
+        api.verifyCode.mockRejectedValueOnce(new ApiFailure(status, 'x'));
+        await user.clear(input);
+        await user.type(input, '999999{Enter}');
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Code ungültig oder abgelaufen.'));
+      }
+      api.verifyCode.mockRejectedValueOnce(new ApiFailure(429, 'x'));
+      await user.click(screen.getByRole('button', { name: 'Einloggen' }));
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Zu viele Anfragen/));
+      expect(session.user).toBeNull();
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('bietet "Code erneut senden" erst nach 60 Sekunden wieder an', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        render(Login);
+        await fireEvent.input(screen.getByLabelText('E-Mail-Adresse'), { target: { value: 'sl@test.de' } });
+        await fireEvent.click(screen.getByRole('button', { name: 'Code senden' }));
+        const resend = (await screen.findByRole('button', { name: /Code erneut senden/ })) as HTMLButtonElement;
+        expect(resend.disabled).toBe(true);
+        expect(resend.textContent).toMatch(/\(60 s\)/);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(resend.textContent).toMatch(/\([23]\d s\)/);
+        await vi.advanceTimersByTimeAsync(31_000);
+        expect(resend.disabled).toBe(false);
+        expect(resend.textContent?.trim()).toBe('Code erneut senden');
+
+        await fireEvent.click(resend);
+        await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Ein neuer Code ist unterwegs.'));
+        expect(api.requestCode).toHaveBeenCalledTimes(2);
+        expect(api.requestCode).toHaveBeenLastCalledWith('sl@test.de');
+        expect(resend.disabled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('meldet Fehler beim erneuten Senden', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        render(Login);
+        await fireEvent.input(screen.getByLabelText('E-Mail-Adresse'), { target: { value: 'sl@test.de' } });
+        await fireEvent.click(screen.getByRole('button', { name: 'Code senden' }));
+        const resend = (await screen.findByRole('button', { name: /Code erneut senden/ })) as HTMLButtonElement;
+        await vi.advanceTimersByTimeAsync(61_000);
+        api.requestCode.mockRejectedValueOnce(new ApiFailure(429, 'x'));
+        await fireEvent.click(resend);
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Zu viele Anfragen/));
+        expect(resend.disabled).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('kehrt mit "Andere E-Mail verwenden" zur E-Mail-Eingabe zurück', async () => {
+      render(Login);
+      await sendCodeFor('sl@test.de');
+      await user.click(await screen.findByRole('button', { name: 'Andere E-Mail verwenden' }));
+      const email = screen.getByLabelText('E-Mail-Adresse') as HTMLInputElement;
+      expect(email.value).toBe('sl@test.de');
+      expect(screen.queryByRole('alert')).toBeNull();
+      await user.clear(email);
+      await sendCodeFor('alice@test.de');
+      expect(await screen.findByText('alice@test.de')).toBeTruthy();
+      expect((screen.getByLabelText('Code aus der E-Mail') as HTMLInputElement).value).toBe('');
+    });
   });
 });
 
