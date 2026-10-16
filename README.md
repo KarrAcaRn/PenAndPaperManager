@@ -57,6 +57,12 @@ nicht mehr – damit konnte sich jeder als jede Adresse anmelden.
 - Artikel-Sichtbarkeit: Privat (nur Autor), Privat & Spielleiter, Öffentlich (`server/src/access.ts`).
 - Bearbeiten: der Autor immer, Spielleiter alles, was sie sehen. Fremde Artikel kann man weder auf "Privat"
   stellen noch in einen Bereich schieben, den der Autor nicht sieht.
+- Besitzer (Autor) wechseln: wer den Artikel bearbeiten darf (Autor oder Spielleiter), kann ihn im Bearbeiten-Modus
+  einem anderen Mitglied geben – z.B. legt der Spielleiter einen Charakter an und gibt ihn dem Spieler. Der neue
+  Besitzer muss den Bereich sehen können. Danach gelten die Rechte des neuen Besitzers; wer abgibt, sieht bzw.
+  bearbeitet ihn womöglich nicht mehr. Das gilt auch, wenn ein Spielleiter einem Spieler den Artikel wegnimmt
+  oder weitergibt (bewusst erlaubt; der neue Besitzer darf ihn dann auch auf „Privat“ stellen). Das Formular
+  sagt jeweils vorher, wer danach was nicht mehr sieht bzw. bearbeiten kann. „Zuletzt geändert“ bleibt dabei.
 - Verliert ein Autor den Zugriff (aus der Gruppe entfernt, bzw. als Spielleiter degradiert für den Bereich
   Spielleiter), werden seine privaten Artikel dort zu "Privat & Spielleiter" – sonst könnte sie niemand mehr
   sehen oder löschen.

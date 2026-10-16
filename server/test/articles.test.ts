@@ -161,3 +161,65 @@ describe('Artikel verschieben', () => {
     expect((await bob.get(`${base}/articles?section=characters`)).body[0].canEdit).toBe(false);
   });
 });
+
+describe('Besitzer wechseln', () => {
+  it('lässt den Spielleiter einen Charakter anlegen und dem Spieler geben', async () => {
+    const { base, gm, alice, bob } = await setupGroup(makeApp());
+    const id = (await gm.post(`${base}/articles`, article('private_gm', { title: 'Zoë' }))).body.id;
+    expect((await alice.get(`${base}/articles/${id}`)).status).toBe(404);
+    const res = await gm.put(`${base}/articles/${id}/author`, { authorId: alice.userId });
+    expect(res.body.article).toMatchObject({ authorId: alice.userId, canEdit: true });
+    // jetzt gehört er Alice: sie sieht und bearbeitet ihn, Bob weiterhin nicht
+    expect((await alice.get(`${base}/articles/${id}`)).body).toMatchObject({ canEdit: true, authorEmail: expect.stringContaining('alice') });
+    expect((await bob.get(`${base}/articles/${id}`)).status).toBe(404);
+  });
+
+  it('erlaubt es nur Autor und Spielleiter', async () => {
+    const { base, gm, alice, bob } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('public'))).body.id;
+    expect((await bob.put(`${base}/articles/${id}/author`, { authorId: bob.userId })).status).toBe(403);
+    // Autor gibt ab und verliert das Bearbeitungsrecht, sieht den öffentlichen Artikel aber noch
+    const given = await alice.put(`${base}/articles/${id}/author`, { authorId: bob.userId });
+    expect(given.body.article).toMatchObject({ authorId: bob.userId, canEdit: false });
+    expect((await alice.put(`${base}/articles/${id}/author`, { authorId: alice.userId })).status).toBe(403);
+    expect((await gm.put(`${base}/articles/${id}/author`, { authorId: gm.userId })).body.article.authorId).toBe(gm.userId);
+  });
+
+  it('meldet, wenn man den Artikel danach nicht mehr sieht', async () => {
+    const { base, alice, bob } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('private'))).body.id;
+    expect((await alice.put(`${base}/articles/${id}/author`, { authorId: bob.userId })).body).toEqual({ article: null });
+    expect((await bob.get(`${base}/articles/${id}`)).body.authorId).toBe(bob.userId);
+  });
+
+  it('lässt den Spielleiter einen Spielerartikel übernehmen - der Spieler verliert ihn dann (bewusst erlaubt)', async () => {
+    const { base, gm, alice } = await setupGroup(makeApp());
+    const id = (await alice.post(`${base}/articles`, article('private_gm'))).body.id;
+    // ohne Übernahme darf der Spielleiter nicht auf "Privat" stellen
+    expect((await gm.put(`${base}/articles/${id}`, article('private'))).status).toBe(403);
+    expect((await gm.put(`${base}/articles/${id}/author`, { authorId: gm.userId })).body.article.authorId).toBe(gm.userId);
+    expect((await alice.get(`${base}/articles/${id}`)).status).toBe(404);
+    expect((await gm.put(`${base}/articles/${id}`, article('private'))).status).toBe(200);
+    // derselbe Besitzer: nichts zu tun
+    expect((await gm.put(`${base}/articles/${id}/author`, { authorId: gm.userId })).body.article.authorId).toBe(gm.userId);
+  });
+
+  it('gibt private Artikel eines Besitzers, der später entfernt wird, an die Spielleiter', async () => {
+    const { base, gm, alice } = await setupGroup(makeApp());
+    const id = (await gm.post(`${base}/articles`, article('private'))).body.id;
+    await gm.put(`${base}/articles/${id}/author`, { authorId: alice.userId });
+    expect((await gm.del(`${base}/members/${alice.userId}`)).status).toBe(200);
+    expect((await gm.get(`${base}/articles/${id}`)).body.visibility).toBe('private_gm');
+  });
+
+  it('nimmt nur Mitglieder, die den Bereich sehen', async () => {
+    const app = makeApp();
+    const { base, gm, alice } = await setupGroup(app);
+    const outsider = await loginAs(app, 'fremd@example.com');
+    const gmArticle = (await gm.post(`${base}/articles`, article('private_gm', { section: 'gm' }))).body.id;
+    expect((await gm.put(`${base}/articles/${gmArticle}/author`, { authorId: alice.userId })).status).toBe(403);
+    expect((await gm.put(`${base}/articles/${gmArticle}/author`, { authorId: outsider.userId })).status).toBe(400);
+    expect((await gm.put(`${base}/articles/${gmArticle}/author`, { authorId: 99999 })).status).toBe(400);
+    expect((await gm.get(`${base}/articles/${gmArticle}`)).body.authorId).toBe(gm.userId);
+  });
+});

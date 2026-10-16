@@ -7,6 +7,7 @@
     VISIBILITIES,
     VISIBILITY_LABELS,
     accessibleSections,
+    canAccessSection,
     canHaveSheet,
     emptySheet,
     emptySheetState,
@@ -15,6 +16,7 @@
     type Article,
     type Folder,
     type Group,
+    type Member,
     type Section,
     type SheetData,
     type SheetState,
@@ -47,6 +49,13 @@
   const initialForm = () => ({ section, path, title: '', bodyMd: '', visibility: 'private_gm' as Visibility });
   let form = $state(initialForm());
   let isAuthor = $state(true);
+  // Besitzer (Autor) lässt sich hier an ein anderes Mitglied geben - wird nach dem Artikel gespeichert, siehe save()
+  const me = untrack(() => session.user?.id ?? 0);
+  let owner = $state(me);
+  let savedOwner = $state(me);
+  /** Mitglieder zur Auswahl; bleibt leer, wenn sie nicht laden - dann gibt es keine Auswahl */
+  let members = $state<Member[]>([]);
+  let membersFailed = $state(false);
   let ready = $state(false);
   let folders = $state<Folder[]>([]);
   /** Gespeicherter Stand des Artikels (nur beim Bearbeiten) */
@@ -71,7 +80,7 @@
   const saving = createTask();
   const sheetTask = createTask();
 
-  const formSnapshot = () => JSON.stringify(form);
+  const formSnapshot = () => JSON.stringify({ form, owner });
   const sheetSnapshot = () => JSON.stringify({ sheet: sheet?.data ?? null, removed: removedSheet !== null });
   const dirty = $derived(ready && (formSnapshot() !== formBaseline || sheetSnapshot() !== sheetBaseline));
 
@@ -103,7 +112,8 @@
       const a = await api.article(group.id, id);
       if (!a.canEdit) throw new Error('Du darfst diesen Artikel nicht bearbeiten');
       form = { section: a.section, path: a.path, title: a.title, bodyMd: a.bodyMd, visibility: a.visibility };
-      isAuthor = a.authorId === session.user?.id;
+      isAuthor = a.authorId === me;
+      owner = savedOwner = a.authorId;
       article = a;
       savedSection = a.section;
       savedPath = a.path;
@@ -113,10 +123,51 @@
     sheetBaseline = sheetSnapshot();
     ready = true;
   });
+  untrack(() => api.members(group.id))
+    .then((m) => (members = m))
+    .catch(() => (membersFailed = true));
+
+  const roleOf = (userId: number) => (userId === me ? group.role : members.find((m) => m.userId === userId)?.role);
+  const ownerRole = $derived(roleOf(owner));
+  /** Bisheriger Besitzer, falls er kein Mitglied mehr ist - sonst stünde die Auswahl leer da */
+  const formerOwner = $derived(
+    article && !members.some((m) => m.userId === savedOwner) ? { userId: savedOwner, email: article.authorEmail } : null,
+  );
+  const formerOwnerName = $derived(
+    members.find((m) => m.userId === savedOwner)?.email ?? formerOwner?.email ?? 'Der bisherige Besitzer',
+  );
+  /** Was der bisherige Besitzer nach dem Wechsel noch darf (nur wenn ich ihm den Artikel wegnehme bzw. weitergebe) */
+  const formerKeeps = $derived.by(() => {
+    const role = roleOf(savedOwner) ?? 'player';
+    if (form.visibility === 'public') return role === 'gm' ? 'edit' : 'see';
+    if (form.visibility === 'private_gm' && role === 'gm') return 'edit';
+    return 'none';
+  });
+  /** Was nach dem Speichern gilt: kann ich ihn noch sehen bzw. bearbeiten? */
+  const keepsAccess = $derived.by(() => {
+    if (owner === me) return 'edit';
+    if (form.visibility === 'public') return group.role === 'gm' ? 'edit' : 'see';
+    if (form.visibility === 'private_gm' && group.role === 'gm') return 'edit';
+    return 'none';
+  });
 
   // Fremde Artikel darf man weder auf "Privat" stellen noch in einen Bereich schieben,
-  // den der Autor nicht sieht - der Server lehnt beides ab.
-  const sections = $derived(isAuthor ? accessibleSections(group.role) : accessibleSections('player'));
+  // den der Besitzer nicht sieht - der Server lehnt beides ab. Maßgeblich ist der gewählte Besitzer.
+  // Gebe ich einen fremden Artikel weiter, speichere ich ihn noch unter dem bisherigen Besitzer - dann muss auch der
+  // den Bereich sehen (der Server prüft das beim Speichern).
+  const sections = $derived(
+    accessibleSections(group.role).filter(
+      (s) =>
+        canAccessSection(ownerRole ?? 'player', s) &&
+        (owner === me || savedOwner === me || canAccessSection(roleOf(savedOwner) ?? 'player', s)),
+    ),
+  );
+  /** "Privat" nur für eigene Artikel - oder solche, die man gerade abgibt (der Wechsel kommt nach dem Speichern) */
+  const privateAllowed = $derived(isAuthor || owner === me);
+  // Wechselt der Besitzer so, dass "Privat" nicht mehr erlaubt ist, nicht stillschweigend gewählt lassen
+  $effect(() => {
+    if (form.visibility === 'private' && !privateAllowed) form.visibility = 'private_gm';
+  });
   const sectionOptions = $derived(sections.includes(form.section) ? sections : [form.section, ...sections]);
 
   $effect(() => {
@@ -199,55 +250,95 @@
         throw new Error(`Im Bereich ${SECTION_LABELS[form.section]} gibt es keine FATE-Bögen – Bogen entfernen oder anderen Bereich wählen.`);
       }
       if (sheetLoadFailed) throw new Error('Der FATE-Bogen ist nicht geladen – bitte erst „Bogen neu laden“.');
-      const deleteSheet = async () => {
-        if (!removedSheet || !article) return;
-        await api.deleteSheet(group.id, article.id);
-        removedSheet = null;
-      };
       // Ein Artikel mit Bogen darf nicht in einen Bereich ohne Bögen: dann muss der Bogen vorher weg. Sonst erst
       // den Artikel speichern - scheitert das, ist der Bogen noch da.
       const deleteFirst = !canHaveSheet(form.section);
-      if (deleteFirst) await deleteSheet();
-      let saved: Article;
+      // Übernehme ich einen fremden Artikel, zuerst den Besitzer wechseln: dann gelten beim Speichern meine Rechte
+      // (z.B. "Privat"). Gebe ich ihn ab, erst ganz am Ende - sonst dürfte ich Text und Bogen nicht mehr speichern.
+      let tookOver = false;
+      if (id !== undefined && owner === me && owner !== savedOwner) {
+        await api.setArticleAuthor(group.id, id, me);
+        savedOwner = me;
+        isAuthor = true;
+        tookOver = true;
+        if (article) article.authorId = me;
+      }
+      // Scheitert danach etwas, ist die Übernahme schon gespeichert - das soll die Meldung sagen
       try {
-        if (id === undefined) saved = await api.createArticle(group.id, form);
-        else {
-          const { path: formPath, ...rest } = form;
-          const moved = form.section !== savedSection || formPath !== savedPath;
-          saved = await api.updateArticle(group.id, id, moved ? form : rest);
-        }
+        await saveRest(deleteFirst);
       } catch (err) {
-        if (deleteFirst && article) {
-          throw new Error(`${(err as Error).message} (Der FATE-Bogen ist bereits entfernt.)`, { cause: err });
-        }
+        if (tookOver) throw new Error(`${(err as Error).message} (Der Artikel gehört bereits dir.)`, { cause: err });
         throw err;
       }
-      savedSection = saved.section;
-      savedPath = saved.path;
-      formBaseline = formSnapshot(); // Text ist gespeichert, auch wenn danach der Bogen scheitert
-      notifyContentChanged();
-      if (!deleteFirst) {
-        await deleteSheet().catch((err: Error) => {
-          throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht entfernt: ${err.message}`, { cause: err });
-        });
-      }
-      if (sheet && id === undefined) {
-        // Scheitert nur der Bogen, ist der Artikel trotzdem angelegt: nicht im Formular bleiben (ein zweites
-        // Speichern legte ihn doppelt an) - in der Artikelansicht lässt sich der Bogen nachholen.
-        await saveSheet(saved.id, sheet).catch((err: Error) =>
-          showNotice(`Artikel angelegt, der FATE-Bogen aber nicht (${err.message}). Er lässt sich unter „Bearbeiten“ nachholen.`),
-        );
-      } else if (sheet) {
-        // Bleibt bei einem Fehler im Formular - der Artikel selbst ist schon gespeichert
-        await saveSheet(saved.id, sheet).catch((err: Error) => {
-          throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht: ${err.message}`, { cause: err });
-        });
-      }
-      notifyContentChanged();
-      formBaseline = formSnapshot();
-      sheetBaseline = sheetSnapshot();
-      navigate(href.article(group.id, saved.section, saved.id));
     });
+  }
+
+  async function saveRest(deleteFirst: boolean) {
+    /** Text, Bogen und ggf. Abgabe an einen anderen Besitzer speichern (Teil von save) */
+    const deleteSheet = async () => {
+      if (!removedSheet || !article) return;
+      await api.deleteSheet(group.id, article.id);
+      removedSheet = null;
+    };
+    if (deleteFirst) await deleteSheet();
+    let saved: Article;
+    try {
+      if (id === undefined) saved = await api.createArticle(group.id, form);
+      else {
+        const { path: formPath, ...rest } = form;
+        const moved = form.section !== savedSection || formPath !== savedPath;
+        saved = await api.updateArticle(group.id, id, moved ? form : rest);
+      }
+    } catch (err) {
+      if (deleteFirst && article) {
+        throw new Error(`${(err as Error).message} (Der FATE-Bogen ist bereits entfernt.)`, { cause: err });
+      }
+      throw err;
+    }
+    savedSection = saved.section;
+    savedPath = saved.path;
+    formBaseline = formSnapshot(); // Text ist gespeichert, auch wenn danach der Bogen scheitert
+    notifyContentChanged();
+    if (!deleteFirst) {
+      await deleteSheet().catch((err: Error) => {
+        throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht entfernt: ${err.message}`, { cause: err });
+      });
+    }
+    if (sheet && id === undefined) {
+      // Scheitert nur der Bogen, ist der Artikel trotzdem angelegt: nicht im Formular bleiben (ein zweites
+      // Speichern legte ihn doppelt an) - in der Artikelansicht lässt sich der Bogen nachholen.
+      await saveSheet(saved.id, sheet).catch((err: Error) =>
+        showNotice(`Artikel angelegt, der FATE-Bogen aber nicht (${err.message}). Er lässt sich unter „Bearbeiten“ nachholen.`),
+      );
+    } else if (sheet) {
+      // Bleibt bei einem Fehler im Formular - der Artikel selbst ist schon gespeichert
+      await saveSheet(saved.id, sheet).catch((err: Error) => {
+        throw new Error(`Artikel gespeichert, der FATE-Bogen aber nicht: ${err.message}`, { cause: err });
+      });
+    }
+    if (owner !== savedOwner) {
+      try {
+        const { article: after } = await api.setArticleAuthor(group.id, saved.id, owner);
+        savedOwner = owner;
+        if (!after) {
+          // Gehört jetzt jemand anderem und ich sehe ihn nicht mehr: in seinen Ordner
+          notifyContentChanged();
+          formBaseline = formSnapshot();
+          sheetBaseline = sheetSnapshot();
+          navigate(href.folder(group.id, saved.section, saved.path));
+          return;
+        }
+      } catch (err) {
+        const message = `Artikel gespeichert, der Besitzer aber nicht geändert: ${(err as Error).message}`;
+        // Neuer Artikel: trotzdem weiter (ein zweites Speichern legte ihn doppelt an), Besitzer per „Bearbeiten“ nachholen
+        if (id !== undefined) throw new Error(message, { cause: err });
+        showNotice(message);
+      }
+    }
+    notifyContentChanged();
+    formBaseline = formSnapshot();
+    sheetBaseline = sheetSnapshot();
+    navigate(href.article(group.id, saved.section, saved.id));
   }
 </script>
 
@@ -287,11 +378,42 @@
         Sichtbarkeit
         <select bind:value={form.visibility}>
           {#each VISIBILITIES as v}
-            <option value={v} disabled={v === 'private' && !isAuthor}>{VISIBILITY_LABELS[v]}</option>
+            <option value={v} disabled={v === 'private' && !privateAllowed}>{VISIBILITY_LABELS[v]}</option>
           {/each}
         </select>
       </label>
+      {#if members.length > 0}
+        <label>
+          Besitzer
+          <select bind:value={owner}>
+            {#if formerOwner}
+              <option value={formerOwner.userId}>{formerOwner.email} (kein Mitglied mehr)</option>
+            {/if}
+            {#each members as m (m.userId)}
+              <!-- Nur wer den Bereich sieht, kann den Artikel besitzen (der bisherige bleibt wählbar) -->
+              <option value={m.userId} disabled={m.userId !== savedOwner && !canAccessSection(m.role, form.section)}>
+                {m.email}{m.userId === me ? ' (du)' : ''}
+              </option>
+            {/each}
+          </select>
+        </label>
+      {:else if membersFailed}
+        <p class="muted">Der Besitzer lässt sich gerade nicht ändern (Mitglieder nicht geladen).</p>
+      {/if}
     </div>
+    {#if owner !== savedOwner && savedOwner !== me && formerKeeps !== 'edit'}
+      <p class="muted">
+        {formerOwnerName}
+        {formerKeeps === 'none' ? 'sieht den Artikel danach nicht mehr.' : 'kann den Artikel danach nicht mehr bearbeiten.'}
+      </p>
+    {/if}
+    {#if owner !== savedOwner && keepsAccess !== 'edit'}
+      <p class="muted">
+        {keepsAccess === 'none'
+          ? 'Nach dem Speichern gehört der Artikel dem neuen Besitzer – du siehst ihn dann nicht mehr.'
+          : 'Nach dem Speichern gehört der Artikel dem neuen Besitzer – du kannst ihn dann nicht mehr bearbeiten.'}
+      </p>
+    {/if}
 
     <!-- Bogen vor dem Text, wie in der Artikelansicht. Er wird mit dem Artikel gespeichert;
          während des Speicherns gesperrt, damit nichts nach dem Absenden Eingegebene verloren geht. -->

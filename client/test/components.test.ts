@@ -1175,6 +1175,145 @@ describe('ArticleEdit', () => {
     expect((screen.getByRole('link', { name: 'Abbrechen' }) as HTMLAnchorElement).hash).toBe('#/g/7/notes/f/bar');
   });
 
+  describe('Besitzer', () => {
+    const members = [member(GM, 'gm'), member(PLAYER, 'player'), member({ id: 4, email: 'bob@test.de' }, 'player')];
+    const owner = () => screen.getByLabelText('Besitzer') as HTMLSelectElement;
+    beforeEach(() => {
+      signIn(GM, [gmGroup]);
+      api.members.mockResolvedValue(members);
+      api.updateArticle.mockImplementation(async (_g: number, id: number, input: object) => fullArticle({ id, authorId: GM.id, ...input }));
+    });
+
+    it('gibt einen eigenen Artikel nach dem Speichern an ein anderes Mitglied', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'characters', authorId: GM.id, visibility: 'private_gm' }));
+      api.setArticleAuthor.mockResolvedValue({ article: fullArticle({ authorId: PLAYER.id }) });
+      render(ArticleEdit, { group: gmGroup, section: 'characters', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(GM.id)));
+      expect([...owner().options].map((o) => o.textContent!.trim())).toEqual(['sl@test.de (du)', 'alice@test.de', 'bob@test.de']);
+      await user.selectOptions(owner(), String(PLAYER.id));
+      // als Spielleiter behalte ich den Zugriff (Privat & Spielleiter): kein Hinweis
+      expect(screen.queryByText(/gehört der Artikel dem neuen Besitzer/)).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/1'));
+      expect(api.setArticleAuthor).toHaveBeenCalledWith(7, 1, PLAYER.id);
+      // erst Text speichern, dann abgeben - sonst fehlten danach womöglich die Rechte
+      expect(api.updateArticle.mock.invocationCallOrder[0]).toBeLessThan(api.setArticleAuthor.mock.invocationCallOrder[0]);
+    });
+
+    it('warnt, wenn man den Artikel danach nicht mehr sieht, und landet dann im Ordner', async () => {
+      signIn(PLAYER, [playerGroup]);
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', path: 'bar', authorId: PLAYER.id, visibility: 'private' }));
+      api.updateArticle.mockImplementation(async (_g: number, id: number, input: object) => fullArticle({ id, path: 'bar', ...input }));
+      api.setArticleAuthor.mockResolvedValue({ article: null });
+      render(ArticleEdit, { group: playerGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(PLAYER.id)));
+      await user.selectOptions(owner(), '4');
+      expect(screen.getByText(/du siehst ihn dann nicht mehr/)).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      await waitFor(() => expect(location.hash).toBe('#/g/7/notes/f/bar'));
+    });
+
+    it('übernimmt einen fremden Artikel vor dem Speichern, damit „Privat“ erlaubt ist', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: PLAYER.id, visibility: 'public' }));
+      api.setArticleAuthor.mockResolvedValue({ article: fullArticle({ authorId: GM.id }) });
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(PLAYER.id)));
+      const privateOption = () => within(screen.getByLabelText('Sichtbarkeit')).getByRole('option', { name: 'Privat' }) as HTMLOptionElement;
+      expect(privateOption().disabled).toBe(true);
+      await user.selectOptions(owner(), String(GM.id));
+      expect(privateOption().disabled).toBe(false);
+      await user.selectOptions(screen.getByLabelText('Sichtbarkeit'), 'private');
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      await waitFor(() => expect(api.updateArticle).toHaveBeenCalled());
+      expect(api.setArticleAuthor).toHaveBeenCalledWith(7, 1, GM.id);
+      expect(api.setArticleAuthor.mock.invocationCallOrder[0]).toBeLessThan(api.updateArticle.mock.invocationCallOrder[0]);
+    });
+
+    it('bietet nur Besitzer an, die den Bereich sehen, und Bereiche, die der Besitzer sieht', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'gm', authorId: GM.id }));
+      render(ArticleEdit, { group: gmGroup, section: 'gm', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(GM.id)));
+      const option = (name: string) => within(owner()).getByRole('option', { name }) as HTMLOptionElement;
+      expect(option('alice@test.de').disabled).toBe(true);
+      await user.selectOptions(screen.getByLabelText('Bereich'), 'notes');
+      expect(option('alice@test.de').disabled).toBe(false);
+      await user.selectOptions(owner(), String(PLAYER.id));
+      const sections = within(screen.getByLabelText('Bereich')).getAllByRole('option').map((o) => o.textContent);
+      expect(sections).toEqual(['Charaktere', 'Notizen']);
+    });
+
+    it('vergibt den Besitzer auch beim Anlegen', async () => {
+      api.createArticle.mockResolvedValue(fullArticle({ id: 5, section: 'characters', authorId: GM.id }));
+      api.setArticleAuthor.mockResolvedValue({ article: fullArticle({ id: 5, authorId: PLAYER.id }) });
+      render(ArticleEdit, { group: gmGroup, section: 'characters' });
+      await user.type(await screen.findByLabelText('Titel'), 'Zoë');
+      await waitFor(() => expect(owner().value).toBe(String(GM.id)));
+      await user.selectOptions(owner(), String(PLAYER.id));
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      await waitFor(() => expect(location.hash).toBe('#/g/7/characters/a/5'));
+      expect(api.setArticleAuthor).toHaveBeenCalledWith(7, 5, PLAYER.id);
+    });
+
+    it('warnt, was der bisherige Besitzer danach verliert, und sagt bei Teilfehlern, dass die Übernahme schon gilt', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: PLAYER.id, authorEmail: PLAYER.email, visibility: 'private_gm' }));
+      api.setArticleAuthor.mockResolvedValue({ article: fullArticle({ authorId: GM.id }) });
+      api.updateArticle.mockRejectedValue(new ApiFailure(500, 'Interner Fehler'));
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(PLAYER.id)));
+      await user.selectOptions(owner(), String(GM.id));
+      expect(screen.getByText(/alice@test.de\s+sieht den Artikel danach nicht mehr/)).toBeTruthy();
+      await user.selectOptions(screen.getByLabelText('Sichtbarkeit'), 'public');
+      expect(screen.getByText(/alice@test.de\s+kann den Artikel danach nicht mehr bearbeiten/)).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      expect(await screen.findByText('Interner Fehler (Der Artikel gehört bereits dir.)')).toBeTruthy();
+    });
+
+    it('nimmt „Privat“ zurück, wenn der gewählte Besitzer es nicht mehr erlaubt', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: PLAYER.id, visibility: 'public' }));
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(PLAYER.id)));
+      await user.selectOptions(owner(), String(GM.id));
+      await user.selectOptions(screen.getByLabelText('Sichtbarkeit'), 'private');
+      await user.selectOptions(owner(), '4');
+      expect((screen.getByLabelText('Sichtbarkeit') as HTMLSelectElement).value).toBe('private_gm');
+    });
+
+    it('bietet bei Weitergabe eines fremden Artikels nur Bereiche an, die auch der bisherige Besitzer sieht', async () => {
+      const otherGm = { id: 5, email: 'sl2@test.de' };
+      api.members.mockResolvedValue([...members, member(otherGm, 'gm')]);
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: PLAYER.id }));
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(PLAYER.id)));
+      await user.selectOptions(owner(), '5');
+      const sections = within(screen.getByLabelText('Bereich')).getAllByRole('option').map((o) => o.textContent);
+      expect(sections).toEqual(['Charaktere', 'Notizen']);
+    });
+
+    it('zeigt einen Besitzer, der kein Mitglied mehr ist, und sagt, wenn die Mitglieder nicht laden', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: 99, authorEmail: 'weg@test.de' }));
+      const view = render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe('99'));
+      expect(within(owner()).getByRole('option', { name: 'weg@test.de (kein Mitglied mehr)' })).toBeTruthy();
+      view.unmount();
+
+      api.members.mockRejectedValue(new Error('offline'));
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      expect(await screen.findByText(/Besitzer lässt sich gerade nicht ändern/)).toBeTruthy();
+    });
+
+    it('meldet einen gescheiterten Besitzerwechsel und bleibt im Formular', async () => {
+      api.article.mockResolvedValue(fullArticle({ section: 'notes', authorId: GM.id }));
+      api.setArticleAuthor.mockRejectedValue(new ApiFailure(403, 'Der neue Besitzer hätte in diesem Bereich keinen Zugriff'));
+      location.hash = '#/g/7/notes/a/1/edit';
+      render(ArticleEdit, { group: gmGroup, section: 'notes', id: 1 });
+      await waitFor(() => expect(owner().value).toBe(String(GM.id)));
+      await user.selectOptions(owner(), String(PLAYER.id));
+      await user.click(screen.getByRole('button', { name: 'Speichern' }));
+      expect(await screen.findByText(/Artikel gespeichert, der Besitzer aber nicht geändert/)).toBeTruthy();
+      expect(location.hash).toBe('#/g/7/notes/a/1/edit');
+    });
+  });
+
   it('bietet Spielern den Bereich Spielleiter nicht an', async () => {
     signIn(PLAYER, [playerGroup]);
     render(ArticleEdit, { group: playerGroup, section: 'notes' });

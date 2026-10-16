@@ -14,7 +14,7 @@ import { assertSection, getRole, requireMember, type MemberContext } from '../au
 import { VISIBLE_ARTICLE_SQL, visibilityParams } from '../access.ts';
 import { ARTICLES_FROM, SUMMARY_COLUMNS, loadVisibleArticle, toSummary, type SummaryRow } from '../articles.ts';
 import { IN_SECTION_SQL, ensureFolderPath, findFolderId, folderPathLookup, parsePath, sectionParams } from '../folders.ts';
-import { badRequest, forbidden } from '../errors.ts';
+import { HttpError, badRequest, forbidden } from '../errors.ts';
 import { gidParams, idParams, nonBlank, objectOf, sectionProp } from '../schemas.ts';
 
 const articleParams = idParams('id');
@@ -153,6 +153,34 @@ export function articleRoutes(app: FastifyInstance, db: Db): void {
         ),
       );
       return loadVisible(ctx, id);
+    },
+  );
+
+  // Besitzer (Autor) wechseln, z.B. legt der Spielleiter einen Charakter an und gibt ihn dem Spieler. Darf, wer den
+  // Artikel bearbeiten darf (Autor oder Spielleiter). Der neue Besitzer muss Mitglied sein und den Bereich sehen.
+  // Danach sieht bzw. bearbeitet der bisherige ihn womöglich nicht mehr - dann kommt article: null zurück.
+  app.put(
+    '/api/groups/:gid/articles/:id/author',
+    { schema: { params: articleParams, body: objectOf({ authorId: { type: 'integer' } }) } },
+    (req) => {
+      const ctx = requireMember(db, req);
+      const { id } = req.params as { id: number };
+      const { authorId } = req.body as { authorId: number };
+      const existing = loadVisible(ctx, id);
+      if (!existing.canEdit) throw forbidden('Du darfst den Besitzer dieses Artikels nicht ändern');
+      if (authorId === existing.authorId) return { article: existing };
+      const role = getRole(db, ctx.groupId, authorId);
+      if (!role) throw badRequest('Besitzer kann nur ein Mitglied der Gruppe sein');
+      if (!canAccessSection(role, existing.section)) {
+        throw forbidden('Der neue Besitzer hätte in diesem Bereich keinen Zugriff auf den Artikel');
+      }
+      run(db, 'UPDATE articles SET author_id = ? WHERE id = ?', authorId, id);
+      try {
+        return { article: loadVisible(ctx, id) };
+      } catch (err) {
+        if (err instanceof HttpError && err.statusCode === 404) return { article: null };
+        throw err;
+      }
     },
   );
 

@@ -90,6 +90,9 @@ export const api = {
   createArticle: (gid: number, input: ArticleInput) => request<Article>('POST', `/groups/${gid}/articles`, input),
   updateArticle: (gid: number, id: number, input: ArticleUpdate) =>
     request<Article>('PUT', `/groups/${gid}/articles/${id}`, input),
+  /** Besitzer wechseln; article ist null, wenn der Anfragende ihn danach nicht mehr sehen darf */
+  setArticleAuthor: (gid: number, id: number, authorId: number) =>
+    request<{ article: Article | null }>('PUT', `/groups/${gid}/articles/${id}/author`, { authorId }),
   /** Nur den Ordner wechseln (im selben Bereich) */
   moveArticle: (gid: number, id: number, path: string) => request<Article>('PATCH', `/groups/${gid}/articles/${id}`, { path }),
   deleteArticle: (gid: number, id: number) => request<unknown>('DELETE', `/groups/${gid}/articles/${id}`),
