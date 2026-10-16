@@ -188,6 +188,11 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
 - Mitgelieferte Themes liegen in `themes/`, eigene legt der Seitenbetreiber in `THEMES_DIR` (`data/themes`) ab –
   ohne Codeänderung und ohne Neustart. Ungültige Manifeste werden mit Begründung im Server-Log abgelehnt, doppelte
   IDs ebenso.
+- Mitgeliefert: `default`, `fantasy` (Pergament, Holzrahmen mit Gold, Zierschrift), `clean` (minimalistisch, hell)
+  und `scifi` (dunkel, Neon, abgeschrägte Ecken). Sie nutzen nur Tokens und Zusatz-CSS und dienen als Beispiele
+  für eigene Themes; Grafiken sind selbst erstellt, Schriften stehen unter der SIL Open Font License
+  (`fonts/OFL-*.txt`). `fantasy`, `clean` und `scifi` haben ein festes Farbschema (kein `darkTokens`), die
+  Einstellung Hell/Dunkel wirkt bei ihnen nicht.
 - Basis-Theme ist `default` (das bisherige Aussehen, hell/dunkel). Es setzt jedes Token; fehlende Tokens anderer
   Themes werden daraus ergänzt. `darkTokens` (Abweichungen bei dunklem Farbschema) werden nicht ergänzt, sonst
   mischten sich fremde Farben ein.

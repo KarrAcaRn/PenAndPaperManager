@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!--
+    Leuchtrahmen „SciFi“ als 9-Slice für border-image (Slice 16): Ecken 16×16, Kanten-Kachel 32×16.
+    Die Kastenkante liegt in der Mitte des 16er-Bands (x/y = 8 bzw. 56). Oben links und unten rechts ist die Ecke
+    abgeschrägt: das Dreieck außerhalb der Schräge wird in der Seitenfarbe übermalt, damit die eckige Fläche
+    dahinter verschwindet. Oben rechts und unten links sitzt eine Magenta-Klammer (nur in der Eckkachel, sonst
+    würde sie mit der Kante gestreckt). Cyan-Linie mit weichem Leuchten.
+    Selbst erstellt für den Pen & Paper Manager, MIT-Lizenz.
+  -->
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.6" />
+    </filter>
+  </defs>
+  <!-- abgeschrägte Ecken: Fläche abdecken (Seitenfarbe), dann Leuchten und Linie -->
+  <path d="M8 8 H16.5 L8 16.5 Z M56 56 H47.5 L56 47.5 Z" fill="#070b14" />
+  <g fill="none" stroke-linejoin="miter">
+    <path d="M8 16 L16 8 H56 V48 L48 56 H8 Z" stroke="#00d9f5" stroke-width="2.4" opacity="0.55" filter="url(#glow)" />
+    <path d="M8 16 L16 8 H56 V48 L48 56 H8 Z" stroke="#5eeaff" stroke-width="1.1" />
+    <!-- Klammern in Magenta oben rechts und unten links -->
+    <path d="M49 4.5 H59.5 V15" stroke="#ff2ec4" stroke-width="3" opacity="0.5" filter="url(#glow)" />
+    <path d="M4.5 49 V59.5 H15" stroke="#ff2ec4" stroke-width="3" opacity="0.5" filter="url(#glow)" />
+    <path d="M49 4.5 H59.5 V15" stroke="#ff2ec4" stroke-width="2" />
+    <path d="M4.5 49 V59.5 H15" stroke="#ff2ec4" stroke-width="2" />
+  </g>
+</svg>

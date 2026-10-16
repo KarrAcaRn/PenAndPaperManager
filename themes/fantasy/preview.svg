@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="150" viewBox="0 0 240 150">
+  <!-- Vorschau „Fantasy“ für die Theme-Auswahl. Selbst erstellt, MIT-Lizenz. -->
+  <rect width="240" height="150" fill="#ecdfc0" />
+  <rect x="10" y="10" width="220" height="30" rx="3" fill="#f8efd9" stroke="#6b3415" stroke-width="5" />
+  <rect x="10" y="10" width="220" height="30" rx="3" fill="none" stroke="#d9b14a" stroke-width="1" />
+  <rect x="20" y="19" width="44" height="12" rx="3" fill="#6b3415" />
+  <rect x="72" y="22" width="34" height="6" rx="2" fill="#2e1f12" />
+  <rect x="112" y="22" width="34" height="6" rx="2" fill="#2e1f12" />
+  <rect x="10" y="52" width="66" height="88" rx="3" fill="#f8efd9" stroke="#6b3415" stroke-width="5" />
+  <rect x="10" y="52" width="66" height="88" rx="3" fill="none" stroke="#d9b14a" stroke-width="1" />
+  <text x="90" y="72" font-family="Cinzel, Georgia, serif" font-size="15" font-weight="700" fill="#6b3415">Fantasy</text>
+  <rect x="90" y="78" width="130" height="2" fill="#c9972f" />
+  <rect x="90" y="88" width="130" height="5" rx="2" fill="#2e1f12" opacity="0.8" />
+  <rect x="90" y="99" width="112" height="5" rx="2" fill="#2e1f12" opacity="0.8" />
+  <rect x="90" y="110" width="122" height="5" rx="2" fill="#654a30" opacity="0.8" />
+  <rect x="90" y="124" width="46" height="14" rx="3" fill="#6b3415" stroke="#c9972f" />
+  <g fill="#c9972f"><circle cx="10" cy="10" r="5" /><circle cx="230" cy="10" r="5" /><circle cx="10" cy="52" r="5" /><circle cx="76" cy="52" r="5" /></g>
+</svg>
