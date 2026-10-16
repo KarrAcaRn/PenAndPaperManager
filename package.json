@@ -12,6 +12,8 @@
     "build": "npm run build -w client",
     "start": "npm start -w server",
     "import-rulebook": "npm run import-rulebook -w server --",
+    "theme:create": "npm run theme:create -w server --",
+    "theme:validate": "npm run theme:validate -w server --",
     "test": "npm test --workspaces --if-present",
     "check": "npm run check -w server && npm run check -w client",
     "coverage": "npm run coverage --workspaces --if-present"

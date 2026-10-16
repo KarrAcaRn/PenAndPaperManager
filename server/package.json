@@ -8,6 +8,8 @@
     "start": "tsx src/index.ts",
     "import-rulebook": "tsx src/import-rulebook.ts",
     "theme:schema": "tsx src/write-theme-schema.ts",
+    "theme:create": "tsx src/theme-cli.ts create",
+    "theme:validate": "tsx src/theme-cli.ts validate",
     "test": "vitest run",
     "check": "tsc --noEmit",
     "coverage": "vitest run --coverage"

@@ -16,6 +16,8 @@ npm run coverage
 npm run check   # Typprüfung Server + Client
 npm run build && npm start   # Produktion: Server liefert das gebaute Frontend auf :3000
 npm run import-rulebook -- <PDF-Datei oder URL> "Titel"   # Regelwerk einspielen (siehe unten)
+npm run theme:create -- <id>         # eigenes Theme aus der Vorlage anlegen (siehe docs/themes.md)
+npm run theme:validate -- [<Ordner>] # Themes prüfen (Schema, Dateien, Kontrast)
 ```
 
 Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`),
@@ -179,6 +181,9 @@ Seite unter einem anderen Origin läuft als die Redirect-URI. Einrichtung: `docs
   (`pnp-guest-theme`). Beim Logout (bzw. ohne gültige Session) gilt wieder diese Gast-Wahl bzw. die Vorgabe.
 
 ## Themes
+
+Anleitung für eigene Themes (Manifest, alle Tokens, Zusatz-CSS, Bereitstellen, Kontrast): **`docs/themes.md`**.
+Starter-Vorlage: `themes/_template`.
 
 - Farben, Rahmen, Schatten, Zierrahmen-Grafiken und Schriften der ganzen Oberfläche kommen aus Design-Tokens
   (CSS Custom Properties). Liste und Bedeutung aller Tokens: `THEME_TOKENS` in `shared/src/theme.ts`.
