@@ -1,8 +1,7 @@
 import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
-import { applyStoredTheme } from './lib/userSettings.svelte.ts';
 
-applyStoredTheme();
+// Das zuletzt verwendete Theme und Farbschema setzt schon das Inline-Skript in index.html (vor dem ersten Zeichnen).
 
 export default mount(App, { target: document.getElementById('app')! });

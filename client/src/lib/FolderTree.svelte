@@ -512,39 +512,39 @@
   .tree { font-size: 0.95rem; }
   ul { list-style: none; margin: 0; padding: 0 0 0 0.9rem; }
   .tree > ul { padding-left: 0; }
-  .node { display: flex; align-items: center; gap: 0.15rem; border-radius: var(--radius); }
-  .node a { flex: 1; min-width: 0; padding: 0.15rem 0.35rem; text-decoration: none; color: var(--text); overflow-wrap: anywhere; }
-  .node:hover { background: var(--bg); }
-  .node.current { background: var(--accent); }
-  .node.current a { color: var(--accent-text); }
+  .node { display: flex; align-items: center; gap: 0.15rem; border-radius: var(--border-radius); }
+  .node a { flex: 1; min-width: 0; padding: 0.15rem 0.35rem; text-decoration: none; color: var(--color-text); overflow-wrap: anywhere; }
+  .node:hover { background: var(--color-surface-muted); }
+  .node.current { background: var(--color-accent); }
+  .node.current a { color: var(--color-accent-text); }
   .root { font-weight: 700; margin-bottom: 0.25rem; }
-  .root.current { background: var(--accent); }
-  .root.current a { color: var(--accent-text); }
+  .root.current { background: var(--color-accent); }
+  .root.current a { color: var(--color-accent-text); }
   .toggle { flex: none; width: 1.3rem; padding: 0; border: none; background: none; color: inherit; text-align: center; }
-  .node.current .toggle { color: var(--accent-text); }
+  .node.current .toggle { color: var(--color-accent-text); }
 
   /* Drag & Drop */
   .node[draggable='true'] { cursor: grab; }
   .node.dragging { opacity: 0.45; }
-  .node.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--bg); }
-  .node.current.drop-target { background: var(--accent); }
+  .node.drop-target { outline: var(--outline-width) dashed var(--color-accent); outline-offset: calc(-1 * var(--outline-width)); background: var(--color-surface-muted); }
+  .node.current.drop-target { background: var(--color-accent); }
 
   /* Werkzeuge am gewählten Ordner */
   .tools { flex: none; display: flex; align-items: center; gap: 0.1rem; padding-right: 0.15rem; font-weight: 400; }
   .icon {
-    width: 1.5rem; height: 1.5rem; padding: 0.2rem; border: none; border-radius: var(--radius);
-    background: none; color: var(--accent-text); display: flex; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem; padding: 0.2rem; border: none; border-radius: var(--border-radius);
+    background: none; color: var(--color-accent-text); display: flex; align-items: center; justify-content: center;
   }
-  .icon:hover, .icon[aria-expanded='true'] { background: rgba(255, 255, 255, 0.2); }
+  .icon:hover, .icon[aria-expanded='true'] { background: var(--color-accent-hover); }
   .icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .menu {
     position: fixed; z-index: 10; min-width: 8rem;
     display: flex; flex-direction: column; padding: 0.25rem;
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    background: var(--color-surface); border: var(--border); border-radius: var(--border-radius);
+    box-shadow: var(--shadow-popup);
   }
-  .menu button { width: 100%; text-align: left; border: none; background: none; color: var(--text); padding: 0.3rem 0.5rem; border-radius: var(--radius); }
-  .menu button:hover, .menu button:focus-visible { background: var(--bg); }
+  .menu button { width: 100%; text-align: left; border: none; background: none; color: var(--color-text); padding: 0.3rem 0.5rem; border-radius: var(--border-radius); }
+  .menu button:hover, .menu button:focus-visible { background: var(--color-surface-muted); }
   .name-field { flex: 1; min-width: 0; width: auto; padding: 0.1rem 0.35rem; font: inherit; font-weight: 400; }
   .indent { display: flex; padding: 0.15rem 0 0.15rem 1.45rem; }
   .tree > .name-field { display: block; width: 100%; margin-bottom: 0.25rem; }

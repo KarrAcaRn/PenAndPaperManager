@@ -28,6 +28,7 @@ import {
   type StorageFolderPage,
   type StorageProviderInfo,
   type UploadRequest,
+  type ThemeInfo,
   type UploadTarget,
   type UserSettings,
 } from '@pnp/shared';
@@ -138,6 +139,8 @@ export const api = {
   rulebooks: () => request<Rulebook[]>('GET', '/rulebooks'),
   searchRules: (q: string, rulebookId?: number) =>
     request<RuleHit[]>('GET', `/rulebooks/search?${qs({ q, rulebookId: rulebookId?.toString() })}`),
+  themes: () => request<{ themes: ThemeInfo[]; defaultTheme: string }>('GET', '/themes'),
+  theme: (id: string) => request<{ theme: ThemeInfo }>('GET', `/themes/${encodeURIComponent(id)}`),
 
   // Externe Speicher fürs Soundboard (docs/soundboard-storage.md); Zugangsdaten gehen nur hinein, nie heraus
   storageProviders: () => request<StorageProviderInfo[]>('GET', '/storage/providers'),

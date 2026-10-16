@@ -34,7 +34,8 @@ npm run check          # tsc (Server) + svelte-check (Client) – muss fehlerfre
 npm run build && npm start
 ```
 
-Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`); Mailversand (`server/src/mail.ts`)
+Umgebungsvariablen: `PORT` (3000), `HOST` (127.0.0.1), `DB_PATH` (`data/app.db`), Themes über `THEMES_DIR` und
+`DEFAULT_THEME`; Mailversand (`server/src/mail.ts`)
 über `MAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM` – siehe `.env.example`. Ohne SMTP wird außerhalb von Produktion nur geloggt.
 `APP_SECRET_KEY` (sonst `data/secret.key`), `S3_ALLOW_PRIVATE_ENDPOINTS` (`1` = S3-Endpoints im LAN erlauben),
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` (optional, Google Drive fürs Soundboard),
@@ -56,6 +57,11 @@ README).
   Invarianten aus der README (mindestens ein Spielleiter, verwaiste private Artikel gehen an die Spielleiter)
   nicht brechen.
 - **Stil:** 2 Leerzeichen, einfache Anführungszeichen, Semikolons, Trailing Commas, lange Zeilen (~120) sind ok.
+- **Gestaltung:** keine festen Farb-, Rahmen- oder Schattenwerte in Komponenten oder `app.css`, Schriften der
+  Oberfläche über `--font-…` – nur Design-Tokens (`var(--color-…)`, `var(--border)`, …, siehe README „Themes“;
+  ein Test prüft feste Farben und px-Rahmen). Ausnahme: Linienstärken und Maße des FATE-Bogens (Druckvorlage).
+  Neues Token: in `THEME_TOKENS` (`shared/src/theme.ts`) und `themes/default/theme.json` eintragen, dann
+  `npm run theme:schema -w server`.
 
 ## Tests
 

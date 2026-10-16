@@ -23,11 +23,14 @@ import { googleDriveRoutes } from './routes/googleDrive.ts';
 import type { StorageContext } from './storage/connections.ts';
 import { defaultStorageProviders, type StorageProviderRegistry } from './storage/registry.ts';
 import { createSecretBox, loadSecretKey, type SecretBox } from './secrets.ts';
+import { themeRoutes } from './routes/themes.ts';
 import { apiPath, parseAdminEmails, requireAuthForApi } from './auth.ts';
 import { soundRoutes } from './routes/sounds.ts';
 import { seedPresets } from './presets.ts';
-import { dbPath, rulebookDir, soundsDir } from './paths.ts';
+import { builtinThemesDir, dbPath, rulebookDir, soundsDir, themesDir } from './paths.ts';
 import { BUILTIN_SOUND_PREFIX, createSoundLibrary, soundBaseUrl } from './sounds.ts';
+import { createThemeRegistry, defaultThemeId } from './themes.ts';
+import { BASE_THEME_ID } from '@pnp/shared';
 
 const CLIENT_DIST = join(import.meta.dirname, '../../client/dist');
 
@@ -51,6 +54,12 @@ export interface AppOptions {
   sendLoginCodeEmail?: SendLoginCodeEmail;
   /** Rate-Limits für das Anfordern von Login-Codes; Vorgabe RATE_LIMITS (Tests mit vielen Logins lockern sie) */
   loginRateLimits?: LoginRateLimits;
+  /** Ordner mit eigenen Themes des Seitenbetreibers; Vorgabe THEMES_DIR bzw. data/themes neben der Datenbank */
+  themesDir?: string;
+  /** Ordner der mitgelieferten Themes (für Tests); Vorgabe themes/ im Repo */
+  builtinThemesDir?: string;
+  /** Theme für alle ohne eigene Wahl; Vorgabe DEFAULT_THEME bzw. das Basis-Theme „default“ */
+  defaultTheme?: string;
   /** Anbieter externer Speicher (Soundboard); Vorgabe sind die eingebauten (defaultStorageProviders) */
   storageProviders?: StorageProviderRegistry;
   /** Schlüssel für gespeicherte Zugangsdaten; Vorgabe APP_SECRET_KEY bzw. data/secret.key, erst bei Bedarf geladen */
@@ -85,6 +94,21 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   });
   const admins = parseAdminEmails(opts.adminEmails ?? process.env.ADMIN_EMAILS);
   seedPresets(db);
+  const themes = createThemeRegistry({
+    builtinDir: opts.builtinThemesDir ?? builtinThemesDir(),
+    extraDir: opts.themesDir ?? themesDir(dbPath()),
+    // Ungültige Themes werden übersprungen und bei jedem Neuladen gemeldet
+    onProblems: (problems) => {
+      for (const { dir, errors } of problems) app.log.warn(`Theme in ${dir} abgelehnt: ${errors.join(' ')}`);
+    },
+  });
+  // Schon beim Start laden: ein ungültiges Basis-Theme bricht hier ab
+  themes.scan();
+  const configuredDefaultTheme = opts.defaultTheme ?? process.env.DEFAULT_THEME;
+  if (configuredDefaultTheme && !themes.getTheme(configuredDefaultTheme)) {
+    app.log.warn(`DEFAULT_THEME „${configuredDefaultTheme}“ gibt es nicht, es gilt „${BASE_THEME_ID}“.`);
+  }
+  const defaultTheme = () => defaultThemeId(themes, configuredDefaultTheme);
   app.register(cookie);
 
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {
@@ -113,7 +137,8 @@ export function buildApp(db: Db, opts: AppOptions = {}): FastifyInstance {
   skillRoutes(app, db);
   sheetRoutes(app, db);
   rulebookRoutes(app, db, opts.rulebookDir ?? rulebookDir(dbPath()));
-  settingsRoutes(app, db);
+  settingsRoutes(app, db, themes);
+  themeRoutes(app, themes, defaultTheme);
   let secrets: SecretBox | undefined;
   const storage: StorageContext = {
     db,

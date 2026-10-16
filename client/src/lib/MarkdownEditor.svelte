@@ -158,20 +158,20 @@
     gap: 0.25rem 0.75rem;
     align-items: center;
     padding: 0.35rem 0.5rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
+    border-bottom: var(--border);
+    background: var(--color-surface-muted);
   }
   .group { display: flex; gap: 0.15rem; }
   .toolbar button { min-width: 2rem; padding: 0.15rem 0.45rem; font-size: 0.9rem; border-color: transparent; background: none; }
-  .toolbar button:hover:not(:disabled) { border-color: var(--border); background: var(--surface); }
-  .toolbar button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-  .toolbar .mode { border-color: var(--border); }
+  .toolbar button:hover:not(:disabled) { border-color: var(--color-border); background: var(--color-surface); }
+  .toolbar button[aria-pressed='true'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-text); }
+  .toolbar .mode { border-color: var(--color-border); }
   .table-tools { font-size: 0.85rem; }
-  .notice { margin: 0; padding: 0.35rem 0.75rem; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .notice { margin: 0; padding: 0.35rem 0.75rem; font-size: 0.85rem; color: var(--color-text-muted); border-bottom: var(--border); }
   .surface :global(.ProseMirror) { min-height: 20rem; padding: 0.75rem 1rem; outline: none; }
   .surface :global(.ProseMirror p.is-editor-empty:first-child::before) {
     content: attr(data-placeholder);
-    color: var(--muted);
+    color: var(--color-text-muted);
     float: left;
     height: 0;
     pointer-events: none;
@@ -186,8 +186,8 @@
   .bold { font-weight: 700; }
   .italic { font-style: italic; font-family: serif; }
   .strike { text-decoration: line-through; }
-  .surface :global(.selectedCell) { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+  .surface :global(.selectedCell) { background: var(--color-selection); }
   .surface :global(.column-resize-handle) { display: none; }
-  .surface :global(img.ProseMirror-selectednode) { outline: 2px solid var(--accent); }
+  .surface :global(img.ProseMirror-selectednode) { outline: var(--outline-width) solid var(--color-accent); }
   textarea { display: block; border: none; border-radius: 0; min-height: 20rem; padding: 0.75rem 1rem; }
 </style>

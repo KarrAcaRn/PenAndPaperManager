@@ -262,15 +262,17 @@
   .scroll { overflow-x: auto; }
 
   .page {
-    --accent: #4a72a8;
+    --accent: var(--sheet-accent);
     /* Zeilenhöhe der Aspektfelder und daraus abgeleitete Höhe des oberen Blocks:
        Balken (10,5) + 5 Aspekte à (Label 4,5 + 2 Zeilen à 5,2 + 1) + 3 Abstand */
     --aspect-line: 5.2mm;
     --top-h: 94.3mm;
-    --ink: #1a1a1a;
-    --line: #9a9a9a;
-    --faded: #c9c9c9;
-    --focus: #eef3fa;
+    --ink: var(--sheet-ink);
+    --line: var(--sheet-line);
+    --faded: var(--sheet-faded);
+    --focus: var(--sheet-focus);
+    --paper: var(--sheet-paper);
+    --on-accent: var(--sheet-on-accent);
 
     box-sizing: border-box;
     position: relative;
@@ -278,11 +280,11 @@
     height: 297mm;
     margin: 0 auto 1rem;
     padding: 10mm 9mm 8mm;
-    background: #fff;
+    background: var(--paper);
     color: var(--ink);
-    font-family: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+    font-family: var(--sheet-font);
     line-height: normal;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--sheet-shadow);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -320,18 +322,19 @@
   .logo {
     display: inline-flex;
     align-items: center;
-    background: #111;
-    color: #fff;
+    background: var(--sheet-logo);
+    /* Schrift und Schwung wie aus dem Papier ausgeschnitten */
+    color: var(--paper);
     padding: 1.2mm 3.2mm 1.2mm 2.4mm;
     border-radius: 1.2mm;
-    font-family: Oswald, 'Arial Narrow', Arial, sans-serif;
+    font-family: var(--sheet-font-heading);
     font-weight: 700;
     font-size: 17pt;
     letter-spacing: 0.02em;
     line-height: 1;
     transform: skewX(-4deg);
   }
-  .logo .swash { display: inline-block; width: 4mm; height: 4mm; margin-right: 0.8mm; background: #fff; clip-path: polygon(0 55%, 100% 0, 78% 52%, 100% 100%, 20% 68%); }
+  .logo .swash { display: inline-block; width: 4mm; height: 4mm; margin-right: 0.8mm; background: var(--paper); clip-path: polygon(0 55%, 100% 0, 78% 52%, 100% 100%, 20% 68%); }
 
   /* ---------- Spaltenraster ---------- */
   .body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
@@ -350,12 +353,12 @@
   .banner { background: var(--accent); height: 8.5mm; flex: none; display: flex; align-items: center; margin-bottom: 2mm; }
   .banner h2, .refresh .bar h2 {
     margin: 0;
-    font-family: Oswald, 'Arial Narrow', Arial, sans-serif;
+    font-family: var(--sheet-font-heading);
     font-weight: 700;
     font-size: 19pt;
     line-height: 1;
     letter-spacing: 0.04em;
-    color: #fff;
+    color: var(--on-accent);
     text-transform: uppercase;
     transform: skewX(-6deg);
   }
@@ -379,7 +382,7 @@
   .box-count { display: flex; gap: 1mm; }
   .box-count button {
     width: 5.5mm; height: 5.5mm; padding: 0; border: 1pt solid var(--line); border-radius: 50%;
-    background: #fff; color: var(--ink); font: 700 9pt/1 Arial, sans-serif; cursor: pointer;
+    background: var(--paper); color: var(--ink); font: 700 9pt/1 Arial, sans-serif; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
   .box-count button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -391,15 +394,15 @@
   .boxes input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
   .boxes input:disabled + span { cursor: default; }
   .boxes input:disabled + span:hover { background: transparent; }
-  .boxes input:checked + span, .boxes input:checked:disabled + span:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .boxes input:checked + span, .boxes input:checked:disabled + span:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .boxes label.off > span { border-color: var(--faded); color: transparent; }
-  .boxes label.off input:checked + span { border-color: var(--accent); color: #fff; }
+  .boxes label.off input:checked + span { border-color: var(--accent); color: var(--on-accent); }
 
   .consequences { margin-top: 3.5mm; }
   .cons { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 3.2mm !important; }
   /* Stufenwahl sieht aus wie das gedruckte Feld; die globalen Formular-Abstände würden die Zahl abschneiden */
   .cons select.tag {
-    appearance: none; background: #fff; color: var(--ink); font-family: inherit; cursor: pointer;
+    appearance: none; background: var(--paper); color: var(--ink); font-family: inherit; cursor: pointer;
     border-radius: 0; margin: 0; padding: 0 0 0 1mm; line-height: 1; border-color: var(--ink);
   }
   /* nach innen: das clip-path der Form würde einen äußeren Rahmen abschneiden */
@@ -417,9 +420,9 @@
   .refresh { position: relative; margin: 4mm -9mm 0 -9mm; padding-left: 9mm; height: 10mm; flex: none; }
   .refresh .bar { position: absolute; inset: 0; background: var(--accent); display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 3mm; }
   .refresh .bar h2 { font-size: 18pt; line-height: 0.95; letter-spacing: 0.03em; }
-  .refresh .bar small { font-size: 6.4pt; font-style: italic; color: #fff; margin-top: 0.4mm; }
-  .refresh .circle { position: absolute; left: 13mm; bottom: 0.5mm; width: 21mm; height: 21mm; border: 1.4pt solid var(--accent); border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; }
-  .refresh .circle .f { font-family: Oswald, 'Arial Narrow', Arial, sans-serif; font-size: 20pt; text-align: center; border-radius: 50%; height: 12mm; }
+  .refresh .bar small { font-size: 6.4pt; font-style: italic; color: var(--on-accent); margin-top: 0.4mm; }
+  .refresh .circle { position: absolute; left: 13mm; bottom: 0.5mm; width: 21mm; height: 21mm; border: 1.4pt solid var(--accent); border-radius: 50%; background: var(--paper); display: flex; align-items: center; justify-content: center; }
+  .refresh .circle .f { font-family: var(--sheet-font-heading); font-size: 20pt; text-align: center; border-radius: 50%; height: 12mm; }
 
   /* ---------- Fertigkeiten ---------- */
   .skills {
@@ -435,8 +438,8 @@
   .skill .plus { font-size: var(--skill-size); line-height: 1; }
   .skill .slot { width: 17mm; flex: none; border-bottom: 1.2px solid var(--ink); }
   .skills.dense .slot { width: 9mm; }
-  .skill .slot .f { font-family: Oswald, 'Arial Narrow', Arial, sans-serif; font-size: calc(var(--skill-size) * 0.95); text-align: center; padding-bottom: 0.3mm; }
-  .skill .n { font-family: Oswald, 'Arial Narrow', Arial, sans-serif; font-weight: 400; font-size: var(--skill-size); line-height: 1.05; overflow-wrap: anywhere; }
+  .skill .slot .f { font-family: var(--sheet-font-heading); font-size: calc(var(--skill-size) * 0.95); text-align: center; padding-bottom: 0.3mm; }
+  .skill .n { font-family: var(--sheet-font-heading); font-weight: 400; font-size: var(--skill-size); line-height: 1.05; overflow-wrap: anywhere; }
 
   @media print {
     .scroll { overflow: visible; }
